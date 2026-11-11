@@ -24,109 +24,6 @@ const confirmDialog = document.querySelector("#confirm-dialog");
 const chapterEditorDialog = document.querySelector("#chapter-editor-dialog");
 const chapterEditorForm = document.querySelector("#chapter-editor-form");
 
-const sampleBooks = {
-  "sample-jasmine": {
-    id: "sample-jasmine",
-    title: "Там, где цветёт жасмин",
-    author: "Элла Рид",
-    genre: "Романы",
-    age_rating: "16+",
-    language: "Русский",
-    page_count: 118,
-    rating: 4.9,
-    rating_count: 38,
-    tags: ["семья", "уютное", "возвращение домой"],
-    description: "Небольшая история о доме, который помогает найти дорогу назад.",
-    chapters: [
-      {
-        title: "Дом с зелёной дверью",
-        content:
-          "Поезд пришёл в Лесное раньше рассвета. Лиза вышла на пустую платформу с чемоданом в одной руке и маминым письмом в другой. В письме было всего три строки: «Ключ под синим горшком. Полей жасмин. Не торопись уезжать».\n\nДом она узнала сразу. Зелёная дверь облупилась, сад зарос травой, а у крыльца всё ещё стоял синий горшок. Лиза нашла ключ и долго не решалась вставить его в замок. За дверью пахло яблоками, пылью и чем-то знакомым, чему она не могла дать название.\n\nНа кухне часы отставали ровно на семь минут. Лиза поправила их, открыла окно и увидела, что старый жасмин выпустил единственный белый цветок. Она впервые за много месяцев глубоко вдохнула — и решила остаться хотя бы до утра.",
-      },
-      {
-        title: "Первый цветок",
-        content:
-          "Утром к калитке постучал сосед, которого Лиза помнила мальчишкой с разбитыми коленками. Теперь это был высокий мужчина с корзиной груш и всё той же неловкой улыбкой. «Я не знал, что ты приедешь, — сказал он. — Просто увидел свет в окне».\n\nВместе они расчистили дорожку и нашли под сорняками деревянную скамью. Сосед рассказал, что мама каждый год ждала цветения жасмина, даже когда казалось, что куст засох. Лиза подумала, что всю дорогу поступала наоборот: уезжала прежде, чем могла узнать, что ещё способно ожить.\n\nВечером цветков стало два. Она отправила начальнику короткое сообщение об отпуске и впервые за долгое время не стала проверять расписание обратного поезда.",
-      },
-    ],
-  },
-  "sample-orbit": {
-    id: "sample-orbit",
-    title: "Орбита тишины",
-    author: "Лев Арден",
-    genre: "Фантастика",
-    age_rating: "18+",
-    language: "Русский",
-    page_count: 296,
-    rating: 4.8,
-    rating_count: 24,
-    tags: ["космос", "первый контакт", "приключения"],
-    description: "Экипаж станции получает сигнал с планеты, которая не должна существовать.",
-    chapters: [
-      {
-        title: "Сигнал",
-        content:
-          "На орбите Кеплера-1649 тишина была не отсутствием звука, а частью оборудования. Она стояла за стенами станции, пряталась в отключённых каналах связи и сопровождала ночную смену Мары.\n\nВ 03:17 приёмник ожил. Три коротких импульса, пауза, ещё три. Мара сняла наушники, проверила журнал неисправностей и повторила измерение. Сигнал шёл с поверхности планеты, которую астрономы вычеркнули из списка пригодных для наблюдения ещё до запуска станции.\n\nОна отправила сообщение на Землю. Ответ придёт через одиннадцать лет. Между двумя решениями у неё оставалось только одно: повернуть антенну и слушать.",
-      },
-      {
-        title: "Ответ без слов",
-        content:
-          "Сигнал повторился через шесть часов, но на этот раз в нём было больше пауз. Мара вывела импульсы на экран и заметила, что интервалы совпадают с её дыханием. Совпадение могло быть случайным; космос не обещал смысла каждому шуму.\n\nОна выключила все автоматические фильтры. За треском проступил ровный ритм, затем ещё один — чуть медленнее. Мара постучала пальцами по столу. На экране загорелась последовательность, которая точно повторила её темп.\n\nПервым чувством был страх. Вторым — облегчение: кто-то там не просто передавал сигнал, а ждал ответа. Она включила микрофон и сказала своё имя, хотя знала, что никто не услышит его ещё очень долго.",
-      },
-    ],
-  },
-  "sample-notice": {
-    id: "sample-notice",
-    title: "Искусство замечать",
-    author: "Ника Белова",
-    genre: "Нон-фикшн",
-    age_rating: "12+",
-    language: "Русский",
-    page_count: 164,
-    rating: 4.9,
-    rating_count: 52,
-    tags: ["внимательность", "саморазвитие", "практики"],
-    description: "Практика внимательности к повседневности без спешки и сложных правил.",
-    chapters: [
-      {
-        title: "Одна вещь за раз",
-        content:
-          "Внимание не нужно заслуживать. Его можно просто вернуть — к чашке в ладонях, звуку за окном, мысли, которую вы обычно перебиваете следующей задачей.\n\nПопробуйте маленькое упражнение. Выберите один привычный момент дня: пока закипает чайник, пока ждёте лифт или идёте от остановки до дома. На минуту отложите телефон и назовите про себя три вещи, которые видите, два звука, которые слышите, и одно телесное ощущение.\n\nЗдесь нет правильного результата. Если вы отвлеклись — это не ошибка, а возможность заметить, куда ушло внимание, и спокойно вернуться. Со временем короткая пауза перестаёт быть упражнением и становится местом, где можно передохнуть.",
-      },
-      {
-        title: "Заметки без оценки",
-        content:
-          "В течение дня записывайте одну мелочь, которая привлекла ваше внимание. Не ищите красивую формулировку: «тёплый круг на полу», «сосед придержал дверь», «пахнет дождём» — уже достаточно.\n\nЧерез неделю перечитайте записи. Часто в них проявляется то, на что в обычной спешке мы не смотрим: повторяющиеся радости, люди, которым мы благодарны, места, где становится спокойно. Это не список достижений и не повод себя оценивать. Это просто ваша жизнь, замеченная чуть внимательнее.\n\nЕсли в какой-то день ничего не записалось, пропустите его. Практика, которая помогает, не должна превращаться в ещё одну обязанность.",
-      },
-    ],
-  },
-  "sample-train": {
-    id: "sample-train",
-    title: "Последний поезд на север",
-    author: "Марк Северин",
-    genre: "Детективы",
-    age_rating: "16+",
-    language: "Русский",
-    page_count: 232,
-    rating: 4.7,
-    rating_count: 31,
-    tags: ["загадка", "поезд", "расследование"],
-    description: "Ночная поездка, чужой билет и загадка, которую пассажиры хранят молча.",
-    chapters: [
-      {
-        title: "Место номер семь",
-        content:
-          "Билет на место номер семь был выписан на имя человека, которого не было среди пассажиров. Инспектор Вера Ланская заметила это в первую минуту пути — и не сказала никому.\n\nСостав шёл на север сквозь снег. В вагоне было пятеро: проводник, пожилой мужчина с клетчатым шарфом, студентка с закрытым ноутбуком, женщина в мокрых перчатках и сама Вера. Шестое место оставалось пустым, хотя билет на него кто-то компостировал.\n\nКогда поезд остановился между станциями, проводник принёс Вере чай и спросил, не видела ли она синюю папку. Он спросил так, словно знал ответ. Вера посмотрела на полку для багажа: папка лежала там, где никто не мог её не заметить.",
-      },
-      {
-        title: "Чужая папка",
-        content:
-          "Внутри лежали расписания, пожелтевшая фотография вокзала и записка: «Спросите того, кто не выходит на своей станции». Чернила расплылись, но на обороте фотографии кто-то аккуратно написал дату — сегодняшнюю.\n\nВера начала с простого. У студентки билет был до конечной, у мужчины — до следующей станции, у женщины — без указанного места. Проводник проверял билеты дважды, будто ждал кого-то ещё.\n\nНа очередной остановке дверь вагона открылась, но никто не вошёл. Только снег залетел на ковёр и оставил тонкую дорожку следов, ведущую к свободному седьмому месту. Вера подняла глаза на проводника. Тот наконец перестал улыбаться.",
-      },
-    ],
-  },
-};
-
 const DEFAULT_READING_SETTINGS = {
   theme: "light",
   font: "serif",
@@ -149,7 +46,7 @@ function renderRatingStars(container, rating) {
     container.querySelectorAll("[data-rating]").forEach((button) => {
       const value = Number(button.dataset.rating);
       button.classList.toggle("is-selected", value <= Number(rating || 0));
-      button.disabled = !currentUser || String(activeDetailsBook?.id).startsWith("sample-");
+      button.disabled = !currentUser;
     });
   }
 
@@ -225,9 +122,7 @@ function renderBookDetails(book, updateHash = true) {
 
     const ratingMessage = document.querySelector("#rating-message");
     const ratingControl = document.querySelector("#book-rating-control");
-    if (String(book.id).startsWith("sample-")) {
-      ratingMessage.textContent = "Оценки доступны для книг авторов";
-    } else if (currentUser && book.owner_id !== currentUser.id) {
+    if (currentUser && book.owner_id !== currentUser.id) {
       ratingMessage.textContent = book.user_rating
         ? "Твоя оценка сохранена"
         : "Оцени книгу один раз, оценку можно изменить";
@@ -237,10 +132,7 @@ function renderBookDetails(book, updateHash = true) {
       ratingMessage.textContent = "Войди, чтобы оставить оценку";
     }
     ratingControl.querySelectorAll("[data-rating]").forEach((button) => {
-      button.disabled =
-        String(book.id).startsWith("sample-") ||
-        !currentUser ||
-        book.owner_id === currentUser.id;
+      button.disabled = !currentUser || book.owner_id === currentUser.id;
     });
     renderRatingStars(ratingControl, book.user_rating || book.rating);
 
@@ -285,11 +177,7 @@ async function showBookDetails(bookId, updateHash = true) {
   const existingBook = allBooks.find((item) => String(item.id) === String(bookId));
   let book = existingBook;
   if (!book || !Array.isArray(book.chapters) || !book.chapters.length) {
-    if (String(bookId).startsWith("sample-")) {
-      book = sampleBooks[bookId];
-    } else {
-      book = (await api(`/api/books/${encodeURIComponent(bookId)}`)).book;
-    }
+    book = (await api(`/api/books/${encodeURIComponent(bookId)}`)).book;
   }
   if (!book) throw new Error("Книга не найдена.");
   renderBookDetails(book, updateHash);
@@ -1122,17 +1010,9 @@ function setGenre(genre) {
 
 async function refreshPublishedBooks() {
   const { books } = await api("/api/books");
-  allBooks = [...Object.values(sampleBooks), ...books];
-  bookGrid.querySelectorAll(".user-book-card").forEach((card) => card.remove());
+  allBooks = books;
+  bookGrid.replaceChildren();
   books.forEach((book) => bookGrid.append(createCatalogCard(book)));
-  bookGrid.querySelectorAll(".sample-book-card").forEach((card) => {
-    const book = sampleBooks[card.dataset.bookId];
-    if (!book) return;
-    card.dataset.rating = String(book.rating);
-    card.dataset.pageCount = String(book.page_count);
-    card.dataset.language = book.language;
-    card.dataset.tags = book.tags.join(",");
-  });
   renderTagFilters();
   updateFavoriteButtons();
   renderReadingLibrary();
@@ -1597,7 +1477,7 @@ document.querySelector("#profile-library-button").addEventListener("click", () =
 });
 document.querySelectorAll(".rating-stars [data-rating]").forEach((button) => {
   button.addEventListener("click", async () => {
-    if (!activeDetailsBook || !currentUser || String(activeDetailsBook.id).startsWith("sample-")) {
+    if (!activeDetailsBook || !currentUser) {
       if (!currentUser) openDialog(authDialog, button);
       return;
     }
