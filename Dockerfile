@@ -15,7 +15,7 @@ RUN useradd --system --uid 10001 --create-home app \
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY --chown=app:app server.py index.html script.js styles.css ./
+COPY --chown=app:app server.py index.html script.js styles.css favicon.svg ./
 
 USER app
 
