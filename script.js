@@ -227,6 +227,7 @@ let favoriteIds = new Set(readStoredArray("biblio-favorites"));
 let readingLibraryState = readReadingLibraryState();
 let searchHistory = readStoredArray("biblio-search-history");
 let currentUser = null;
+let pendingAvatarData = null;
 let editingBookId = null;
 let authMode = "login";
 let activeReaderBook = null;
@@ -1231,11 +1232,20 @@ function updateAccountUI() {
 
   document.querySelector("#profile-name").textContent = currentUser.display_name;
   document.querySelector("#profile-email").textContent = currentUser.email;
-  document.querySelector("#profile-avatar").textContent =
-    currentUser.display_name.trim().charAt(0).toLocaleUpperCase("ru");
+  const avatar = document.querySelector("#profile-avatar");
+  avatar.replaceChildren();
+  if (currentUser.avatar_url) {
+    const image = document.createElement("img");
+    image.src = currentUser.avatar_url;
+    image.alt = "Аватар профиля";
+    avatar.append(image);
+  } else {
+    avatar.textContent = currentUser.display_name.trim().charAt(0).toLocaleUpperCase("ru");
+  }
   const profileForm = document.querySelector("#profile-form");
   profileForm.elements.display_name.value = currentUser.display_name;
   profileForm.elements.email.value = currentUser.email;
+  profileForm.elements.bio.value = currentUser.bio || "";
 }
 
 function applyPageLayout() {
@@ -1771,6 +1781,39 @@ bookForm.addEventListener("submit", async (event) => {
   }
 });
 
+document.querySelector("#profile-avatar-file").addEventListener("change", (event) => {
+  const file = event.currentTarget.files?.[0];
+  if (!file) return;
+  if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+    showToast("Выбери изображение PNG, JPG или WebP.");
+    event.currentTarget.value = "";
+    return;
+  }
+  if (file.size > 550 * 1024) {
+    showToast("Аватарка должна быть не больше 550 КБ.");
+    event.currentTarget.value = "";
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    pendingAvatarData = String(reader.result);
+    const avatar = document.querySelector("#profile-avatar");
+    avatar.replaceChildren();
+    const image = document.createElement("img");
+    image.src = pendingAvatarData;
+    image.alt = "Предпросмотр аватарки";
+    avatar.append(image);
+  };
+  reader.readAsDataURL(file);
+});
+
+document.querySelector("#remove-profile-avatar").addEventListener("click", () => {
+  pendingAvatarData = "";
+  const avatar = document.querySelector("#profile-avatar");
+  avatar.textContent = currentUser?.display_name?.trim().charAt(0).toLocaleUpperCase("ru") || "B";
+  document.querySelector("#profile-avatar-file").value = "";
+});
+
 document.querySelector("#profile-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
@@ -1781,10 +1824,14 @@ document.querySelector("#profile-form").addEventListener("submit", async (event)
       body: JSON.stringify({
         display_name: formData.get("display_name"),
         email: formData.get("email"),
+        bio: formData.get("bio"),
+        avatar_url: pendingAvatarData === null ? (currentUser.avatar_url || "") : pendingAvatarData,
         current_password: formData.get("current_password"),
       }),
     });
     currentUser = result.user;
+    pendingAvatarData = null;
+    form.elements.avatar_file.value = "";
     form.elements.current_password.value = "";
     updateAccountUI();
     showToast("Настройки аккаунта сохранены");
