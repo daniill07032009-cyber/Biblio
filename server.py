@@ -1135,10 +1135,17 @@ class BiblioHandler(BaseHTTPRequestHandler):
             ".svg": "image/svg+xml",
         }.get(candidate.suffix, "application/octet-stream")
         body = candidate.read_bytes()
+        request_query = urlsplit(request_path).query
+        is_versioned_asset = candidate.suffix in {".css", ".js", ".svg"} and bool(
+            re.search(r"(?:^|&)v=[A-Za-z0-9._-]+(?:&|$)", request_query)
+        )
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-cache")
+        self.send_header(
+            "Cache-Control",
+            "public, max-age=31536000, immutable" if is_versioned_asset else "no-cache",
+        )
         self.end_headers()
         self.wfile.write(body)
 
