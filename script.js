@@ -1127,6 +1127,9 @@ function hasUnsavedChapterDraft() {
 }
 
 function resetBookForm() {
+  bookForm.elements.custom_genre.value = "";
+  bookForm.elements.custom_genre.hidden = true;
+  bookForm.elements.custom_genre.required = false;
   editingBookId = null;
   editingChapters = [];
   bookForm.reset();
@@ -1744,6 +1747,14 @@ document.querySelector("#cancel-edit").addEventListener("click", async () => {
   resetBookForm();
 });
 
+bookForm.elements.genre.addEventListener("change", () => {
+  const custom = bookForm.elements.custom_genre;
+  const isOther = bookForm.elements.genre.value === "Другое";
+  custom.hidden = !isOther;
+  custom.required = isOther;
+  if (!isOther) custom.value = "";
+});
+
 bookForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const submitter = event.submitter;
@@ -1753,7 +1764,9 @@ bookForm.addEventListener("submit", async (event) => {
   const payload = {
     title: bookForm.elements.title.value,
     author: bookForm.elements.author.value,
-    genre: bookForm.elements.genre.value,
+    genre: bookForm.elements.genre.value === "Другое"
+      ? bookForm.elements.custom_genre.value.trim()
+      : bookForm.elements.genre.value,
     age_rating: bookForm.elements.age_rating.value,
     language: bookForm.elements.language.value,
     tags: bookForm.elements.tags.value.split(",").map((tag) => tag.trim()).filter(Boolean),
