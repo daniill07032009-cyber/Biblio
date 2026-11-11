@@ -1875,3 +1875,8 @@ async function initialize() {
 }
 
 initialize();
+
+// Automatically refresh the page once every hour.
+window.setInterval(() => {
+  window.location.reload();
+}, 60 * 60 * 1000);
