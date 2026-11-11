@@ -90,6 +90,14 @@ class BiblioServerTests(unittest.TestCase):
         )
         self.assertEqual(status, 200)
 
+    def test_registered_account_stats_counts_real_users(self):
+        self.register("first-stats@example.com")
+        self.request("POST", "/api/logout", {})
+        self.register("second-stats@example.com")
+        status, result = self.request("GET", "/api/stats")
+        self.assertEqual(status, 200)
+        self.assertEqual(result["registered_accounts"], 2)
+
     def test_draft_is_private_and_published_book_is_public(self):
         self.register()
         draft = {
