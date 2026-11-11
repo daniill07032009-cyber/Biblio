@@ -137,6 +137,40 @@ class BiblioServerTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(result["book"]["chapters"][0]["title"], "Первая глава")
 
+    def test_multi_chapter_book_appears_once_with_all_chapters(self):
+        self.register()
+        book = {
+            "title": "Одна книга, три главы",
+            "author": "Автор",
+            "genre": "Романы",
+            "age_rating": "12+",
+            "status": "published",
+            "chapters": [
+                {"title": "Начало", "content": "Текст первой главы."},
+                {"title": "Продолжение", "content": "Текст второй главы."},
+                {"title": "Финал", "content": "Текст третьей главы."},
+            ],
+        }
+        status, result = self.request("POST", "/api/books", book)
+        self.assertEqual(status, 201)
+        book_id = result["book"]["id"]
+        self.assertEqual(result["book"]["chapter_count"], 3)
+        self.assertEqual(len(result["book"]["chapters"]), 3)
+
+        status, result = self.request("GET", "/api/books")
+        self.assertEqual(status, 200)
+        self.assertEqual(len(result["books"]), 1)
+        self.assertEqual(result["books"][0]["id"], book_id)
+        self.assertEqual(result["books"][0]["title"], "Одна книга, три главы")
+        self.assertEqual(result["books"][0]["chapter_count"], 3)
+
+        status, result = self.request("GET", f"/api/books/{book_id}")
+        self.assertEqual(status, 200)
+        self.assertEqual(
+            [chapter["title"] for chapter in result["book"]["chapters"]],
+            ["Начало", "Продолжение", "Финал"],
+        )
+
     def test_book_changes_are_limited_to_owner(self):
         self.register("first@example.com")
         status, result = self.request(
