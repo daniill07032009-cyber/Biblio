@@ -810,7 +810,7 @@ function renderReaderChapter() {
   document.querySelector("#previous-chapter").disabled = activeReaderChapter === 0;
   document.querySelector("#next-chapter").disabled = activeReaderChapter === chapterCount - 1;
   const isCompleted = readingLibraryState[String(activeReaderBook.id)]?.status === "completed";
-  const isLastChapter = activeReaderChapterIndex === chapters.length - 1;
+  const isLastChapter = activeReaderChapter === chapters.length - 1;
   document.querySelector("#reader-mark-read").hidden = isCompleted || !isLastChapter;
   document.querySelector("#reader-mark-unread").hidden = !isCompleted;
   saveReadingPosition(activeReaderBook);
