@@ -957,8 +957,7 @@ function showAuthor(authorName) {
   avatar.textContent = authorName.trim().charAt(0).toLocaleUpperCase("ru");
   document.querySelector("#author-dialog-name").textContent = authorName;
   document.querySelector("#author-dialog-bio").textContent =
-    authorBooks[0]?.description ||
-    "Автор Biblio, создающий истории для читателей. Биография пока не добавлена.";
+    `Автор опубликованных книг Biblio · ${authorBooks.length} ${authorBooks.length === 1 ? "книга" : authorBooks.length < 5 ? "книги" : "книг"}`;
   const followButton = document.querySelector("#follow-author-button");
   const followed = followedAuthors.has(authorName);
   followButton.textContent = followed ? "Вы подписаны" : "Подписаться на автора";
