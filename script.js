@@ -174,7 +174,7 @@ function renderBookDetails(book, updateHash = true) {
   }
 
 async function showBookDetails(bookId, updateHash = true) {
-  const existingBook = allBooks.find((item) => String(item.id) === String(bookId));
+  const existingBook = allBooksById.get(String(bookId));
   let book = existingBook;
   if (!book || !Array.isArray(book.chapters) || !book.chapters.length) {
     book = (await api(`/api/books/${encodeURIComponent(bookId)}`)).book;
@@ -222,6 +222,7 @@ let selectedTag = "";
 let currentPage = 1;
 const pageSize = 8;
 let allBooks = [];
+let allBooksById = new Map();
 let activeDetailsBook = null;
 let favoriteIds = new Set(readStoredArray("biblio-favorites"));
 let readingLibraryState = readReadingLibraryState();
@@ -406,7 +407,7 @@ function filterBooks() {
   const length = document.querySelector("#catalog-length").value;
   const minRating = Number(document.querySelector("#catalog-rating").value);
   const filtered = cards.filter((card) => {
-    const book = allBooks.find((item) => String(item.id) === card.dataset.bookId);
+    const book = allBooksById.get(card.dataset.bookId);
     if (!book) return false;
     const searchableText = `${book.title} ${book.author} ${book.description || ""} ${(book.tags || []).join(" ")}`.toLocaleLowerCase("ru");
     const matchesGenre =
@@ -438,8 +439,8 @@ function filterBooks() {
 
   const sortBy = document.querySelector("#catalog-sort").value;
   filtered.sort((leftCard, rightCard) => {
-    const left = allBooks.find((item) => String(item.id) === leftCard.dataset.bookId);
-    const right = allBooks.find((item) => String(item.id) === rightCard.dataset.bookId);
+    const left = allBooksById.get(leftCard.dataset.bookId);
+    const right = allBooksById.get(rightCard.dataset.bookId);
     if (sortBy === "title") return left.title.localeCompare(right.title, "ru");
     if (sortBy === "rating") return right.rating - left.rating || right.rating_count - left.rating_count;
     if (sortBy === "newest") return String(right.created_at || "").localeCompare(String(left.created_at || ""));
@@ -481,7 +482,7 @@ function updateFavoriteButtons() {
 function updateGenreCounts(cards) {
   const byGenre = new Map();
   cards.forEach((card) => {
-    const book = allBooks.find((item) => String(item.id) === card.dataset.bookId);
+    const book = allBooksById.get(card.dataset.bookId);
     if (book && (!favoritesOnly || favoriteIds.has(String(book.id)))) {
       byGenre.set(book.genre, (byGenre.get(book.genre) || 0) + 1);
     }
@@ -1047,6 +1048,7 @@ function renderPublishedAuthors() {
 async function refreshPublishedBooks() {
   const { books } = await api("/api/books");
   allBooks = books;
+  allBooksById = new Map(books.map((book) => [String(book.id), book]));
   renderPublishedAuthors();
   bookGrid.replaceChildren();
   books.forEach((book) => bookGrid.append(createCatalogCard(book)));
