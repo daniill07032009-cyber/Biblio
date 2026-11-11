@@ -158,6 +158,10 @@ def initialize_db():
             CREATE INDEX IF NOT EXISTS book_ratings_book_idx ON book_ratings(book_id);
             """
         )
+        columns = {row["name"] for row in db.execute("PRAGMA table_info(users)")}
+        for name in ("bio", "avatar_url"):
+            if name not in columns:
+                db.execute(f"ALTER TABLE users ADD COLUMN {name} TEXT NOT NULL DEFAULT ''")
         columns = {row["name"] for row in db.execute("PRAGMA table_info(books)")}
         for name, declaration in (
             ("language", "TEXT NOT NULL DEFAULT 'Русский'"),
@@ -209,6 +213,8 @@ def public_user(row):
         "id": row["id"],
         "email": row["email"],
         "display_name": row["display_name"],
+        "bio": row.get("bio", "") if isinstance(row, dict) else (row["bio"] if "bio" in row.keys() else ""),
+        "avatar_url": row.get("avatar_url", "") if isinstance(row, dict) else (row["avatar_url"] if "avatar_url" in row.keys() else ""),
     }
 
 
@@ -637,6 +643,12 @@ class BiblioHandler(BaseHTTPRequestHandler):
             data = self.read_json()
             display_name = self.valid_text(data.get("display_name"), "Имя", 1, 60)
             email = self.valid_email(data.get("email"))
+            bio = self.valid_text(data.get("bio", ""), "О себе", 0, 300)
+            avatar_url = data.get("avatar_url", user.get("avatar_url", ""))
+            if not isinstance(avatar_url, str) or len(avatar_url) > 800000:
+                raise APIError(HTTPStatus.BAD_REQUEST, "Изображение слишком большое. Максимум 550 КБ.")
+            if avatar_url and not re.fullmatch(r"data:image/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}", avatar_url):
+                raise APIError(HTTPStatus.BAD_REQUEST, "Поддерживаются только PNG, JPG и WebP.")
             current_password = data.get("current_password", "")
             email_changed = email != user["email"].lower()
             if email_changed and (
@@ -649,7 +661,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 )
             db.users.update_one(
                 {"id": user["id"]},
-                {"$set": {"display_name": display_name, "email": email}},
+                {"$set": {"display_name": display_name, "email": email, "bio": bio, "avatar_url": avatar_url}},
             )
             updated = db.users.find_one({"id": user["id"]})
             return {"user": public_user(updated)}, HTTPStatus.OK, []
@@ -883,6 +895,12 @@ class BiblioHandler(BaseHTTPRequestHandler):
             data = self.read_json()
             display_name = self.valid_text(data.get("display_name"), "Имя", 1, 60)
             email = self.valid_email(data.get("email"))
+            bio = self.valid_text(data.get("bio", ""), "О себе", 0, 300)
+            avatar_url = data.get("avatar_url", user.get("avatar_url", ""))
+            if not isinstance(avatar_url, str) or len(avatar_url) > 800000:
+                raise APIError(HTTPStatus.BAD_REQUEST, "Изображение слишком большое. Максимум 550 КБ.")
+            if avatar_url and not re.fullmatch(r"data:image/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}", avatar_url):
+                raise APIError(HTTPStatus.BAD_REQUEST, "Поддерживаются только PNG, JPG и WebP.")
             current_password = data.get("current_password", "")
             email_changed = email != user["email"].lower()
             if email_changed and (
@@ -894,8 +912,8 @@ class BiblioHandler(BaseHTTPRequestHandler):
                     "Для смены email введи текущий пароль.",
                 )
             db.execute(
-                "UPDATE users SET display_name = ?, email = ? WHERE id = ?",
-                (display_name, email, user["id"]),
+                "UPDATE users SET display_name = ?, email = ?, bio = ?, avatar_url = ? WHERE id = ?",
+                (display_name, email, bio, avatar_url, user["id"]),
             )
             updated = db.execute("SELECT * FROM users WHERE id = ?", (user["id"],)).fetchone()
             return {"user": public_user(updated)}, HTTPStatus.OK, []
