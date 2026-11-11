@@ -1236,6 +1236,7 @@ function updateAccountUI() {
 
   document.querySelector("#profile-name").textContent = currentUser.display_name;
   document.querySelector("#profile-email").textContent = currentUser.email;
+  document.querySelector("#profile-bio").textContent = currentUser.bio || "Пока без описания";
   const avatar = document.querySelector("#profile-avatar");
   avatar.replaceChildren();
   if (currentUser.avatar_url) {
