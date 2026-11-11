@@ -221,7 +221,7 @@ let favoritesOnly = new URLSearchParams(location.search).get("favorites") === "1
 let selectedTag = "";
 let currentPage = 1;
 const pageSize = 8;
-let allBooks = Object.values(sampleBooks);
+let allBooks = [];
 let activeDetailsBook = null;
 let favoriteIds = new Set(readStoredArray("biblio-favorites"));
 let readingLibraryState = readReadingLibraryState();
@@ -843,9 +843,7 @@ async function openReader(book, updateHash = true, returnHash = null, chapterInd
 async function openBookById(bookId, updateHash = false) {
   if (readerDialog.open && activeReaderBook?.id === bookId) return;
   if (readerDialog.open && activeReaderBook?.id === Number(bookId)) return;
-  const book = sampleBooks[bookId]
-    ? sampleBooks[bookId]
-    : (await api(`/api/books/${encodeURIComponent(bookId)}`)).book;
+  const book = (await api(`/api/books/${encodeURIComponent(bookId)}`)).book;
   await openReader(book, updateHash);
 }
 
