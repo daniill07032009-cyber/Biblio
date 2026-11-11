@@ -1826,7 +1826,22 @@ window.addEventListener("hashchange", () => {
   if (bookDetailsDialog.open) closeDialog(bookDetailsDialog);
 });
 
+async function loadRegisteredAccountCount() {
+  const counter = document.querySelector("#registered-account-count");
+  if (!counter) return;
+  try {
+    const result = await api("/api/stats");
+    const count = Number(result.registered_accounts);
+    if (Number.isFinite(count) && count >= 0) {
+      counter.textContent = new Intl.NumberFormat("ru-RU").format(count);
+    }
+  } catch (error) {
+    counter.textContent = "—";
+  }
+}
+
 async function initialize() {
+  loadRegisteredAccountCount();
   resetBookForm();
   readAppearance();
   searchInput.value = new URLSearchParams(location.search).get("q") || "";
