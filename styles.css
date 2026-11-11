@@ -1235,3 +1235,38 @@ html[data-reader-theme="dark"] .reader-dialog { --surface: #20231f; }
 .avatar-upload-label { display:grid; gap:6px; font-size:13px; color:var(--ink); }
 .avatar-upload-label input { max-width:220px; font-size:12px; }
 .field-hint { display:block; margin-top:5px; color:var(--muted); font-size:11px; }
+
+
+/* Refined account and settings experience */
+.settings-page { max-width: 1160px; margin-inline: auto; }
+.settings-page__heading { padding: clamp(22px,4vw,38px); border: 1px solid var(--line); border-radius: 18px; background: radial-gradient(ellipse at 92% 10%, rgba(133,157,127,.18), transparent 42%), var(--surface); }
+.settings-page__heading h1 { font-size: clamp(34px,4vw,46px); letter-spacing: -.045em; }
+.settings-page__heading p { max-width: 540px; font-size: 13px; }
+.settings-grid { gap: 20px; }
+.settings-card { padding: clamp(20px,3vw,30px); border-radius: 16px; background: var(--surface); box-shadow: 0 10px 30px rgba(40,48,37,.045); }
+.settings-card h2 { font-size: 26px; letter-spacing: -.025em; }
+.settings-card .eyebrow { color: var(--green); letter-spacing: .12em; }
+.settings-card .dialog-form > label { gap: 9px; color: var(--ink); font-size: 11px; }
+.settings-card input:not([type="checkbox"]):not([type="range"]), .settings-card select { min-height: 44px; padding: 10px 12px; border-radius: 9px; font-size: 12px; }
+.settings-card .button { min-height: 43px; border-radius: 9px; }
+.settings-card--account { padding: 26px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(135deg, var(--surface), rgba(132,153,125,.09)); }
+.profile-dialog { width: min(440px, calc(100vw - 28px)); padding: 30px; border: 1px solid var(--line); border-radius: 22px; background: var(--surface); box-shadow: 0 24px 90px rgba(20,28,20,.22); }
+.profile-dialog::backdrop { background: rgba(22,29,23,.48); backdrop-filter: blur(5px); }
+.profile-dialog > .eyebrow { display: inline-flex; padding: 7px 10px; border-radius: 99px; background: rgba(119,146,111,.13); color: var(--green); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; }
+.profile-summary { gap: 17px; margin: 22px 0 26px; padding: 18px; border: 1px solid var(--line); border-radius: 15px; background: var(--surface-raised, rgba(125,145,118,.07)); }
+.profile-summary .profile-avatar { width: 76px; height: 76px; border: 3px solid var(--surface); box-shadow: 0 0 0 1px var(--line), 0 7px 20px rgba(30,40,30,.10); font-size: 30px; }
+.profile-summary__identity { min-width: 0; }
+.profile-summary h2 { font: 500 24px/1.15 var(--serif); overflow-wrap: anywhere; }
+.profile-summary p { overflow-wrap: anywhere; font-size: 11px; }
+.profile-summary .profile-summary__bio { margin-top: 8px; color: var(--ink); line-height: 1.55; }
+.profile-dialog .dialog-actions--stack { gap: 9px; }
+.profile-dialog .dialog-actions--stack .button { min-height: 44px; border-radius: 10px; font-size: 12px; }
+.profile-dialog .dialog-actions--stack .button--primary { margin-top: 5px; }
+@media (max-width: 640px) {
+  .settings-page { padding-top: 24px; }
+  .settings-page__heading { padding: 21px; border-radius: 14px; }
+  .settings-grid { gap: 13px; }
+  .settings-card { padding: 19px; border-radius: 13px; }
+  .profile-dialog { padding: 23px; }
+  .profile-summary { align-items: flex-start; padding: 14px; }
+}
