@@ -489,6 +489,9 @@ class BiblioHandler(BaseHTTPRequestHandler):
             user = self.current_user_mongo(db)
             return {"user": public_user(user) if user else None}, HTTPStatus.OK, []
 
+        if method == "GET" and path == "/api/stats":
+            return {"registered_accounts": db.users.count_documents({})}, HTTPStatus.OK, []
+
         if method == "GET" and path == "/api/books":
             books = db.books.find({"status": "published"}).sort(
                 [("updated_at", DESCENDING), ("id", DESCENDING)]
@@ -674,6 +677,10 @@ class BiblioHandler(BaseHTTPRequestHandler):
         if method == "GET" and path == "/api/me":
             user = self.current_user(db)
             return {"user": public_user(user) if user else None}, HTTPStatus.OK, []
+
+        if method == "GET" and path == "/api/stats":
+            count = db.execute("SELECT COUNT(*) AS total FROM users").fetchone()["total"]
+            return {"registered_accounts": count}, HTTPStatus.OK, []
 
         if method == "GET" and path == "/api/books":
             rows = db.execute(
