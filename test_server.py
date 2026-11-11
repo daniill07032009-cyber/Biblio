@@ -352,11 +352,18 @@ class BiblioServerTests(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(result["book"]["user_rating"], 5)
 
+            self.request("POST", "/api/logout", {})
+            self.register("mongo-reader-two@example.com")
+            status, result = self.request(
+                "POST", f"/api/books/{book_id}/rating", {"rating": 3}
+            )
+            self.assertEqual(status, 200)
+
             status, result = self.request("GET", "/api/books")
             self.assertEqual(status, 200)
             self.assertEqual(len(result["books"]), 1)
-            self.assertEqual(result["books"][0]["rating"], 5.0)
-            self.assertEqual(result["books"][0]["rating_count"], 1)
+            self.assertEqual(result["books"][0]["rating"], 4.0)
+            self.assertEqual(result["books"][0]["rating_count"], 2)
 
             status, result = self.request(
                 "POST", "/api/newsletter", {"email": "mongo-fan@example.com"}
