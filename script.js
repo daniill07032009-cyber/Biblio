@@ -1840,6 +1840,12 @@ async function loadRegisteredAccountCount() {
   }
 }
 
+// Automatically reload the page once every hour.
+const HOURLY_PAGE_RELOAD_MS = 60 * 60 * 1000;
+window.setInterval(() => {
+  window.location.reload();
+}, HOURLY_PAGE_RELOAD_MS);
+
 async function initialize() {
   loadRegisteredAccountCount();
   resetBookForm();
