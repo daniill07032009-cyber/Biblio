@@ -896,7 +896,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
             display_name = self.valid_text(data.get("display_name"), "Имя", 1, 60)
             email = self.valid_email(data.get("email"))
             bio = self.valid_text(data.get("bio", ""), "О себе", 0, 300)
-            avatar_url = data.get("avatar_url", user.get("avatar_url", ""))
+            avatar_url = data.get("avatar_url", user["avatar_url"] if "avatar_url" in user.keys() else "")
             if not isinstance(avatar_url, str) or len(avatar_url) > 800000:
                 raise APIError(HTTPStatus.BAD_REQUEST, "Изображение слишком большое. Максимум 550 КБ.")
             if avatar_url and not re.fullmatch(r"data:image/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}", avatar_url):
