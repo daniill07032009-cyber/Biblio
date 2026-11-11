@@ -248,13 +248,29 @@ def book_record(db, row, include_chapters=False):
     return result
 
 
-def mongo_book_record(db, book, include_chapters=False, user_id=None):
-    ratings = list(db.book_ratings.find({"book_id": book["id"]}, {"_id": 0, "rating": 1, "user_id": 1}))
-    count = len(ratings)
-    average = round(sum(item["rating"] for item in ratings) / count, 1) if count else 0
-    own_rating = next(
-        (item["rating"] for item in ratings if item["user_id"] == user_id), 0
-    )
+def mongo_book_record(
+    db, book, include_chapters=False, user_id=None, rating_stats=None
+):
+    if rating_stats is None:
+        ratings = list(
+            db.book_ratings.find(
+                {"book_id": book["id"]},
+                {"_id": 0, "rating": 1, "user_id": 1},
+            )
+        )
+        count = len(ratings)
+        average = (
+            round(sum(item["rating"] for item in ratings) / count, 1)
+            if count
+            else 0
+        )
+        own_rating = next(
+            (item["rating"] for item in ratings if item["user_id"] == user_id), 0
+        )
+    else:
+        count = rating_stats.get("rating_count", 0)
+        average = rating_stats.get("rating", 0)
+        own_rating = 0
     chapters = book.get("chapters", [])
     result = {
         "id": book["id"],
@@ -499,11 +515,37 @@ class BiblioHandler(BaseHTTPRequestHandler):
             return {"registered_accounts": db.users.count_documents({})}, HTTPStatus.OK, []
 
         if method == "GET" and path == "/api/books":
-            books = db.books.find({"status": "published"}).sort(
-                [("updated_at", DESCENDING), ("id", DESCENDING)]
+            books = list(
+                db.books.find({"status": "published"}).sort(
+                    [("updated_at", DESCENDING), ("id", DESCENDING)]
+                )
             )
+            rating_stats = {}
+            book_ids = [book["id"] for book in books]
+            if book_ids:
+                for item in db.book_ratings.aggregate(
+                    [
+                        {"$match": {"book_id": {"$in": book_ids}}},
+                        {
+                            "$group": {
+                                "_id": "$book_id",
+                                "rating": {"$avg": "$rating"},
+                                "rating_count": {"$sum": 1},
+                            }
+                        },
+                    ]
+                ):
+                    rating_stats[item["_id"]] = {
+                        "rating": round(item["rating"], 1),
+                        "rating_count": item["rating_count"],
+                    }
             return {
-                "books": [mongo_book_record(db, book) for book in books]
+                "books": [
+                    mongo_book_record(
+                        db, book, rating_stats=rating_stats.get(book["id"], {})
+                    )
+                    for book in books
+                ]
             }, HTTPStatus.OK, []
 
         book_match = re.fullmatch(r"/api/books/(\d+)", path)
