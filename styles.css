@@ -1270,3 +1270,27 @@ html[data-reader-theme="dark"] .reader-dialog { --surface: #20231f; }
   .profile-dialog { padding: 23px; }
   .profile-summary { align-items: flex-start; padding: 14px; }
 }
+
+
+/* Performance: keep scroll and motion effects inexpensive on smaller devices. */
+@media (max-width: 720px) {
+  .site-header {
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+  }
+  .book-card:hover .book-cover,
+  .author-card:hover,
+  .library-book:hover {
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
