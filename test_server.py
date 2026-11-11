@@ -352,6 +352,12 @@ class BiblioServerTests(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(result["book"]["user_rating"], 5)
 
+            status, result = self.request("GET", "/api/books")
+            self.assertEqual(status, 200)
+            self.assertEqual(len(result["books"]), 1)
+            self.assertEqual(result["books"][0]["rating"], 5.0)
+            self.assertEqual(result["books"][0]["rating_count"], 1)
+
             status, result = self.request(
                 "POST", "/api/newsletter", {"email": "mongo-fan@example.com"}
             )
