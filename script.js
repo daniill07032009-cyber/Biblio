@@ -1006,9 +1006,47 @@ function setGenre(genre) {
   filterBooks();
 }
 
+function renderPublishedAuthors() {
+  const container = document.querySelector("#published-author-list");
+  if (!container) return;
+  const authors = new Map();
+  allBooks.forEach((book) => {
+    const name = String(book.author || "").trim();
+    if (name) authors.set(name, (authors.get(name) || 0) + 1);
+  });
+  const sortedAuthors = [...authors.entries()].sort(
+    (a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ru"),
+  );
+  container.replaceChildren();
+  if (!sortedAuthors.length) {
+    container.append(createElement(
+      "p",
+      "author-empty",
+      "Пока нет опубликованных книг. Здесь появятся настоящие авторы, когда пользователи поделятся своими историями.",
+    ));
+    return;
+  }
+  sortedAuthors.forEach(([name, count], index) => {
+    const card = createElement("a", "author-card");
+    card.href = "#popular";
+    card.dataset.author = name;
+    const avatar = createElement(
+      "span",
+      `author-avatar avatar--${["one", "two", "three", "four"][index % 4]}`,
+      name.charAt(0).toLocaleUpperCase("ru"),
+    );
+    const details = createElement("span");
+    const label = count === 1 ? "опубликованная книга" : count < 5 ? "опубликованные книги" : "опубликованных книг";
+    details.append(createElement("strong", "", name), createElement("small", "", `${count} ${label}`));
+    card.append(avatar, details, createElement("span", "author-arrow", "↗"));
+    container.append(card);
+  });
+}
+
 async function refreshPublishedBooks() {
   const { books } = await api("/api/books");
   allBooks = books;
+  renderPublishedAuthors();
   bookGrid.replaceChildren();
   books.forEach((book) => bookGrid.append(createCatalogCard(book)));
   renderTagFilters();
