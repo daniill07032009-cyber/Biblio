@@ -1338,10 +1338,15 @@ genreButtons.forEach((button) => {
   });
 });
 
-searchInput.addEventListener("input", filterBooks);
+let catalogSearchFrame = 0;
 searchInput.addEventListener("input", () => {
   currentPage = 1;
-  renderSearchSuggestions(searchInput.value);
+  if (catalogSearchFrame) cancelAnimationFrame(catalogSearchFrame);
+  catalogSearchFrame = requestAnimationFrame(() => {
+    catalogSearchFrame = 0;
+    filterBooks();
+    renderSearchSuggestions(searchInput.value);
+  });
 });
 searchInput.addEventListener("focus", () => renderSearchSuggestions(searchInput.value));
 searchInput.addEventListener("blur", () => {
