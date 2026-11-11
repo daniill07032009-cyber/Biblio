@@ -1,0 +1,631 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Biblio — место, где начинаются новые истории. Электронные и аудиокниги на любой вкус."
+    />
+    <title>Biblio — истории, которые остаются</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="script.js" defer></script>
+  </head>
+  <body>
+    <div class="announcement">
+      <span class="announcement__sparkle" aria-hidden="true">✦</span>
+      Все книги в каталоге можно читать бесплатно
+      <a href="/catalog">Выбрать книгу <span aria-hidden="true">→</span></a>
+    </div>
+
+    <header class="site-header" id="top">
+      <a class="brand" href="/" aria-label="Biblio — на главную">
+        <span class="brand__mark" aria-hidden="true">b</span>
+        <span>biblio</span>
+      </a>
+
+      <nav class="main-nav" aria-label="Основная навигация">
+        <a href="/" data-page-link="home">Главная</a>
+        <a href="/catalog" data-page-link="catalog">Каталог</a>
+        <a href="/authors" data-page-link="authors">Авторы</a>
+        <a href="/club" data-page-link="club">Книжный клуб</a>
+        <a href="/library" data-page-link="library" id="library-nav-link">Моя библиотека</a>
+        <a href="/settings" data-page-link="settings">Настройки</a>
+      </nav>
+
+      <div class="header-actions">
+        <label class="search-box">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="10.8" cy="10.8" r="6.8"></circle>
+            <path d="m16 16 4.2 4.2"></path>
+          </svg>
+          <input id="book-search" type="search" list="search-suggestions" placeholder="Найти книгу или автора" aria-label="Найти книгу или автора" autocomplete="off" />
+          <datalist id="search-suggestions"></datalist>
+          <kbd>/</kbd>
+        </label>
+        <button class="icon-button favorite-link" id="favorite-button" type="button" aria-label="Открыть избранное" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M20.8 8.8c0 5.2-8.8 10.1-8.8 10.1S3.2 14 3.2 8.8a4.6 4.6 0 0 1 8.8-1.9 4.6 4.6 0 0 1 8.8 1.9Z"></path>
+          </svg>
+        </button>
+        <a class="reading-settings-button" id="reading-settings-button-header" href="/settings#reading-settings-title" aria-label="Настройки чтения">Aa</a>
+        <a class="icon-button site-settings-button" href="/settings#site-settings-title" aria-label="Настройки сайта">⚙</a>
+        <button class="account-button" id="account-button" type="button" data-open="auth-dialog" aria-controls="auth-dialog">Войти</button>
+        <a class="cart-button" id="free-books-button" href="/catalog" aria-label="Перейти к бесплатным книгам">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M5 3.5h11.5a2 2 0 0 1 2 2V21l-6.7-3.8L5 21V3.5Z"></path>
+            <path d="M8.5 8h7M8.5 11h7"></path>
+          </svg>
+          <span>Бесплатно</span>
+        </a>
+        <button class="menu-toggle" id="menu-toggle" type="button" aria-label="Открыть меню" aria-expanded="false">
+          <span></span><span></span>
+        </button>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero__copy">
+          <span class="eyebrow"><span class="eyebrow__dot"></span> Твоя следующая любимая книга</span>
+          <h1 id="hero-title">Истории,<br />которые <em>остаются.</em></h1>
+          <p>Открывай новые миры, находи близких по духу авторов и читай в своём ритме.</p>
+          <div class="hero__buttons">
+            <a class="button button--primary" href="/catalog">Выбрать книгу <span aria-hidden="true">↗</span></a>
+            <a class="text-link" href="/catalog">Исследовать жанры <span aria-hidden="true">→</span></a>
+          </div>
+          <div class="reader-note">
+            <div class="reader-avatars" aria-hidden="true">
+              <span>А</span><span>М</span><span>Е</span><span>+</span>
+            </div>
+            <span><strong>12 000+</strong> читателей уже с нами</span>
+          </div>
+        </div>
+
+        <div class="hero-art" aria-label="Подборка книг редакции">
+          <div class="hero-art__sun"></div>
+          <div class="hero-sticker"><span>выбор<br />редакции</span><b>✳</b></div>
+          <div class="hero-book hero-book--back">
+            <span class="hero-book__ornament">✳</span>
+            <small>роман о поиске себя</small>
+            <strong>Сад<br />забытых<br />слов</strong>
+            <span class="hero-book__author">АННА ЛЕВИНА</span>
+          </div>
+          <div class="hero-book hero-book--front">
+            <span class="hero-book__moon">◒</span>
+            <small>история одного лета</small>
+            <strong>Море<br />внутри</strong>
+            <span class="hero-book__author">МАРИЯ ВЕТРОВА</span>
+          </div>
+          <div class="hero-art__caption"><span>01 / 04</span><i></i><span>Выбор этой недели</span></div>
+        </div>
+      </section>
+
+      <section class="benefits" aria-label="Преимущества Biblio">
+        <div class="benefit">
+          <span class="benefit__icon">✦</span>
+          <span><strong>Книги на любой вкус</strong><small>Большая библиотека историй</small></span>
+        </div>
+        <div class="benefit">
+          <span class="benefit__icon">⌁</span>
+          <span><strong>Читай где угодно</strong><small>Всегда под рукой в приложении</small></span>
+        </div>
+        <div class="benefit">
+          <span class="benefit__icon">♡</span>
+          <span><strong>Твой личный выбор</strong><small>Подборки, которые вдохновляют</small></span>
+        </div>
+        <div class="benefit">
+          <span class="benefit__icon">♫</span>
+          <span><strong>Слушай и читай</strong><small>Электронные и аудиокниги</small></span>
+        </div>
+      </section>
+
+      <section class="genres-section section-wrap" id="genres">
+        <div class="section-heading section-heading--compact">
+          <div>
+            <span class="eyebrow">Найди своё настроение</span>
+            <h2>Что почитаем?</h2>
+          </div>
+          <div class="section-heading__actions">
+            <button class="text-link filter-open-button" type="button" data-open="library-sort-dialog" aria-controls="library-sort-dialog">Фильтры</button>
+            <a class="text-link" href="/catalog" id="all-genres-link">Все жанры <span aria-hidden="true">→</span></a>
+          </div>
+        </div>
+        <div class="genre-list" role="group" aria-label="Фильтр по жанру">
+          <button class="genre-chip is-active" data-genre="Все" type="button">Все книги <span data-genre-count="Все">04</span></button>
+          <button class="genre-chip" data-genre="Романы" type="button">Романы <span data-genre-count="Романы">01</span></button>
+          <button class="genre-chip" data-genre="Фантастика" type="button">Фантастика <span data-genre-count="Фантастика">01</span></button>
+          <button class="genre-chip" data-genre="Нон-фикшн" type="button">Нон-фикшн <span data-genre-count="Нон-фикшн">01</span></button>
+          <button class="genre-chip" data-genre="Детективы" type="button">Детективы <span data-genre-count="Детективы">01</span></button>
+          <button class="genre-chip" data-genre="Поэзия" type="button">Поэзия <span data-genre-count="Поэзия">00</span></button>
+          <button class="genre-chip" data-genre="Другое" type="button">Другое <span data-genre-count="Другое">00</span></button>
+        </div>
+      </section>
+
+      <section class="popular-section section-wrap" id="popular">
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow">Для твоего следующего вечера</span>
+            <h2>Популярное сейчас <span class="heading-sparkle">✳</span></h2>
+          </div>
+          <div class="section-heading__actions">
+            <button class="text-link filter-open-button" type="button" data-open="library-sort-dialog" aria-controls="library-sort-dialog">Фильтры</button>
+            <a class="text-link" href="/catalog" id="all-books-link">Весь каталог <span aria-hidden="true">→</span></a>
+          </div>
+        </div>
+        <div class="catalog-toolbar">
+          <label>Возраст
+            <select id="catalog-age"><option value="">Любой</option><option>0+</option><option>6+</option><option>12+</option><option>16+</option><option>18+</option></select>
+          </label>
+          <label>Язык
+            <select id="catalog-language"><option value="">Любой</option><option value="Русский">Русский</option><option value="English">English</option><option value="Другой">Другой</option></select>
+          </label>
+          <label>Объём
+            <select id="catalog-length"><option value="">Любой</option><option value="short">До 100 стр.</option><option value="medium">100–300 стр.</option><option value="long">Более 300 стр.</option></select>
+          </label>
+          <label>Рейтинг
+            <select id="catalog-rating"><option value="0">Любой</option><option value="4">От 4 звёзд</option><option value="4.5">От 4,5 звезды</option></select>
+          </label>
+          <label>Сортировка
+            <select id="catalog-sort"><option value="popular">Популярные</option><option value="newest">Сначала новые</option><option value="rating">По рейтингу</option><option value="title">По алфавиту</option></select>
+          </label>
+          <button class="catalog-reset" id="catalog-reset" type="button">Сбросить</button>
+        </div>
+        <div class="catalog-extras">
+          <div class="catalog-tags" id="catalog-tags" aria-label="Фильтр по темам"></div>
+          <div class="search-history" id="search-history" hidden></div>
+        </div>
+        <p class="catalog-result-count" id="catalog-result-count" aria-live="polite"></p>
+        <div class="book-grid" id="book-grid">
+          <article class="book-card sample-book-card" data-book-id="sample-jasmine" data-genre="Романы" data-title="Там, где цветёт жасмин" data-author="Элла Рид">
+            <div class="book-cover cover--jasmine">
+              <span class="cover-label">бестселлер</span>
+              <span class="cover-illustration cover-illustration--flower">✿</span>
+              <span class="cover-title">Там, где<br />цветёт жасмин</span>
+              <span class="cover-author">ЭЛЛА РИД</span>
+              <button class="heart-button" type="button" aria-label="Добавить «Там, где цветёт жасмин» в избранное" aria-pressed="false">♡</button>
+            </div>
+            <div class="book-info">
+              <div><span class="book-category">Роман · 16+</span><span class="book-rating">★ 4.9</span></div>
+              <h3>Там, где цветёт жасмин</h3>
+              <p>Элла Рид</p>
+              <div class="book-buy"><strong>Бесплатно</strong><button class="book-details-button" type="button" data-book-id="sample-jasmine">Подробнее</button></div>
+            </div>
+          </article>
+          <article class="book-card sample-book-card" data-book-id="sample-orbit" data-genre="Фантастика" data-title="Орбита тишины" data-author="Лев Арден">
+            <div class="book-cover cover--orbit">
+              <span class="cover-label cover-label--light">новинка</span>
+              <span class="orbit-planet"></span>
+              <span class="cover-title">Орбита<br />тишины</span>
+              <span class="cover-author">ЛЕВ АРДЕН</span>
+              <button class="heart-button" type="button" aria-label="Добавить «Орбита тишины» в избранное" aria-pressed="false">♡</button>
+            </div>
+            <div class="book-info">
+              <div><span class="book-category">Фантастика · 18+</span><span class="book-rating">★ 4.8</span></div>
+              <h3>Орбита тишины</h3>
+              <p>Лев Арден</p>
+              <div class="book-buy"><strong>Бесплатно</strong><button class="book-details-button" type="button" data-book-id="sample-orbit">Подробнее</button></div>
+            </div>
+          </article>
+          <article class="book-card sample-book-card" data-book-id="sample-notice" data-genre="Нон-фикшн" data-title="Искусство замечать" data-author="Ника Белова">
+            <div class="book-cover cover--notice">
+              <span class="cover-label">выбор читателей</span>
+              <span class="cover-illustration cover-illustration--eye">◉</span>
+              <span class="cover-title">Искусство<br />замечать</span>
+              <span class="cover-author">НИКА БЕЛОВА</span>
+              <button class="heart-button" type="button" aria-label="Добавить «Искусство замечать» в избранное" aria-pressed="false">♡</button>
+            </div>
+            <div class="book-info">
+              <div><span class="book-category">Нон-фикшн · 12+</span><span class="book-rating">★ 4.9</span></div>
+              <h3>Искусство замечать</h3>
+              <p>Ника Белова</p>
+              <div class="book-buy"><strong>Бесплатно</strong><button class="book-details-button" type="button" data-book-id="sample-notice">Подробнее</button></div>
+            </div>
+          </article>
+          <article class="book-card sample-book-card" data-book-id="sample-train" data-genre="Детективы" data-title="Последний поезд на север" data-author="Марк Северин">
+            <div class="book-cover cover--train">
+              <span class="cover-label cover-label--light">в топе</span>
+              <span class="train-moon"></span>
+              <span class="cover-title">Последний<br />поезд на север</span>
+              <span class="cover-author">МАРК СЕВЕРИН</span>
+              <button class="heart-button" type="button" aria-label="Добавить «Последний поезд на север» в избранное" aria-pressed="false">♡</button>
+            </div>
+            <div class="book-info">
+              <div><span class="book-category">Детектив · 16+</span><span class="book-rating">★ 4.7</span></div>
+              <h3>Последний поезд на север</h3>
+              <p>Марк Северин</p>
+              <div class="book-buy"><strong>Бесплатно</strong><button class="book-details-button" type="button" data-book-id="sample-train">Подробнее</button></div>
+            </div>
+          </article>
+        </div>
+        <p class="empty-state" id="empty-state" hidden>Ничего не нашлось. Попробуй изменить запрос или выбрать другой жанр.</p>
+        <nav class="catalog-pagination" id="catalog-pagination" aria-label="Страницы каталога">
+          <button type="button" id="page-previous" aria-label="Предыдущая страница">←</button>
+          <span id="page-indicator">1 / 1</span>
+          <button type="button" id="page-next" aria-label="Следующая страница">→</button>
+        </nav>
+      </section>
+
+      <section class="reading-library section-wrap" id="reading-library" hidden>
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow">Твоя читательская полка</span>
+            <h1>Моя библиотека</h1>
+            <p>Продолжай с того места, где остановился, и отмечай прочитанные книги.</p>
+          </div>
+        </div>
+        <nav class="library-shelf-nav" aria-label="Разделы библиотеки">
+          <a href="#reading-now">Читаю сейчас <span id="reading-now-count">0</span></a>
+          <a href="#reading-done">Прочитано <span id="reading-done-count">0</span></a>
+          <a href="#favorites">Избранное <span id="favorites-count">0</span></a>
+        </nav>
+        <section class="library-shelf" id="reading-now">
+          <div class="library-shelf__heading"><h2>Читаю сейчас</h2><span>Здесь книги с сохранённым прогрессом</span></div>
+          <div class="library-book-list" id="reading-now-list"></div>
+          <p class="library-empty" id="reading-now-empty">Ты пока не начал читать ни одной книги. Открой каталог и нажми «Читать».</p>
+        </section>
+        <section class="library-shelf" id="reading-done">
+          <div class="library-shelf__heading"><h2>Прочитано</h2><span>Истории, которые ты завершил</span></div>
+          <div class="library-book-list" id="reading-done-list"></div>
+          <p class="library-empty" id="reading-done-empty">Завершённые книги появятся здесь.</p>
+        </section>
+        <section class="library-shelf" id="favorites">
+          <div class="library-shelf__heading"><h2>Избранное</h2><span>Книги, которые ты сохранил</span></div>
+          <div class="library-book-list" id="favorites-list"></div>
+          <p class="library-empty" id="favorites-empty">Добавляй книги в избранное кнопкой ♡ в каталоге.</p>
+        </section>
+      </section>
+
+      <section class="creator-section section-wrap" id="my-library" hidden>
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow">Твоё пространство автора</span>
+            <h2>Моя библиотека</h2>
+          </div>
+          <button class="text-link logout-button" id="logout-button" type="button">Выйти из аккаунта</button>
+        </div>
+        <div class="my-books-heading">
+          <h3>Мои книги <span class="my-books-count" id="my-books-count">0</span></h3>
+          <p>Черновики видны только тебе. Опубликованные книги появятся в общем каталоге.</p>
+        </div>
+        <div class="my-books-list" id="my-books-list"></div>
+        <p class="empty-state" id="my-books-empty">Пока здесь пусто. Создай первую книгу — её можно сохранить как черновик.</p>
+
+        <div class="book-editor" id="book-editor">
+          <div class="book-editor__heading">
+            <div><span class="eyebrow">Твоя история начинается здесь</span><h3 id="editor-title">Создать книгу</h3></div>
+            <button class="text-link" id="cancel-edit" type="button" hidden>Отменить редактирование</button>
+          </div>
+          <form id="book-form">
+            <div class="book-fields">
+              <label>Название книги<input name="title" maxlength="160" placeholder="Например, Сад у моря" required /></label>
+              <label>Автор<input name="author" maxlength="120" placeholder="Имя автора" required /></label>
+              <label>Жанр
+                <select name="genre" required>
+                  <option value="Романы">Романы</option>
+                  <option value="Фантастика">Фантастика</option>
+                  <option value="Нон-фикшн">Нон-фикшн</option>
+                  <option value="Детективы">Детективы</option>
+                  <option value="Поэзия">Поэзия</option>
+                  <option value="Другое">Другое</option>
+                </select>
+              </label>
+              <label>Возрастное ограничение
+                <select name="age_rating" required>
+                  <option value="0+">0+</option><option value="6+">6+</option>
+                  <option value="12+">12+</option><option value="16+">16+</option>
+                  <option value="18+">18+</option>
+                </select>
+              </label>
+              <label>Язык книги
+                <select name="language" required>
+                  <option value="Русский">Русский</option><option value="English">English</option><option value="Другой">Другой</option>
+                </select>
+              </label>
+              <label>Теги <span>(через запятую)</span><input name="tags" maxlength="400" placeholder="например, уютное, тайна" /></label>
+              <label class="book-fields__wide">Описание<textarea name="description" rows="3" maxlength="5000" placeholder="О чём эта книга?"></textarea></label>
+            </div>
+            <div class="chapters-heading"><h4>Главы</h4><button class="text-link" id="add-chapter" type="button" data-open="chapter-editor-dialog" data-chapter-index="-1" aria-controls="chapter-editor-dialog">+ Добавить главу</button></div>
+            <div class="chapter-editor-list" id="chapter-editor-list"></div>
+            <div class="editor-actions">
+              <button class="button button--secondary" type="submit" name="status" value="draft">Сохранить черновик</button>
+              <button class="button button--primary" type="submit" name="status" value="published">Опубликовать книгу <span aria-hidden="true">↗</span></button>
+            </div>
+            <p class="form-hint">Для публикации добавь хотя бы одну главу с текстом. Черновики видны только тебе.</p>
+          </form>
+        </div>
+      </section>
+
+      <section class="library-login section-wrap" id="library-login-page" hidden>
+        <span class="eyebrow">Хочешь поделиться своей историей?</span>
+        <h2>Публикуй собственные книги</h2>
+        <p>Войди или зарегистрируйся, чтобы создавать книги, хранить черновики и делиться ими с читателями.</p>
+        <button class="button button--primary" type="button" data-open="auth-dialog" aria-controls="auth-dialog">Войти или зарегистрироваться</button>
+      </section>
+
+      <section class="settings-page section-wrap" id="settings-page" hidden>
+        <div class="section-heading settings-page__heading">
+          <div>
+            <span class="eyebrow">Твои предпочтения</span>
+            <h1>Настройки</h1>
+            <p>Настрой внешний вид сайта, чтение и данные аккаунта.</p>
+          </div>
+        </div>
+        <div class="settings-grid">
+          <section class="settings-card" aria-labelledby="site-settings-title">
+            <span class="eyebrow">Для всего сайта</span>
+            <h2 id="site-settings-title">Настройки сайта</h2>
+            <form id="site-settings-form" class="dialog-form">
+              <label>Тема сайта
+                <select name="theme"><option value="light">Светлая</option><option value="sepia">Тёплая</option><option value="dark">Тёмная</option></select>
+              </label>
+              <label>Язык интерфейса
+                <select name="language"><option value="ru">Русский</option></select>
+              </label>
+              <fieldset class="notification-options">
+                <legend>Уведомления на этом устройстве</legend>
+                <label><input name="email_digest" type="checkbox" /> Email-дайджест</label>
+                <label><input name="push" type="checkbox" /> Push-уведомления</label>
+                <label><input name="reading_reminders" type="checkbox" /> Напоминания о чтении</label>
+              </fieldset>
+              <button class="button button--primary" type="submit">Сохранить настройки</button>
+            </form>
+          </section>
+          <section class="settings-card" aria-labelledby="reading-settings-title">
+            <span class="eyebrow">Читай в своём ритме</span>
+            <h2 id="reading-settings-title">Настройки чтения</h2>
+            <form id="reading-settings-form" class="dialog-form">
+              <label>Шрифт текста
+                <select name="font"><option value="serif">С засечками</option><option value="sans">Без засечек</option></select>
+              </label>
+              <label>Размер текста <output id="font-size-value">19 px</output>
+                <input name="font_size" type="range" min="16" max="28" value="19" />
+              </label>
+              <label>Межстрочный интервал <output id="line-height-value">1.8</output>
+                <input name="line_height" type="range" min="14" max="24" value="18" />
+              </label>
+              <label>Ширина колонки
+                <select name="width"><option value="narrow">Узкая</option><option value="standard">Обычная</option><option value="wide">Широкая</option></select>
+              </label>
+              <label>Тема читалки
+                <select name="theme"><option value="light">Светлая</option><option value="sepia">Сепия</option><option value="dark">Тёмная</option></select>
+              </label>
+              <div class="reading-preview" id="reading-preview" aria-live="polite">
+                <strong>Пример текста</strong>
+                <p>Книга начинается с первой строки — настрой её так, чтобы хотелось читать дальше.</p>
+              </div>
+              <div class="dialog-actions">
+                <button class="button button--secondary" id="reset-reading-settings" type="button">По умолчанию</button>
+                <button class="button button--primary" type="submit">Сохранить настройки</button>
+              </div>
+            </form>
+          </section>
+          <section class="settings-card settings-card--account" id="account-settings-card" aria-labelledby="account-settings-title" hidden>
+            <span class="eyebrow">Профиль и безопасность</span>
+            <h2 id="account-settings-title">Настройки аккаунта</h2>
+            <form id="profile-form" class="settings-form">
+              <h3>Профиль</h3>
+              <label>Имя<input name="display_name" maxlength="60" required /></label>
+              <label>Email<input name="email" type="email" maxlength="254" required /></label>
+              <label>Текущий пароль <span>(нужен только для смены email)</span><input name="current_password" type="password" autocomplete="current-password" /></label>
+              <button class="button button--primary" type="submit">Сохранить профиль</button>
+            </form>
+            <button class="button button--secondary" type="button" data-open="password-dialog" aria-controls="password-dialog">Сменить пароль</button>
+          </section>
+        </div>
+      </section>
+
+      <section class="club-banner" id="club">
+        <div class="club-banner__art" aria-hidden="true"><span>ЧИТАЙ</span><b>♡</b></div>
+        <div class="club-banner__copy">
+          <span class="eyebrow">Книжный клуб Biblio</span>
+          <h2>Читать — лучше<br />вместе.</h2>
+          <p>Каждый месяц выбираем книгу, обсуждаем любимые моменты и знакомимся с новыми авторами.</p>
+          <a href="/club" class="button button--light">Заглянуть в клуб <span aria-hidden="true">↗</span></a>
+        </div>
+        <div class="club-banner__note"><span>КНИЖНЫЙ<br />КЛУБ</span><b>✳</b></div>
+      </section>
+
+      <section class="authors-section section-wrap" id="authors">
+        <div class="section-heading">
+          <div><span class="eyebrow">Те, кто создаёт миры</span><h2>Авторы месяца</h2></div>
+          <a class="text-link" href="/authors" id="all-authors-link">Все авторы <span aria-hidden="true">→</span></a>
+        </div>
+        <div class="author-list">
+          <a class="author-card" href="#popular" data-author="Элла Рид"><span class="author-avatar avatar--one">Э</span><span><strong>Элла Рид</strong><small>Романы о жизни</small></span><span class="author-arrow">↗</span></a>
+          <a class="author-card" href="#popular" data-author="Лев Арден"><span class="author-avatar avatar--two">Л</span><span><strong>Лев Арден</strong><small>Фантастика</small></span><span class="author-arrow">↗</span></a>
+          <a class="author-card" href="#popular" data-author="Ника Белова"><span class="author-avatar avatar--three">Н</span><span><strong>Ника Белова</strong><small>Саморазвитие</small></span><span class="author-arrow">↗</span></a>
+          <a class="author-card" href="#popular" data-author="Марк Северин"><span class="author-avatar avatar--four">М</span><span><strong>Марк Северин</strong><small>Детективы</small></span><span class="author-arrow">↗</span></a>
+        </div>
+      </section>
+
+      <section class="newsletter">
+        <div><span class="eyebrow">Письма, которые хочется читать</span><h2>Истории начинаются<br />с одного письма.</h2></div>
+        <form class="newsletter-form" id="newsletter-form">
+          <label class="visually-hidden" for="email">Твой email</label>
+          <input id="email" type="email" placeholder="Твой email" required />
+          <button type="submit" aria-label="Подписаться">Подписаться <span aria-hidden="true">→</span></button>
+          <small id="newsletter-message">Подборки, новинки и немного книжного вдохновения. Без спама.</small>
+        </form>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <a class="brand brand--footer" href="/"><span class="brand__mark" aria-hidden="true">b</span><span>biblio</span></a>
+      <span>Место, где начинаются новые истории.</span>
+      <span>© 2025 Biblio</span>
+    </footer>
+    <dialog class="dialog auth-dialog" id="auth-dialog" aria-labelledby="auth-title">
+      <button class="dialog-close" id="auth-close" type="button" aria-label="Закрыть" data-close>×</button>
+      <button class="dialog-back" type="button" data-back hidden>← Назад</button>
+      <span class="eyebrow">Добро пожаловать в Biblio</span>
+      <h2 id="auth-title">Войти в аккаунт</h2>
+      <div class="auth-tabs" role="group" aria-label="Вход или регистрация">
+        <button class="is-active" type="button" data-auth-mode="login">Вход</button>
+        <button type="button" data-auth-mode="register">Регистрация</button>
+      </div>
+      <form id="auth-form">
+        <label id="auth-name-field" hidden>Как к тебе обращаться?<input name="display_name" maxlength="60" autocomplete="name" /></label>
+        <label>Email<input name="email" type="email" maxlength="254" autocomplete="email" required /></label>
+        <label>Пароль<input name="password" type="password" minlength="8" maxlength="256" autocomplete="current-password" required /></label>
+        <button class="button button--primary" id="auth-submit" type="submit">Войти</button>
+      </form>
+      <p class="auth-note">Книги, профиль и черновики сохраняются в твоём аккаунте.</p>
+    </dialog>
+    <dialog class="dialog profile-dialog" id="profile-dialog" aria-labelledby="profile-name">
+      <button class="dialog-close" type="button" aria-label="Закрыть" data-close>×</button>
+      <span class="eyebrow">Твой аккаунт</span>
+      <div class="profile-summary">
+        <span class="profile-avatar" id="profile-avatar" aria-hidden="true"></span>
+        <div><h2 id="profile-name"></h2><p id="profile-email"></p></div>
+      </div>
+      <div class="dialog-actions dialog-actions--stack">
+        <button class="button button--secondary" type="button" data-open="password-dialog" aria-controls="password-dialog">Сменить пароль</button>
+        <a class="button button--secondary" href="/settings#site-settings-title">Настройки сайта</a>
+        <button class="button button--secondary" type="button" id="profile-library-button">Мои книги</button>
+        <button class="button button--primary" type="button" id="profile-logout-button">Выйти</button>
+      </div>
+    </dialog>
+    <dialog class="dialog password-dialog" id="password-dialog" aria-labelledby="password-title">
+      <button class="dialog-close" type="button" aria-label="Закрыть" data-close>×</button>
+      <button class="dialog-back" type="button" data-back hidden>← Назад</button>
+      <span class="eyebrow">Безопасность аккаунта</span>
+      <h2 id="password-title">Сменить пароль</h2>
+      <form id="password-form" class="settings-form">
+        <label>Текущий пароль<input name="current_password" type="password" autocomplete="current-password" required /></label>
+        <label>Новый пароль<input name="new_password" type="password" minlength="8" autocomplete="new-password" required /></label>
+        <label>Повторите новый пароль<input name="confirm_password" type="password" minlength="8" autocomplete="new-password" required /></label>
+        <button class="button button--primary" type="submit">Обновить пароль</button>
+      </form>
+    </dialog>
+    <dialog class="dialog library-sort-dialog" id="library-sort-dialog" aria-labelledby="library-sort-title">
+      <button class="dialog-close" type="button" aria-label="Закрыть" data-close>×</button>
+      <span class="eyebrow">Настрой выдачу</span>
+      <h2 id="library-sort-title">Фильтры каталога</h2>
+      <form id="library-sort-form" class="dialog-form">
+        <fieldset class="genre-filter-options">
+          <legend>Жанры</legend>
+          <label><input type="checkbox" name="genre" value="Романы" /> Романы</label>
+          <label><input type="checkbox" name="genre" value="Фантастика" /> Фантастика</label>
+          <label><input type="checkbox" name="genre" value="Нон-фикшн" /> Нон-фикшн</label>
+          <label><input type="checkbox" name="genre" value="Детективы" /> Детективы</label>
+          <label><input type="checkbox" name="genre" value="Поэзия" /> Поэзия</label>
+          <label><input type="checkbox" name="genre" value="Другое" /> Другое</label>
+        </fieldset>
+        <label>Возрастное ограничение
+          <select name="age"><option value="">Любое</option><option>0+</option><option>6+</option><option>12+</option><option>16+</option><option>18+</option></select>
+        </label>
+        <label>Рейтинг
+          <select name="rating"><option value="0">Любой</option><option value="4">От 4.0</option><option value="4.5">От 4.5</option></select>
+        </label>
+        <label>Длина книги
+          <select name="length"><option value="">Любая</option><option value="short">Короткая</option><option value="medium">Средняя</option><option value="long">Длинная</option></select>
+        </label>
+        <label>Сортировка
+          <select name="sort"><option value="popular">Популярные</option><option value="newest">Новые</option><option value="rating">По рейтингу</option><option value="title">По алфавиту</option></select>
+        </label>
+        <div class="dialog-actions">
+          <button class="button button--secondary" id="reset-library-filters" type="button">Сбросить</button>
+          <button class="button button--primary" type="submit">Применить</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog class="dialog confirm-dialog" id="confirm-dialog" aria-labelledby="confirm-title">
+      <span class="eyebrow">Подтверждение</span>
+      <h2 id="confirm-title">Вы уверены?</h2>
+      <p id="confirm-message"></p>
+      <div class="dialog-actions">
+        <button class="button button--secondary" id="confirm-cancel" type="button">Отмена</button>
+        <button class="button button--primary" id="confirm-accept" type="button">Подтвердить</button>
+      </div>
+    </dialog>
+    <dialog class="dialog book-details-dialog" id="book-details-dialog" aria-labelledby="book-details-title">
+      <button class="dialog-close" id="book-details-close" type="button" aria-label="Закрыть" data-close>×</button>
+      <button class="dialog-back" type="button" data-back hidden>← Назад</button>
+      <div class="book-details-layout">
+        <div class="book-details-cover" id="book-details-cover"><span>✳</span></div>
+        <div class="book-details-copy">
+          <span class="eyebrow">Бесплатно · Электронная книга</span>
+          <h2 id="book-details-title"></h2>
+          <button class="book-details-author" id="book-details-author" type="button"></button>
+          <p class="book-details-description" id="book-details-description"></p>
+          <div class="book-details-meta" id="book-details-meta"></div>
+          <div class="book-details-tags" id="book-details-tags"></div>
+          <div class="book-details-chapters" id="book-details-chapters"></div>
+          <div class="book-rating-control" id="book-rating-control">
+            <span>Оцени книгу</span>
+            <div class="rating-stars" role="group" aria-label="Оценка книги">
+              <button type="button" data-rating="1" aria-label="1 звезда">★</button>
+              <button type="button" data-rating="2" aria-label="2 звезды">★</button>
+              <button type="button" data-rating="3" aria-label="3 звезды">★</button>
+              <button type="button" data-rating="4" aria-label="4 звезды">★</button>
+              <button type="button" data-rating="5" aria-label="5 звёзд">★</button>
+            </div>
+            <small id="rating-message">Войди, чтобы оставить оценку</small>
+          </div>
+          <div class="dialog-actions">
+            <button class="button button--primary" id="details-read-button" type="button">Читать онлайн <span aria-hidden="true">↗</span></button>
+            <button class="button button--secondary" id="details-favorite-button" type="button">В избранное</button>
+            <button class="button button--secondary" id="details-download-button" type="button">Скачать TXT</button>
+          </div>
+        </div>
+      </div>
+      <section class="similar-books-section">
+        <h3>Похожие книги</h3>
+        <div class="similar-books-list" id="similar-books-list"></div>
+      </section>
+    </dialog>
+    <dialog class="dialog reader-dialog" id="reader-dialog">
+      <button class="dialog-close" id="reader-close" type="button" aria-label="Закрыть" data-close>×</button>
+      <div class="reader-head">
+        <div><span class="eyebrow">Бесплатно · Читай онлайн</span><h2 id="reader-title"></h2><p class="reader-author" id="reader-author"></p></div>
+        <a class="reader-settings-button" id="reader-settings-button" href="/settings#reading-settings-title" aria-label="Настроить текст">Aa</a>
+      </div>
+      <p class="reader-description" id="reader-description"></p>
+      <div class="reader-progress"><span id="reader-progress-label">Глава 1</span><progress id="reader-progress" max="100" value="0"></progress></div>
+      <div class="reader-chapter-list" id="reader-chapters"></div>
+      <div class="reader-completion-actions">
+        <button class="button button--secondary" id="reader-mark-read" type="button">Отметить прочитанной</button>
+        <button class="button button--secondary" id="reader-mark-unread" type="button" hidden>Вернуть в «Читаю сейчас»</button>
+      </div>
+      <div class="reader-navigation">
+        <button class="button button--secondary" id="previous-chapter" type="button">← Предыдущая</button>
+        <span id="reader-chapter-count">1 / 1</span>
+        <button class="button button--primary" id="next-chapter" type="button">Следующая →</button>
+      </div>
+    </dialog>
+    <dialog class="dialog author-dialog" id="author-dialog" aria-labelledby="author-dialog-name">
+      <button class="dialog-close" type="button" aria-label="Закрыть" data-close>×</button>
+      <button class="dialog-back" type="button" data-back hidden>← Назад</button>
+      <div class="author-profile">
+        <span class="author-avatar author-dialog-avatar" id="author-dialog-avatar"></span>
+        <div><span class="eyebrow">Автор Biblio</span><h2 id="author-dialog-name"></h2></div>
+      </div>
+      <p id="author-dialog-bio"></p>
+      <button class="button button--secondary" id="follow-author-button" type="button">Подписаться на автора</button>
+      <h3>Книги автора</h3>
+      <div class="author-books-list" id="author-books-list"></div>
+    </dialog>
+    <dialog class="dialog chapter-editor-dialog" id="chapter-editor-dialog" aria-labelledby="chapter-editor-title">
+      <button class="dialog-close" type="button" aria-label="Закрыть" data-close>×</button>
+      <span class="eyebrow">Работа над историей</span>
+      <h2 id="chapter-editor-title">Новая глава</h2>
+      <form id="chapter-editor-form" class="dialog-form">
+        <label>Название главы<input name="title" maxlength="160" placeholder="Например, Глава первая" required /></label>
+        <label>Текст главы<textarea name="content" maxlength="200000" rows="12" placeholder="Начни писать свою историю…" required></textarea></label>
+        <p class="chapter-autosave-status" id="chapter-autosave-status" aria-live="polite"></p>
+        <div class="dialog-actions">
+          <button class="button button--secondary" id="chapter-editor-cancel" type="button">Отмена</button>
+          <button class="button button--primary" type="submit">Сохранить главу</button>
+        </div>
+      </form>
+    </dialog>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </body>
+</html>

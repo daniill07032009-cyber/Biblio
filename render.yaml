@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: biblio
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/me
+    envVars:
+      - key: BIBLIO_HOST
+        value: 0.0.0.0
+      - key: MONGODB_DATABASE
+        value: biblio
+      - key: MONGODB_URI
+        sync: false
