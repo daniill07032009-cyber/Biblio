@@ -107,7 +107,11 @@ h1, h2, h3, p { margin-top: 0; }
 .popular-section .section-heading { margin-bottom: 24px; }
 .heading-sparkle { color: var(--orange); font: 17px var(--sans); vertical-align: 7px; }
 .book-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 23px; }
-.book-card { min-width: 0; }
+.book-card {
+  min-width: 0;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 410px;
+}
 .book-cover { position: relative; display: flex; height: 265px; flex-direction: column; justify-content: center; align-items: center; overflow: hidden; box-shadow: 0 8px 20px #28272212; text-align: center; transition: transform .25s, box-shadow .25s; }
 .book-card:hover .book-cover { transform: translateY(-4px); box-shadow: 0 13px 25px #28272220; }
 .cover-label { position: absolute; top: 14px; left: 14px; z-index: 2; padding: 5px 7px; border-radius: 2px; background: #fff8e9; color: #746b58; font-size: 7px; letter-spacing: .05em; text-transform: uppercase; }
