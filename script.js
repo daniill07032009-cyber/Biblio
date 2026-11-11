@@ -177,7 +177,7 @@ async function showBookDetails(bookId, updateHash = true) {
   const existingBook = allBooksById.get(String(bookId));
   let book = existingBook;
   if (!book || !Array.isArray(book.chapters) || !book.chapters.length) {
-    book = (await api(`/api/books/${encodeURIComponent(bookId)}`)).book;
+    book = await fetchBookDetails(bookId);
   }
   if (!book) throw new Error("Книга не найдена.");
   renderBookDetails(book, updateHash);
@@ -223,6 +223,7 @@ let currentPage = 1;
 const pageSize = 8;
 let allBooks = [];
 let allBooksById = new Map();
+const bookDetailRequests = new Map();
 let activeDetailsBook = null;
 let favoriteIds = new Set(readStoredArray("biblio-favorites"));
 let readingLibraryState = readReadingLibraryState();
@@ -259,6 +260,17 @@ async function api(path, options = {}) {
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || "Не удалось выполнить запрос.");
   return result;
+}
+
+async function fetchBookDetails(bookId) {
+  const key = String(bookId);
+  if (!bookDetailRequests.has(key)) {
+    const request = api(`/api/books/${encodeURIComponent(key)}`)
+      .then((result) => result.book)
+      .finally(() => bookDetailRequests.delete(key));
+    bookDetailRequests.set(key, request);
+  }
+  return bookDetailRequests.get(key);
 }
 
 function showToast(message) {
@@ -846,7 +858,7 @@ async function openReader(book, updateHash = true, returnHash = null, chapterInd
 async function openBookById(bookId, updateHash = false) {
   if (readerDialog.open && activeReaderBook?.id === bookId) return;
   if (readerDialog.open && activeReaderBook?.id === Number(bookId)) return;
-  const book = (await api(`/api/books/${encodeURIComponent(bookId)}`)).book;
+  const book = await fetchBookDetails(bookId);
   await openReader(book, updateHash);
 }
 
