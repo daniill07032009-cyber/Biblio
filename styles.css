@@ -1222,3 +1222,7 @@ html[data-reader-theme="dark"] .reader-dialog { --surface: #20231f; }
     transition-duration: .01ms !important;
   }
 }
+
+
+/* Empty author directory state: shown when there are no user publications. */
+.author-empty { grid-column: 1 / -1; margin: 0; padding: 28px; border: 1px dashed var(--line); border-radius: 16px; color: var(--muted); text-align: center; line-height: 1.7; }
