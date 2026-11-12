@@ -774,18 +774,21 @@ function createCatalogCard(book) {
   return card;
 }
 
+function persistReadingLibraryState(progress) {
+  persistReadingLibraryState(progress);
+}
+
 function saveReadingPosition(book) {
   const bookId = String(book.id);
   const progress = readStoredObject("biblio-reading-progress");
   progress[bookId] = activeReaderChapter;
-  localStorage.setItem("biblio-reading-progress", JSON.stringify(progress));
   const previous = readingLibraryState[bookId];
   readingLibraryState[bookId] = {
     chapter: activeReaderChapter,
     status: previous?.status === "completed" ? "completed" : "reading",
     updatedAt: new Date().toISOString(),
   };
-  localStorage.setItem("biblio-reading-state", JSON.stringify(readingLibraryState));
+  persistReadingLibraryState(progress);
   renderReadingLibrary();
 }
 
