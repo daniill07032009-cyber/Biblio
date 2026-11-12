@@ -809,8 +809,11 @@ function renderReaderChapter() {
   if (!chapter) return;
   const chapterList = document.querySelector("#reader-chapters");
   const section = createElement("section", "reader-chapter");
-  section.append(createElement("h3", "", chapter.title));
-  section.append(createElement("p", "", chapter.content));
+  const title = createElement("h3", "", chapter.title);
+  const content = createElement("p", "", chapter.content);
+  content.style.contentVisibility = "auto";
+  content.style.containIntrinsicSize = "auto 800px";
+  section.append(title, content);
   chapterList.replaceChildren(section);
 
   const chapterCount = chapters.length;
