@@ -531,11 +531,20 @@ class BiblioHandler(BaseHTTPRequestHandler):
             return {"registered_accounts": db.users.count_documents({})}, HTTPStatus.OK, []
 
         if method == "GET" and path == "/api/books":
+            try:
+                page = max(1, int((query.get("page") or ["1"])[0]))
+                limit = min(50, max(1, int((query.get("limit") or ["50"])[0])))
+            except (TypeError, ValueError):
+                return {"error": "Некорректные параметры пагинации"}, HTTPStatus.BAD_REQUEST, []
+            skip = (page - 1) * limit
+            total = db.books.count_documents({"status": "published"})
             books = list(
                 db.books.aggregate(
                     [
                         {"$match": {"status": "published"}},
                         {"$sort": {"updated_at": DESCENDING, "id": DESCENDING}},
+                        {"$skip": skip},
+                        {"$limit": limit},
                         {
                             "$set": {
                                 "chapter_count": {"$size": {"$ifNull": ["$chapters", []]}},
@@ -570,7 +579,11 @@ class BiblioHandler(BaseHTTPRequestHandler):
                         db, book, rating_stats=rating_stats.get(book["id"], {})
                     )
                     for book in books
-                ]
+                ],
+                "page": page,
+                "limit": limit,
+                "total": total,
+                "pages": max(1, (total + limit - 1) // limit),
             }, HTTPStatus.OK, []
 
         book_match = re.fullmatch(r"/api/books/(\d+)", path)
@@ -776,6 +789,13 @@ class BiblioHandler(BaseHTTPRequestHandler):
             return {"registered_accounts": count}, HTTPStatus.OK, []
 
         if method == "GET" and path == "/api/books":
+            try:
+                page = max(1, int((query.get("page") or ["1"])[0]))
+                limit = min(50, max(1, int((query.get("limit") or ["50"])[0])))
+            except (TypeError, ValueError):
+                return {"error": "Некорректные параметры пагинации"}, HTTPStatus.BAD_REQUEST, []
+            total = db.execute("SELECT COUNT(*) AS total FROM books WHERE status = 'published'").fetchone()["total"]
+            offset = (page - 1) * limit
             rows = db.execute(
                 """
                 WITH rating_stats AS (
@@ -797,10 +817,16 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 LEFT JOIN chapter_stats ON chapter_stats.book_id = books.id
                 WHERE books.status = 'published'
                 ORDER BY books.updated_at DESC, books.id DESC
-                """
+                LIMIT ? OFFSET ?
+                """,
+                (limit, offset),
             ).fetchall()
             return {
-                "books": [book_record(db, row) for row in rows]
+                "books": [book_record(db, row) for row in rows],
+                "page": page,
+                "limit": limit,
+                "total": total,
+                "pages": max(1, (total + limit - 1) // limit),
             }, HTTPStatus.OK, []
 
         book_match = re.fullmatch(r"/api/books/(\d+)", path)
