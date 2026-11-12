@@ -221,6 +221,9 @@ let favoritesOnly = new URLSearchParams(location.search).get("favorites") === "1
 let selectedTag = "";
 let currentPage = 1;
 const pageSize = 8;
+let serverPage = 1;
+let serverPageCount = 1;
+let serverBookTotal = 0;
 let allBooks = [];
 let allBooksById = new Map();
 let allBooksByAuthor = new Map();
@@ -472,12 +475,15 @@ function filterBooks() {
   });
 
   emptyState.hidden = filtered.length > 0;
+  const catalogTotal = serverBookTotal || filtered.length;
   document.querySelector("#catalog-result-count").textContent =
-    `Найдено книг: ${filtered.length}${favoritesOnly ? " · избранное" : ""}`;
-  document.querySelector("#page-indicator").textContent = `${currentPage} / ${pageCount}`;
-  document.querySelector("#page-previous").disabled = currentPage <= 1;
-  document.querySelector("#page-next").disabled = currentPage >= pageCount;
-  document.querySelector("#catalog-pagination").hidden = filtered.length <= pageSize;
+    `Найдено книг: ${catalogTotal}${favoritesOnly ? " · избранное" : ""}`;
+  const effectivePageCount = serverPageCount > 1 ? serverPageCount : pageCount;
+  const effectivePage = serverPageCount > 1 ? serverPage : currentPage;
+  document.querySelector("#page-indicator").textContent = `${effectivePage} / ${effectivePageCount}`;
+  document.querySelector("#page-previous").disabled = effectivePage <= 1;
+  document.querySelector("#page-next").disabled = effectivePage >= effectivePageCount;
+  document.querySelector("#catalog-pagination").hidden = effectivePageCount <= 1;
   updateGenreCounts(cards);
 }
 
@@ -1074,8 +1080,12 @@ function renderPublishedAuthors() {
   });
 }
 
-async function refreshPublishedBooks() {
-  const { books } = await api("/api/books");
+async function refreshPublishedBooks(page = serverPage) {
+  const data = await api(`/api/books?page=${page}&limit=50`);
+  const books = data.books || [];
+  serverPage = Number(data.page) || 1;
+  serverPageCount = Number(data.pages) || 1;
+  serverBookTotal = Number(data.total) || books.length;
   allBooks = books;
   allBooksById = new Map(books.map((book) => [String(book.id), book]));
   searchableTextById = new Map(
@@ -1432,15 +1442,16 @@ document.querySelector("#catalog-reset").addEventListener("click", () => {
 });
 
 document.querySelector("#page-previous").addEventListener("click", () => {
-  if (currentPage <= 1) return;
-  currentPage -= 1;
-  filterBooks();
-  document.querySelector("#popular").scrollIntoView({ behavior: "smooth" });
+  if (serverPage <= 1) return;
+  refreshPublishedBooks(serverPage - 1)
+    .then(() => document.querySelector("#popular").scrollIntoView({ behavior: "smooth" }))
+    .catch((error) => showToast(error.message));
 });
 document.querySelector("#page-next").addEventListener("click", () => {
-  currentPage += 1;
-  filterBooks();
-  document.querySelector("#popular").scrollIntoView({ behavior: "smooth" });
+  if (serverPage >= serverPageCount) return;
+  refreshPublishedBooks(serverPage + 1)
+    .then(() => document.querySelector("#popular").scrollIntoView({ behavior: "smooth" }))
+    .catch((error) => showToast(error.message));
 });
 
 bookGrid.addEventListener("click", (event) => {
