@@ -1284,6 +1284,8 @@ function updateAccountUI() {
     const image = document.createElement("img");
     image.src = currentUser.avatar_url;
     image.alt = "Аватар профиля";
+    image.decoding = "async";
+    image.loading = "lazy";
     avatar.append(image);
   } else {
     avatar.textContent = currentUser.display_name.trim().charAt(0).toLocaleUpperCase("ru");
@@ -1894,6 +1896,7 @@ document.querySelector("#profile-avatar-file").addEventListener("change", async 
     const image = document.createElement("img");
     image.src = pendingAvatarData;
     image.alt = "Предпросмотр аватарки";
+    image.decoding = "async";
     avatar.append(image);
   } catch (error) {
     showToast(error.message || "Не удалось обработать аватарку.");
