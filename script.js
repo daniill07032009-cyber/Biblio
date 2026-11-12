@@ -415,6 +415,14 @@ confirmDialog.addEventListener("close", () => {
 function filterBooks() {
   const query = searchInput.value.trim().toLocaleLowerCase("ru");
   const cards = [...bookGrid.querySelectorAll(".book-card")];
+  const searchableTextById = new Map(
+    allBooks.map((book) => [
+      String(book.id),
+      [book.title, book.author, book.description || "", ...(book.tags || [])]
+        .join(" ")
+        .toLocaleLowerCase("ru"),
+    ]),
+  );
   const ageRating = document.querySelector("#catalog-age").value;
   const language = document.querySelector("#catalog-language").value;
   const length = document.querySelector("#catalog-length").value;
@@ -422,7 +430,7 @@ function filterBooks() {
   const filtered = cards.filter((card) => {
     const book = allBooksById.get(card.dataset.bookId);
     if (!book) return false;
-    const searchableText = `${book.title} ${book.author} ${book.description || ""} ${(book.tags || []).join(" ")}`.toLocaleLowerCase("ru");
+    const searchableText = searchableTextById.get(String(book.id)) || "";
     const matchesGenre =
       (activeGenre === "Все" || book.genre === activeGenre) &&
       (!selectedGenres.size || selectedGenres.has(book.genre));
