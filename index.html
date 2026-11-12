@@ -378,6 +378,10 @@
               <button class="button button--primary" type="submit">Сохранить профиль</button>
             </form>
             <button class="button button--secondary" type="button" data-open="password-dialog" aria-controls="password-dialog">Сменить пароль</button>
+            <div class="account-danger-zone">
+              <div><strong>Удаление аккаунта</strong><p>Удалятся профиль, ваши книги и главы. Это действие нельзя отменить.</p></div>
+              <button class="button button--danger" type="button" id="open-delete-account">Удалить аккаунт</button>
+            </div>
           </section>
         </div>
       </section>
@@ -433,6 +437,19 @@
         <button class="button button--primary" id="auth-submit" type="submit">Войти</button>
       </form>
       <p class="auth-note">Книги, профиль и черновики сохраняются в твоём аккаунте.</p>
+    </dialog>
+    <dialog class="dialog auth-dialog" id="delete-account-dialog" aria-labelledby="delete-account-title">
+      <button class="dialog-close" type="button" aria-label="Закрыть" data-close>×</button>
+      <span class="eyebrow">Подтверждение действия</span>
+      <h2 id="delete-account-title">Удалить аккаунт?</h2>
+      <p class="auth-note">Все ваши книги, главы и данные профиля будут удалены без возможности восстановления. Введите пароль для подтверждения.</p>
+      <form id="delete-account-form">
+        <label>Текущий пароль<input name="current_password" type="password" autocomplete="current-password" required /></label>
+        <div class="dialog-actions">
+          <button class="button button--secondary" type="button" data-close>Отмена</button>
+          <button class="button button--danger" type="submit">Удалить навсегда</button>
+        </div>
+      </form>
     </dialog>
     <dialog class="dialog profile-dialog" id="profile-dialog" aria-labelledby="profile-name">
       <button class="dialog-close" type="button" aria-label="Закрыть" data-close>×</button>
