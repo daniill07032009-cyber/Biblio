@@ -775,7 +775,12 @@ function createCatalogCard(book) {
 }
 
 function persistReadingLibraryState(progress) {
-  persistReadingLibraryState(progress);
+  try {
+    localStorage.setItem("biblio-reading-progress", JSON.stringify(progress));
+    localStorage.setItem("biblio-reading-state", JSON.stringify(readingLibraryState));
+  } catch (error) {
+    console.warn("Не удалось сохранить прогресс чтения:", error);
+  }
 }
 
 function saveReadingPosition(book) {
