@@ -814,8 +814,7 @@ function setBookCompleted(book, completed, restart = false) {
   };
   const progress = readStoredObject("biblio-reading-progress");
   progress[bookId] = chapter;
-  localStorage.setItem("biblio-reading-progress", JSON.stringify(progress));
-  localStorage.setItem("biblio-reading-state", JSON.stringify(readingLibraryState));
+  persistReadingLibraryState(progress);
   if (activeReaderBook && String(activeReaderBook.id) === bookId) {
     activeReaderChapter = chapter;
     renderReaderChapter();
