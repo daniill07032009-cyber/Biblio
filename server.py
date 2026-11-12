@@ -797,6 +797,22 @@ class BiblioHandler(BaseHTTPRequestHandler):
             updated = db.users.find_one({"id": user["id"]})
             return {"user": public_user(updated)}, HTTPStatus.OK, []
 
+        if method == "DELETE" and path == "/api/account":
+            user = self.current_user_mongo(db, required=True)
+            data = self.read_json()
+            current_password = data.get("current_password")
+            if not isinstance(current_password, str) or not verify_password(current_password, user["password_hash"]):
+                raise APIError(HTTPStatus.UNAUTHORIZED, "Текущий пароль введён неверно.")
+            owned_book_ids = [book["id"] for book in db.books.find({"owner_id": user["id"]}, {"id": 1})]
+            if owned_book_ids:
+                db.book_ratings.delete_many({"book_id": {"$in": owned_book_ids}})
+            db.book_ratings.delete_many({"user_id": user["id"]})
+            db.books.delete_many({"owner_id": user["id"]})
+            db.sessions.delete_many({"user_id": user["id"]})
+            db.users.delete_one({"id": user["id"]})
+            expired_cookie = self.cookie_headers("", 0)
+            return {"ok": True}, HTTPStatus.OK, expired_cookie
+
         if method == "POST" and path == "/api/account/password":
             user = self.current_user_mongo(db, required=True)
             data = self.read_json()
@@ -1097,6 +1113,16 @@ class BiblioHandler(BaseHTTPRequestHandler):
             )
             updated = db.execute("SELECT * FROM users WHERE id = ?", (user["id"],)).fetchone()
             return {"user": public_user(updated)}, HTTPStatus.OK, []
+
+        if method == "DELETE" and path == "/api/account":
+            user = self.current_user(db, required=True)
+            data = self.read_json()
+            current_password = data.get("current_password")
+            if not isinstance(current_password, str) or not verify_password(current_password, user["password_hash"]):
+                raise APIError(HTTPStatus.UNAUTHORIZED, "Текущий пароль введён неверно.")
+            db.execute("DELETE FROM users WHERE id = ?", (user["id"],))
+            expired_cookie = self.cookie_headers("", 0)
+            return {"ok": True}, HTTPStatus.OK, expired_cookie
 
         if method == "POST" and path == "/api/account/password":
             user = self.current_user(db, required=True)
