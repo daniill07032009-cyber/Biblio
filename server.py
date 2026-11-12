@@ -155,7 +155,8 @@ def initialize_db():
                 created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
                 UNIQUE(book_id, user_id)
             );
-            CREATE INDEX IF NOT EXISTS book_ratings_book_idx ON book_ratings(book_id);
+            CREATE INDEX IF NOT EXISTS book_ratings_book_user_idx
+            ON book_ratings(book_id, user_id);
             """
         )
         columns = {row["name"] for row in db.execute("PRAGMA table_info(users)")}
@@ -768,14 +769,25 @@ class BiblioHandler(BaseHTTPRequestHandler):
         if method == "GET" and path == "/api/books":
             rows = db.execute(
                 """
+                WITH rating_stats AS (
+                    SELECT book_id, AVG(rating) AS rating_avg, COUNT(*) AS rating_count
+                    FROM book_ratings
+                    GROUP BY book_id
+                ),
+                chapter_stats AS (
+                    SELECT book_id, COUNT(*) AS chapter_count
+                    FROM chapters
+                    GROUP BY book_id
+                )
                 SELECT books.*,
-                    COALESCE((SELECT AVG(rating) FROM book_ratings WHERE book_id = books.id), 0)
-                        AS rating_avg,
-                    (SELECT COUNT(*) FROM book_ratings WHERE book_id = books.id) AS rating_count,
-                    (SELECT COUNT(*) FROM chapters WHERE chapters.book_id = books.id) AS chapter_count
+                    COALESCE(rating_stats.rating_avg, 0) AS rating_avg,
+                    COALESCE(rating_stats.rating_count, 0) AS rating_count,
+                    COALESCE(chapter_stats.chapter_count, 0) AS chapter_count
                 FROM books
-                WHERE status = 'published'
-                ORDER BY updated_at DESC, id DESC
+                LEFT JOIN rating_stats ON rating_stats.book_id = books.id
+                LEFT JOIN chapter_stats ON chapter_stats.book_id = books.id
+                WHERE books.status = 'published'
+                ORDER BY books.updated_at DESC, books.id DESC
                 """
             ).fetchall()
             return {
