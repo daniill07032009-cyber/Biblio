@@ -1088,6 +1088,7 @@ async function refreshPublishedBooks(page = serverPage) {
     limit: String(pageSize),
     q: searchInput.value.trim(),
     genre: activeGenre,
+    genres: [...selectedGenres].join(","),
     sort: document.querySelector("#catalog-sort").value,
   });
   const data = await api(`/api/books?${params.toString()}`);
@@ -1715,7 +1716,7 @@ document.querySelector("#library-sort-form").addEventListener("submit", (event) 
   document.querySelector("#catalog-length").value = form.elements.length.value;
   document.querySelector("#catalog-sort").value = form.elements.sort.value;
   currentPage = 1;
-  filterBooks();
+  refreshPublishedBooks(1).catch((error) => showToast(error.message));
   closeDialog(document.querySelector("#library-sort-dialog"));
 });
 document.querySelector("#reset-library-filters").addEventListener("click", () => {
