@@ -773,7 +773,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
             data = self.read_json()
             email = self.valid_email(data.get("email"))
             code = data.get("code")
-            if not isinstance(code, str) or not re.fullmatch(r"\\d{6}", code):
+            if not isinstance(code, str) or not re.fullmatch(r"\d{6}", code):
                 raise APIError(HTTPStatus.BAD_REQUEST, "Введи шестизначный код из письма.")
             pending = db.pending_email_verifications.find_one({"email": email})
             if not pending or pending["expires_at"] < int(time.time()):
@@ -1091,7 +1091,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
             data = self.read_json()
             email = self.valid_email(data.get("email"))
             code = data.get("code")
-            if not isinstance(code, str) or not re.fullmatch(r"\\d{6}", code):
+            if not isinstance(code, str) or not re.fullmatch(r"\d{6}", code):
                 raise APIError(HTTPStatus.BAD_REQUEST, "Введи шестизначный код из письма.")
             pending = db.execute("SELECT * FROM pending_email_verifications WHERE email = ?", (email,)).fetchone()
             if not pending or pending["expires_at"] < int(time.time()):
