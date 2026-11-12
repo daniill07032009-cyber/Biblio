@@ -366,6 +366,23 @@ html[data-theme="sepia"] .settings-card { background: #eee5d3; }
 .settings-form label span { color: #99978f; font-weight: 400; }
 .settings-form input, .book-fields input, .book-fields select, .book-fields textarea, .chapter-editor input, .chapter-editor textarea, .auth-dialog input { width: 100%; min-height: 38px; padding: 9px 10px; border: 1px solid #e2dfd7; border-radius: 3px; outline-color: #9aa89a; background: #fff; color: var(--ink); font: 10px var(--sans); }
 .settings-form .button { justify-self: start; margin-top: 3px; }
+.profile-editor-avatar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 3px 0 8px; }
+.avatar-upload-label { position: relative; display: inline-flex !important; min-height: 34px; align-items: center; justify-content: center; padding: 0 13px; border: 1px solid #cdd7cf; border-radius: 4px; background: transparent; color: var(--green) !important; cursor: pointer; font-size: 10px !important; font-weight: 600 !important; transition: background .2s, border-color .2s; }
+.avatar-upload-label:hover { border-color: var(--green); background: #e9eee8; }
+.avatar-upload-label input { position: absolute; width: 1px !important; height: 1px !important; min-height: 1px !important; overflow: hidden; clip: rect(0, 0, 0, 0); clip-path: inset(50%); white-space: nowrap; }
+#remove-profile-avatar { min-height: 34px; padding: 0 12px; border: 1px solid var(--line); border-radius: 4px; background: transparent; color: #77766f; cursor: pointer; font: 600 10px var(--sans); }
+#remove-profile-avatar:hover { border-color: #bd7968; color: #a64c38; }
+.account-danger-zone { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 12px; padding: 16px; border: 1px solid #ead4ce; background: #fbf4f1; }
+.account-danger-zone strong { color: #8f493c; font: 600 12px var(--sans); }
+.account-danger-zone p { margin: 5px 0 0; color: #8b7771; font-size: 9px; line-height: 1.6; }
+.button--danger { border: 1px solid #b96655; background: #a94f40; color: #fff; cursor: pointer; }
+.button--danger:hover { background: #913f33; }
+.button--danger:disabled { opacity: .6; cursor: wait; }
+html[data-theme="dark"] .account-danger-zone { border-color: #65413a; background: #352925; }
+html[data-theme="dark"] .account-danger-zone strong { color: #e7a99c; }
+html[data-theme="dark"] .account-danger-zone p { color: #c4a49c; }
+@media (max-width: 600px) { .account-danger-zone { align-items: stretch; flex-direction: column; } .account-danger-zone .button { align-self: flex-start; } }
+
 .my-books-heading { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin: 25px 0 14px; }
 .my-books-heading h3 { display: flex; align-items: center; gap: 8px; }
 .my-books-heading p, .form-hint { margin: 0; color: #929087; font-size: 9px; }
