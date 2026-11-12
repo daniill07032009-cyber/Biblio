@@ -316,12 +316,12 @@ class BiblioHandler(BaseHTTPRequestHandler):
         self.send_header("Referrer-Policy", "same-origin")
         super().end_headers()
 
-    def send_json(self, status, payload, extra_headers=None):
+    def send_json(self, status, payload, extra_headers=None, cache_control="no-store"):
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", cache_control)
         if extra_headers:
             for name, value in extra_headers:
                 self.send_header(name, value)
@@ -440,7 +440,12 @@ class BiblioHandler(BaseHTTPRequestHandler):
             else:
                 with connect_db() as db:
                     result, status, headers = self.dispatch_api(db, method, path)
-            self.send_json(status, result, headers)
+            cache_control = (
+                "public, max-age=20, stale-while-revalidate=60"
+                if method == "GET" and path == "/api/books"
+                else "no-store"
+            )
+            self.send_json(status, result, headers, cache_control=cache_control)
         except APIError as exc:
             self.send_json(exc.status, {"error": exc.message})
         except DuplicateKeyError as exc:
