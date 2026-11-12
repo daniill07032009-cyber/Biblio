@@ -1304,18 +1304,21 @@ function updateAccountUI() {
   document.querySelector("#profile-name").textContent = currentUser.display_name;
   document.querySelector("#profile-email").textContent = currentUser.email;
   document.querySelector("#profile-bio").textContent = currentUser.bio || "Пока без описания";
-  const avatar = document.querySelector("#profile-avatar");
-  avatar.replaceChildren();
-  if (currentUser.avatar_url) {
-    const image = document.createElement("img");
-    image.src = currentUser.avatar_url;
-    image.alt = "Аватар профиля";
-    image.decoding = "async";
-    image.loading = "lazy";
-    avatar.append(image);
-  } else {
-    avatar.textContent = currentUser.display_name.trim().charAt(0).toLocaleUpperCase("ru");
-  }
+  ["#profile-avatar", "#profile-dialog-avatar"].forEach((selector) => {
+    const avatar = document.querySelector(selector);
+    if (!avatar) return;
+    avatar.replaceChildren();
+    if (currentUser.avatar_url) {
+      const image = document.createElement("img");
+      image.src = currentUser.avatar_url;
+      image.alt = "Аватар профиля";
+      image.decoding = "async";
+      image.loading = "lazy";
+      avatar.append(image);
+    } else {
+      avatar.textContent = currentUser.display_name.trim().charAt(0).toLocaleUpperCase("ru");
+    }
+  });
   const profileForm = document.querySelector("#profile-form");
   profileForm.elements.display_name.value = currentUser.display_name;
   profileForm.elements.email.value = currentUser.email;
