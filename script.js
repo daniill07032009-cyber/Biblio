@@ -1973,6 +1973,37 @@ document.querySelector("#profile-form").addEventListener("submit", async (event)
   }
 });
 
+document.querySelector("#open-delete-account").addEventListener("click", () => {
+  const dialog = document.querySelector("#delete-account-dialog");
+  document.querySelector("#delete-account-form").reset();
+  dialog.showModal();
+});
+
+document.querySelector("#delete-account-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const submit = form.querySelector('button[type="submit"]');
+  submit.disabled = true;
+  try {
+    await api("/api/account", {
+      method: "DELETE",
+      body: JSON.stringify({ current_password: new FormData(form).get("current_password") }),
+    });
+    document.querySelector("#delete-account-dialog").close();
+    document.querySelector("#profile-dialog").close();
+    currentUser = null;
+    pendingAvatarData = null;
+    form.reset();
+    updateAccountUI();
+    showToast("Аккаунт и ваши книги удалены");
+    await refreshPublishedBooks(1);
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    submit.disabled = false;
+  }
+});
+
 document.querySelector("#password-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
