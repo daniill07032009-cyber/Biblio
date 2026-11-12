@@ -408,7 +408,9 @@ class BiblioHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = urlsplit(self.path).path
-        if path.startswith("/api/"):
+        if path == "/health":
+            self.send_json(HTTPStatus.OK, {"status": "ok"})
+        elif path.startswith("/api/"):
             self.handle_api("GET", path)
         else:
             self.serve_static(path)
