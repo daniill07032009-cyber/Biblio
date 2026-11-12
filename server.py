@@ -157,6 +157,12 @@ def initialize_db():
             );
             CREATE INDEX IF NOT EXISTS book_ratings_book_user_idx
             ON book_ratings(book_id, user_id);
+            CREATE INDEX IF NOT EXISTS books_status_updated_idx
+            ON books(status, updated_at DESC, id DESC);
+            CREATE INDEX IF NOT EXISTS books_owner_updated_idx
+            ON books(owner_id, updated_at DESC, id DESC);
+            CREATE INDEX IF NOT EXISTS chapters_book_position_idx
+            ON chapters(book_id, position);
             """
         )
         columns = {row["name"] for row in db.execute("PRAGMA table_info(users)")}
