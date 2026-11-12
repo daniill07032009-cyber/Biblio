@@ -537,11 +537,24 @@ class BiblioHandler(BaseHTTPRequestHandler):
             except (TypeError, ValueError):
                 return {"error": "Некорректные параметры пагинации"}, HTTPStatus.BAD_REQUEST, []
             skip = (page - 1) * limit
-            total = db.books.count_documents({"status": "published"})
+            search = (query.get("q") or [""])[0].strip()[:120]
+            genre = (query.get("genre") or [""])[0].strip()[:60]
+            match = {"status": "published"}
+            if genre and genre != "Все":
+                match["genre"] = genre
+            if search:
+                pattern = re.escape(search)
+                match["$or"] = [
+                    {"title": {"$regex": pattern, "$options": "i"}},
+                    {"author": {"$regex": pattern, "$options": "i"}},
+                    {"description": {"$regex": pattern, "$options": "i"}},
+                    {"tags": {"$regex": pattern, "$options": "i"}},
+                ]
+            total = db.books.count_documents(match)
             books = list(
                 db.books.aggregate(
                     [
-                        {"$match": {"status": "published"}},
+                        {"$match": match},
                         {"$sort": {"updated_at": DESCENDING, "id": DESCENDING}},
                         {"$skip": skip},
                         {"$limit": limit},
@@ -794,7 +807,19 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 limit = min(50, max(1, int((query.get("limit") or ["50"])[0])))
             except (TypeError, ValueError):
                 return {"error": "Некорректные параметры пагинации"}, HTTPStatus.BAD_REQUEST, []
-            total = db.execute("SELECT COUNT(*) AS total FROM books WHERE status = 'published'").fetchone()["total"]
+            search = (query.get("q") or [""])[0].strip()[:120]
+            genre = (query.get("genre") or [""])[0].strip()[:60]
+            conditions = ["books.status = 'published'"]
+            params = []
+            if genre and genre != "Все":
+                conditions.append("books.genre = ?")
+                params.append(genre)
+            if search:
+                conditions.append("(books.title LIKE ? OR books.author LIKE ? OR books.description LIKE ? OR books.tags LIKE ?)")
+                pattern = f"%{search}%"
+                params.extend([pattern, pattern, pattern, pattern])
+            where_sql = " AND ".join(conditions)
+            total = db.execute(f"SELECT COUNT(*) AS total FROM books WHERE {where_sql}", params).fetchone()["total"]
             offset = (page - 1) * limit
             rows = db.execute(
                 """
@@ -815,11 +840,11 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 FROM books
                 LEFT JOIN rating_stats ON rating_stats.book_id = books.id
                 LEFT JOIN chapter_stats ON chapter_stats.book_id = books.id
-                WHERE books.status = 'published'
+                WHERE {where_sql}
                 ORDER BY books.updated_at DESC, books.id DESC
                 LIMIT ? OFFSET ?
-                """,
-                (limit, offset),
+                """.format(where_sql=where_sql),
+                (*params, limit, offset),
             ).fetchall()
             return {
                 "books": [book_record(db, row) for row in rows],
