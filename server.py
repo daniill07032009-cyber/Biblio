@@ -539,6 +539,14 @@ class BiblioHandler(BaseHTTPRequestHandler):
             skip = (page - 1) * limit
             search = (query.get("q") or [""])[0].strip()[:120]
             genre = (query.get("genre") or [""])[0].strip()[:60]
+            sort_by = (query.get("sort") or ["popular"])[0].strip()
+            sort_fields = {
+                "popular": [("rating", DESCENDING), ("rating_count", DESCENDING), ("updated_at", DESCENDING), ("id", DESCENDING)],
+                "rating": [("rating", DESCENDING), ("rating_count", DESCENDING), ("id", DESCENDING)],
+                "newest": [("created_at", DESCENDING), ("id", DESCENDING)],
+                "title": [("title", ASCENDING), ("id", ASCENDING)],
+            }
+            sort_spec = sort_fields.get(sort_by, sort_fields["popular"])
             match = {"status": "published"}
             if genre and genre != "Все":
                 match["genre"] = genre
@@ -555,7 +563,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 db.books.aggregate(
                     [
                         {"$match": match},
-                        {"$sort": {"updated_at": DESCENDING, "id": DESCENDING}},
+                        {"$sort": dict(sort_spec)},
                         {"$skip": skip},
                         {"$limit": limit},
                         {
@@ -809,6 +817,13 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 return {"error": "Некорректные параметры пагинации"}, HTTPStatus.BAD_REQUEST, []
             search = (query.get("q") or [""])[0].strip()[:120]
             genre = (query.get("genre") or [""])[0].strip()[:60]
+            sort_by = (query.get("sort") or ["popular"])[0].strip()
+            sort_sql = {
+                "popular": "rating_avg DESC, rating_count DESC, books.updated_at DESC, books.id DESC",
+                "rating": "rating_avg DESC, rating_count DESC, books.id DESC",
+                "newest": "books.created_at DESC, books.id DESC",
+                "title": "books.title COLLATE NOCASE ASC, books.id ASC",
+            }.get(sort_by, "rating_avg DESC, rating_count DESC, books.updated_at DESC, books.id DESC")
             conditions = ["books.status = 'published'"]
             params = []
             if genre and genre != "Все":
@@ -841,9 +856,9 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 LEFT JOIN rating_stats ON rating_stats.book_id = books.id
                 LEFT JOIN chapter_stats ON chapter_stats.book_id = books.id
                 WHERE {where_sql}
-                ORDER BY books.updated_at DESC, books.id DESC
+                ORDER BY {sort_sql}
                 LIMIT ? OFFSET ?
-                """.format(where_sql=where_sql),
+                """.format(where_sql=where_sql, sort_sql=sort_sql),
                 (*params, limit, offset),
             ).fetchall()
             return {
