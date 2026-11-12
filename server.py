@@ -286,7 +286,7 @@ def mongo_book_record(
         "rating": average,
         "rating_count": count,
         "user_rating": own_rating,
-        "chapter_count": len(chapters),
+        "chapter_count": book.get("chapter_count", len(chapters)),
         "status": book["status"],
         "created_at": book["created_at"],
         "updated_at": book["updated_at"],
@@ -518,8 +518,17 @@ class BiblioHandler(BaseHTTPRequestHandler):
 
         if method == "GET" and path == "/api/books":
             books = list(
-                db.books.find({"status": "published"}).sort(
-                    [("updated_at", DESCENDING), ("id", DESCENDING)]
+                db.books.aggregate(
+                    [
+                        {"$match": {"status": "published"}},
+                        {"$sort": {"updated_at": DESCENDING, "id": DESCENDING}},
+                        {
+                            "$project": {
+                                "chapters": 0,
+                                "chapter_count": {"$size": {"$ifNull": ["$chapters", []]}},
+                            }
+                        },
+                    ]
                 )
             )
             rating_stats = {}
