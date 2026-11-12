@@ -11,6 +11,8 @@ import secrets
 import sqlite3
 import threading
 import time
+import urllib.request
+import urllib.error
 from contextlib import contextmanager
 from http.cookies import CookieError
 from http import HTTPStatus
@@ -32,6 +34,11 @@ SESSION_SECONDS = 60 * 60 * 24 * 14
 PASSWORD_ITERATIONS = 310_000
 MAX_REQUEST_BYTES = 2_000_000
 EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s.]+(?:\.[^@\s.]+)+$")
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+RESEND_FROM = os.environ.get("RESEND_FROM", "Biblio <onboarding@resend.dev>")
+EMAIL_CODE_TTL = 600
+EMAIL_CODE_MAX_ATTEMPTS = 5
+
 _MONGO_CLIENTS = {}
 _MONGO_CLIENTS_LOCK = threading.Lock()
 
@@ -110,6 +117,15 @@ def initialize_db():
                 display_name TEXT NOT NULL,
                 password_hash TEXT NOT NULL,
                 created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+            );
+            CREATE TABLE IF NOT EXISTS pending_email_verifications (
+                email TEXT PRIMARY KEY COLLATE NOCASE,
+                display_name TEXT NOT NULL,
+                password_hash TEXT NOT NULL,
+                code_hash TEXT NOT NULL,
+                expires_at INTEGER NOT NULL,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL
             );
             CREATE TABLE IF NOT EXISTS sessions (
                 token_hash TEXT PRIMARY KEY,
@@ -213,6 +229,48 @@ def verify_password(password, encoded):
         "sha256", password.encode("utf-8"), salt, PASSWORD_ITERATIONS
     )
     return hmac.compare_digest(actual, expected)
+
+
+def email_code_hash(email, code):
+    return hashlib.sha256((email.lower() + ":" + code).encode("utf-8")).hexdigest()
+
+
+def send_verification_email(email, display_name, code):
+    if not RESEND_API_KEY:
+        raise APIError(HTTPStatus.SERVICE_UNAVAILABLE, "Отправка писем ещё не настроена: добавь RESEND_API_KEY в Render.")
+    safe_name = display_name.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    payload = {
+        "from": RESEND_FROM, "to": [email],
+        "subject": "Подтверждение регистрации в Biblio",
+        "text": f"Привет, {display_name}!\\n\\nСпасибо за регистрацию в Biblio. Твой код подтверждения: {code}\\n\\nКод действует 10 минут. Если ты не регистрировался(-ась), проигнорируй это письмо.\\n\\nС теплом, команда Biblio",
+        "html": (
+            '<div style="max-width:520px;margin:24px auto;padding:36px;background:#fff;border:1px solid #e5e1d7;color:#29352c;font-family:Arial,sans-serif">'
+            '<div style="font-size:13px;letter-spacing:4px;color:#6b806d;font-weight:bold">BIBLIO</div>'
+            '<h1 style="font-family:Georgia,serif;font-weight:normal">Добро пожаловать!</h1>'
+            f'<p>Привет, {safe_name}! Спасибо, что присоединился(-ась) к Biblio.</p>'
+            '<p>Чтобы подтвердить адрес электронной почты, введи этот код:</p>'
+            f'<div style="margin:26px 0;padding:20px;background:#f1f3ed;text-align:center;font-size:34px;letter-spacing:9px;font-weight:bold">{code}</div>'
+            '<p>Код действует <b>10 минут</b>. Если ты не создавал(-а) аккаунт, проигнорируй письмо.</p>'
+            '<p style="color:#788078;font-size:12px">С теплом, команда Biblio</p></div>'
+        ),
+    }
+    request = urllib.request.Request(
+        "https://api.resend.com/emails", data=json.dumps(payload).encode("utf-8"),
+        headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            result = json.loads(response.read().decode("utf-8"))
+            if response.status >= 300:
+                raise APIError(HTTPStatus.BAD_GATEWAY, "Почтовый сервис не принял письмо.")
+            return result
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode("utf-8", "replace")[:500]
+        print(f"Resend API error {error.code}: {detail}", flush=True)
+        raise APIError(HTTPStatus.BAD_GATEWAY, "Не удалось отправить письмо. Проверь настройки Resend.")
+    except (urllib.error.URLError, TimeoutError):
+        raise APIError(HTTPStatus.BAD_GATEWAY, "Почтовый сервис временно недоступен. Попробуй ещё раз.")
 
 
 def public_user(row):
@@ -693,14 +751,44 @@ class BiblioHandler(BaseHTTPRequestHandler):
             email = self.valid_email(data.get("email"))
             display_name = self.valid_text(data.get("display_name"), "Имя", 1, 60)
             password = self.valid_password(data.get("password"))
-            user = {
-                "id": next_mongo_id(db, "users"),
-                "email": email,
-                "display_name": display_name,
-                "password_hash": password_digest(password),
-                "created_at": utc_timestamp(),
-            }
+            if db.users.find_one({"email": email}, {"_id": 1}):
+                raise APIError(HTTPStatus.CONFLICT, "Аккаунт с такой почтой уже существует.")
+            pending = db.pending_email_verifications.find_one({"email": email})
+            if pending and int(time.time()) - pending.get("created_at", 0) < 60:
+                raise APIError(HTTPStatus.TOO_MANY_REQUESTS, "Подожди минуту перед повторной отправкой кода.")
+            code = f"{secrets.randbelow(1_000_000):06d}"
+            db.pending_email_verifications.replace_one({"email": email}, {
+                "email": email, "display_name": display_name, "password_hash": password_digest(password),
+                "code_hash": email_code_hash(email, code), "expires_at": int(time.time()) + EMAIL_CODE_TTL,
+                "attempts": 0, "created_at": int(time.time()),
+            }, upsert=True)
+            try:
+                send_verification_email(email, display_name, code)
+            except Exception:
+                db.pending_email_verifications.delete_one({"email": email})
+                raise
+            return {"verification_required": True, "email": email}, HTTPStatus.ACCEPTED, []
+
+        if method == "POST" and path == "/api/verify-email":
+            data = self.read_json()
+            email = self.valid_email(data.get("email"))
+            code = data.get("code")
+            if not isinstance(code, str) or not re.fullmatch(r"\\d{6}", code):
+                raise APIError(HTTPStatus.BAD_REQUEST, "Введи шестизначный код из письма.")
+            pending = db.pending_email_verifications.find_one({"email": email})
+            if not pending or pending["expires_at"] < int(time.time()):
+                db.pending_email_verifications.delete_one({"email": email})
+                raise APIError(HTTPStatus.GONE, "Код истёк. Начни регистрацию заново.")
+            if pending.get("attempts", 0) >= EMAIL_CODE_MAX_ATTEMPTS:
+                db.pending_email_verifications.delete_one({"email": email})
+                raise APIError(HTTPStatus.TOO_MANY_REQUESTS, "Слишком много попыток. Начни регистрацию заново.")
+            if not hmac.compare_digest(pending["code_hash"], email_code_hash(email, code)):
+                db.pending_email_verifications.update_one({"email": email}, {"$inc": {"attempts": 1}})
+                raise APIError(HTTPStatus.UNAUTHORIZED, "Неверный код подтверждения.")
+            user = {"id": next_mongo_id(db, "users"), "email": email, "display_name": pending["display_name"],
+                    "password_hash": pending["password_hash"], "created_at": utc_timestamp()}
             db.users.insert_one(user)
+            db.pending_email_verifications.delete_one({"email": email})
             headers = self.create_mongo_session(db, user["id"])
             return {"user": public_user(user)}, HTTPStatus.CREATED, headers
 
@@ -980,12 +1068,47 @@ class BiblioHandler(BaseHTTPRequestHandler):
             email = self.valid_email(data.get("email"))
             display_name = self.valid_text(data.get("display_name"), "Имя", 1, 60)
             password = self.valid_password(data.get("password"))
-            encoded = password_digest(password)
+            if db.execute("SELECT 1 FROM users WHERE email = ?", (email,)).fetchone():
+                raise APIError(HTTPStatus.CONFLICT, "Аккаунт с такой почтой уже существует.")
+            pending = db.execute("SELECT created_at FROM pending_email_verifications WHERE email = ?", (email,)).fetchone()
+            if pending and int(time.time()) - pending["created_at"] < 60:
+                raise APIError(HTTPStatus.TOO_MANY_REQUESTS, "Подожди минуту перед повторной отправкой кода.")
+            code = f"{secrets.randbelow(1_000_000):06d}"
+            db.execute(
+                "INSERT OR REPLACE INTO pending_email_verifications "
+                "(email, display_name, password_hash, code_hash, expires_at, attempts, created_at) VALUES (?, ?, ?, ?, ?, 0, ?)",
+                (email, display_name, password_digest(password), email_code_hash(email, code),
+                 int(time.time()) + EMAIL_CODE_TTL, int(time.time())),
+            )
+            try:
+                send_verification_email(email, display_name, code)
+            except Exception:
+                db.execute("DELETE FROM pending_email_verifications WHERE email = ?", (email,))
+                raise
+            return {"verification_required": True, "email": email}, HTTPStatus.ACCEPTED, []
+
+        if method == "POST" and path == "/api/verify-email":
+            data = self.read_json()
+            email = self.valid_email(data.get("email"))
+            code = data.get("code")
+            if not isinstance(code, str) or not re.fullmatch(r"\\d{6}", code):
+                raise APIError(HTTPStatus.BAD_REQUEST, "Введи шестизначный код из письма.")
+            pending = db.execute("SELECT * FROM pending_email_verifications WHERE email = ?", (email,)).fetchone()
+            if not pending or pending["expires_at"] < int(time.time()):
+                db.execute("DELETE FROM pending_email_verifications WHERE email = ?", (email,))
+                raise APIError(HTTPStatus.GONE, "Код истёк. Начни регистрацию заново.")
+            if pending["attempts"] >= EMAIL_CODE_MAX_ATTEMPTS:
+                db.execute("DELETE FROM pending_email_verifications WHERE email = ?", (email,))
+                raise APIError(HTTPStatus.TOO_MANY_REQUESTS, "Слишком много попыток. Начни регистрацию заново.")
+            if not hmac.compare_digest(pending["code_hash"], email_code_hash(email, code)):
+                db.execute("UPDATE pending_email_verifications SET attempts = attempts + 1 WHERE email = ?", (email,))
+                raise APIError(HTTPStatus.UNAUTHORIZED, "Неверный код подтверждения.")
             cursor = db.execute(
                 "INSERT INTO users (email, display_name, password_hash) VALUES (?, ?, ?)",
-                (email, display_name, encoded),
+                (email, pending["display_name"], pending["password_hash"]),
             )
             user = db.execute("SELECT * FROM users WHERE id = ?", (cursor.lastrowid,)).fetchone()
+            db.execute("DELETE FROM pending_email_verifications WHERE email = ?", (email,))
             headers = self.create_session(db, user["id"])
             return {"user": public_user(user)}, HTTPStatus.CREATED, headers
 
