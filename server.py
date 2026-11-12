@@ -563,6 +563,20 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 db.books.aggregate(
                     [
                         {"$match": match},
+                        {
+                            "$lookup": {
+                                "from": "book_ratings",
+                                "localField": "id",
+                                "foreignField": "book_id",
+                                "as": "_catalog_ratings",
+                            }
+                        },
+                        {
+                            "$set": {
+                                "rating": {"$ifNull": [{"$avg": "$_catalog_ratings.rating"}, 0]},
+                                "rating_count": {"$size": "$_catalog_ratings"},
+                            }
+                        },
                         {"$sort": dict(sort_spec)},
                         {"$skip": skip},
                         {"$limit": limit},
@@ -571,7 +585,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
                                 "chapter_count": {"$size": {"$ifNull": ["$chapters", []]}},
                             }
                         },
-                        {"$unset": "chapters"},
+                        {"$unset": ["chapters", "_catalog_ratings"]},
                     ]
                 )
             )
