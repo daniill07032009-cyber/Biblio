@@ -468,8 +468,10 @@ function filterBooks() {
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   currentPage = Math.min(currentPage, pageCount);
-  const pageStart = (currentPage - 1) * pageSize;
-  const visibleCards = new Set(filtered.slice(pageStart, pageStart + pageSize));
+  const usingServerPagination = serverPageCount > 1;
+  const visibleCards = usingServerPagination
+    ? new Set(filtered)
+    : new Set(filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize));
   cards.forEach((card) => {
     card.hidden = !visibleCards.has(card);
   });
@@ -1081,7 +1083,7 @@ function renderPublishedAuthors() {
 }
 
 async function refreshPublishedBooks(page = serverPage) {
-  const data = await api(`/api/books?page=${page}&limit=50`);
+  const data = await api(`/api/books?page=${page}&limit=${pageSize}`);
   const books = data.books || [];
   serverPage = Number(data.page) || 1;
   serverPageCount = Number(data.pages) || 1;
