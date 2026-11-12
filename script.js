@@ -1042,7 +1042,7 @@ function setGenre(genre) {
   genreButtons.forEach((button) => {
     button.classList.toggle("is-active", button.dataset.genre === genre);
   });
-  filterBooks();
+  refreshPublishedBooks(1).catch((error) => showToast(error.message));
 }
 
 function renderPublishedAuthors() {
@@ -1083,7 +1083,13 @@ function renderPublishedAuthors() {
 }
 
 async function refreshPublishedBooks(page = serverPage) {
-  const data = await api(`/api/books?page=${page}&limit=${pageSize}`);
+  const params = new URLSearchParams({
+    page: String(page),
+    limit: String(pageSize),
+    q: searchInput.value.trim(),
+    genre: activeGenre,
+  });
+  const data = await api(`/api/books?${params.toString()}`);
   const books = data.books || [];
   serverPage = Number(data.page) || 1;
   serverPageCount = Number(data.pages) || 1;
@@ -1386,6 +1392,7 @@ genreButtons.forEach((button) => {
 });
 
 let catalogSearchFrame = 0;
+let catalogSearchTimer = 0;
 searchInput.addEventListener("input", () => {
   currentPage = 1;
   if (catalogSearchFrame) cancelAnimationFrame(catalogSearchFrame);
@@ -1394,6 +1401,10 @@ searchInput.addEventListener("input", () => {
     filterBooks();
     renderSearchSuggestions(searchInput.value);
   });
+  window.clearTimeout(catalogSearchTimer);
+  catalogSearchTimer = window.setTimeout(() => {
+    refreshPublishedBooks(1).catch((error) => showToast(error.message));
+  }, 300);
 });
 searchInput.addEventListener("focus", () => renderSearchSuggestions(searchInput.value));
 searchInput.addEventListener("blur", () => {
