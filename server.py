@@ -17,7 +17,7 @@ from http import HTTPStatus
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 from pymongo import ASCENDING, DESCENDING, MongoClient, ReturnDocument
 from pymongo.errors import DuplicateKeyError
@@ -435,6 +435,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
         self.handle_api("DELETE", urlsplit(self.path).path)
 
     def handle_api(self, method, path):
+        parsed_query = parse_qs(urlsplit(self.path).query)
         if not path.startswith("/api/"):
             self.send_json(HTTPStatus.NOT_FOUND, {"error": "Маршрут не найден."})
             return
@@ -443,10 +444,10 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 self.check_origin()
             if MONGODB_URI:
                 db = get_mongo_database()
-                result, status, headers = self.dispatch_mongo_api(db, method, path)
+                result, status, headers = self.dispatch_mongo_api(db, method, path, parsed_query)
             else:
                 with connect_db() as db:
-                    result, status, headers = self.dispatch_api(db, method, path)
+                    result, status, headers = self.dispatch_api(db, method, path, parsed_query)
             cache_control = (
                 "public, max-age=20, stale-while-revalidate=60"
                 if method == "GET" and path == "/api/books"
@@ -520,7 +521,8 @@ class BiblioHandler(BaseHTTPRequestHandler):
             document["created_at"] = now
         return document
 
-    def dispatch_mongo_api(self, db, method, path):
+    def dispatch_mongo_api(self, db, method, path, query=None):
+        query = query or {}
         if method == "GET" and path == "/api/me":
             user = self.current_user_mongo(db)
             return {"user": public_user(user) if user else None}, HTTPStatus.OK, []
@@ -763,7 +765,8 @@ class BiblioHandler(BaseHTTPRequestHandler):
 
         raise APIError(HTTPStatus.NOT_FOUND, "Маршрут не найден.")
 
-    def dispatch_api(self, db, method, path):
+    def dispatch_api(self, db, method, path, query=None):
+        query = query or {}
         if method == "GET" and path == "/api/me":
             user = self.current_user(db)
             return {"user": public_user(user) if user else None}, HTTPStatus.OK, []
