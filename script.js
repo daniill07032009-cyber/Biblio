@@ -223,6 +223,7 @@ let currentPage = 1;
 const pageSize = 8;
 let allBooks = [];
 let allBooksById = new Map();
+let allBooksByAuthor = new Map();
 const bookDetailRequests = new Map();
 let activeDetailsBook = null;
 let favoriteIds = new Set(readStoredArray("biblio-favorites"));
@@ -970,7 +971,7 @@ function syncFilterDialog() {
 
 function showAuthor(authorName) {
   pendingAuthorName = authorName;
-  const authorBooks = allBooks.filter((book) => book.author === authorName);
+  const authorBooks = allBooksByAuthor.get(authorName) || [];
   const avatar = document.querySelector("#author-dialog-avatar");
   avatar.textContent = authorName.trim().charAt(0).toLocaleUpperCase("ru");
   document.querySelector("#author-dialog-name").textContent = authorName;
@@ -1064,6 +1065,14 @@ async function refreshPublishedBooks() {
   const { books } = await api("/api/books");
   allBooks = books;
   allBooksById = new Map(books.map((book) => [String(book.id), book]));
+  allBooksByAuthor = new Map();
+  books.forEach((book) => {
+    const author = String(book.author || "").trim();
+    if (!author) return;
+    const authorBooks = allBooksByAuthor.get(author) || [];
+    authorBooks.push(book);
+    allBooksByAuthor.set(author, authorBooks);
+  });
   renderPublishedAuthors();
   bookGrid.replaceChildren();
   books.forEach((book) => bookGrid.append(createCatalogCard(book)));
