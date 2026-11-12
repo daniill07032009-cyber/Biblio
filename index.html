@@ -438,6 +438,18 @@
       </form>
       <p class="auth-note">Книги, профиль и черновики сохраняются в твоём аккаунте.</p>
     </dialog>
+    <dialog class="dialog auth-dialog email-verification-dialog" id="email-verification-dialog" aria-labelledby="email-verification-title">
+      <button class="dialog-close" type="button" aria-label="Закрыть" data-close>×</button>
+      <span class="eyebrow">Последний шаг регистрации</span>
+      <h2 id="email-verification-title">Проверь свою почту</h2>
+      <p class="auth-note">Мы отправили шестизначный код на <strong id="verification-email"></strong>. Введи его ниже, чтобы активировать аккаунт. Код действует 10 минут.</p>
+      <form id="email-verification-form" class="verification-form">
+        <label for="email-verification-code">Код подтверждения</label>
+        <input id="email-verification-code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" minlength="6" maxlength="6" placeholder="000000" required />
+        <button class="button button--primary" type="submit">Подтвердить почту</button>
+      </form>
+      <p class="auth-note">Не пришло письмо? Проверь папку «Спам». Если код истёк, начни регистрацию заново.</p>
+    </dialog>
     <dialog class="dialog auth-dialog" id="delete-account-dialog" aria-labelledby="delete-account-title">
       <button class="dialog-close" type="button" aria-label="Закрыть" data-close>×</button>
       <span class="eyebrow">Подтверждение действия</span>
