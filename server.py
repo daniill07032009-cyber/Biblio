@@ -539,6 +539,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
             skip = (page - 1) * limit
             search = (query.get("q") or [""])[0].strip()[:120]
             genre = (query.get("genre") or [""])[0].strip()[:60]
+            genres = [value.strip()[:60] for value in (query.get("genres") or [""])[0].split(",") if value.strip()][:20]
             sort_by = (query.get("sort") or ["popular"])[0].strip()
             sort_fields = {
                 "popular": [("rating", DESCENDING), ("rating_count", DESCENDING), ("updated_at", DESCENDING), ("id", DESCENDING)],
@@ -548,7 +549,9 @@ class BiblioHandler(BaseHTTPRequestHandler):
             }
             sort_spec = sort_fields.get(sort_by, sort_fields["popular"])
             match = {"status": "published"}
-            if genre and genre != "Все":
+            if genres:
+                match["genre"] = {"$in": genres}
+            elif genre and genre != "Все":
                 match["genre"] = genre
             if search:
                 pattern = re.escape(search)
@@ -831,6 +834,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 return {"error": "Некорректные параметры пагинации"}, HTTPStatus.BAD_REQUEST, []
             search = (query.get("q") or [""])[0].strip()[:120]
             genre = (query.get("genre") or [""])[0].strip()[:60]
+            genres = [value.strip()[:60] for value in (query.get("genres") or [""])[0].split(",") if value.strip()][:20]
             sort_by = (query.get("sort") or ["popular"])[0].strip()
             sort_sql = {
                 "popular": "rating_avg DESC, rating_count DESC, books.updated_at DESC, books.id DESC",
@@ -840,7 +844,11 @@ class BiblioHandler(BaseHTTPRequestHandler):
             }.get(sort_by, "rating_avg DESC, rating_count DESC, books.updated_at DESC, books.id DESC")
             conditions = ["books.status = 'published'"]
             params = []
-            if genre and genre != "Все":
+            if genres:
+                placeholders = ",".join("?" for _ in genres)
+                conditions.append(f"books.genre IN ({placeholders})")
+                params.extend(genres)
+            elif genre and genre != "Все":
                 conditions.append("books.genre = ?")
                 params.append(genre)
             if search:
