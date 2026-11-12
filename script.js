@@ -1842,30 +1842,63 @@ bookForm.addEventListener("submit", async (event) => {
   }
 });
 
-document.querySelector("#profile-avatar-file").addEventListener("change", (event) => {
-  const file = event.currentTarget.files?.[0];
+document.querySelector("#profile-avatar-file").addEventListener("change", async (event) => {
+  const input = event.currentTarget;
+  const file = input.files?.[0];
   if (!file) return;
   if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
     showToast("Выбери изображение PNG, JPG или WebP.");
-    event.currentTarget.value = "";
+    input.value = "";
     return;
   }
-  if (file.size > 550 * 1024) {
-    showToast("Аватарка должна быть не больше 550 КБ.");
-    event.currentTarget.value = "";
+  if (file.size > 8 * 1024 * 1024) {
+    showToast("Исходное изображение должно быть не больше 8 МБ.");
+    input.value = "";
     return;
   }
-  const reader = new FileReader();
-  reader.onload = () => {
-    pendingAvatarData = String(reader.result);
+
+  try {
+    let avatarData;
+    if ("createImageBitmap" in window) {
+      const bitmap = await createImageBitmap(file);
+      const maxSide = 256;
+      const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Не удалось обработать изображение.");
+      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      bitmap.close();
+      avatarData = canvas.toDataURL("image/webp", 0.82);
+      if (!avatarData.startsWith("data:image/webp,")) {
+        avatarData = canvas.toDataURL("image/jpeg", 0.82);
+      }
+    } else {
+      if (file.size > 550 * 1024) {
+        throw new Error("В этом браузере аватарка должна быть не больше 550 КБ.");
+      }
+      avatarData = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error("Не удалось прочитать изображение."));
+        reader.readAsDataURL(file);
+      });
+    }
+    if (avatarData.length > 760000) {
+      throw new Error("Не удалось достаточно сжать изображение. Выбери другое фото.");
+    }
+    pendingAvatarData = avatarData;
     const avatar = document.querySelector("#profile-avatar");
     avatar.replaceChildren();
     const image = document.createElement("img");
     image.src = pendingAvatarData;
     image.alt = "Предпросмотр аватарки";
     avatar.append(image);
-  };
-  reader.readAsDataURL(file);
+  } catch (error) {
+    showToast(error.message || "Не удалось обработать аватарку.");
+    input.value = "";
+  }
 });
 
 document.querySelector("#remove-profile-avatar").addEventListener("click", () => {
