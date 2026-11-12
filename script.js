@@ -600,6 +600,10 @@ function saveSearchQuery() {
   renderSearchSuggestions(query);
 }
 
+function persistFavorites() {
+  persistFavorites();
+}
+
 function createElement(tag, className, text) {
   const element = document.createElement(tag);
   if (className) element.className = className;
@@ -608,7 +612,7 @@ function createElement(tag, className, text) {
 }
 
 function renderReadingLibrary() {
-  const booksById = new Map(allBooks.map((book) => [String(book.id), book]));
+  const booksById = allBooksById;
   const shelves = [
     {
       id: "reading-now",
@@ -705,7 +709,7 @@ function renderReadingLibrary() {
         removeButton.type = "button";
         removeButton.addEventListener("click", () => {
           favoriteIds.delete(bookId);
-          localStorage.setItem("biblio-favorites", JSON.stringify([...favoriteIds]));
+          persistFavorites();
           updateFavoriteButtons();
           renderReadingLibrary();
           showToast("Книга удалена из избранного");
@@ -1451,7 +1455,7 @@ bookGrid.addEventListener("click", (event) => {
   const isFavorite = !favoriteIds.has(favoriteBookId);
   if (isFavorite) favoriteIds.add(favoriteBookId);
   else favoriteIds.delete(favoriteBookId);
-  localStorage.setItem("biblio-favorites", JSON.stringify([...favoriteIds]));
+  persistFavorites();
   updateFavoriteButtons();
   renderReadingLibrary();
   filterBooks();
@@ -1539,7 +1543,7 @@ document.querySelector("#details-favorite-button").addEventListener("click", () 
   const id = String(activeDetailsBook.id);
   if (favoriteIds.has(id)) favoriteIds.delete(id);
   else favoriteIds.add(id);
-  localStorage.setItem("biblio-favorites", JSON.stringify([...favoriteIds]));
+  persistFavorites();
   updateFavoriteButtons();
   renderReadingLibrary();
   renderBookDetails(activeDetailsBook, false);
