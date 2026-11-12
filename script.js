@@ -224,6 +224,7 @@ const pageSize = 8;
 let allBooks = [];
 let allBooksById = new Map();
 let allBooksByAuthor = new Map();
+let searchableTextById = new Map();
 const bookDetailRequests = new Map();
 let activeDetailsBook = null;
 let favoriteIds = new Set(readStoredArray("biblio-favorites"));
@@ -415,14 +416,7 @@ confirmDialog.addEventListener("close", () => {
 function filterBooks() {
   const query = searchInput.value.trim().toLocaleLowerCase("ru");
   const cards = [...bookGrid.querySelectorAll(".book-card")];
-  const searchableTextById = new Map(
-    allBooks.map((book) => [
-      String(book.id),
-      [book.title, book.author, book.description || "", ...(book.tags || [])]
-        .join(" ")
-        .toLocaleLowerCase("ru"),
-    ]),
-  );
+  // Search text is indexed once when the catalog loads, not on every filter keystroke.
   const ageRating = document.querySelector("#catalog-age").value;
   const language = document.querySelector("#catalog-language").value;
   const length = document.querySelector("#catalog-length").value;
@@ -1084,6 +1078,14 @@ async function refreshPublishedBooks() {
   const { books } = await api("/api/books");
   allBooks = books;
   allBooksById = new Map(books.map((book) => [String(book.id), book]));
+  searchableTextById = new Map(
+    books.map((book) => [
+      String(book.id),
+      [book.title, book.author, book.description || "", ...(book.tags || [])]
+        .join(" ")
+        .toLocaleLowerCase("ru"),
+    ]),
+  );
   allBooksByAuthor = new Map();
   books.forEach((book) => {
     const author = String(book.author || "").trim();
