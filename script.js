@@ -12,6 +12,11 @@ const authForm = document.querySelector("#auth-form");
 const authNameField = document.querySelector("#auth-name-field");
 const authTitle = document.querySelector("#auth-title");
 const authSubmit = document.querySelector("#auth-submit");
+const emailVerificationDialog = document.querySelector("#email-verification-dialog");
+const emailVerificationForm = document.querySelector("#email-verification-form");
+const verificationEmailLabel = document.querySelector("#verification-email");
+let pendingVerificationEmail = "";
+
 const librarySection = document.querySelector("#my-library");
 const libraryNavLink = document.querySelector("#library-nav-link");
 const myBooksList = document.querySelector("#my-books-list");
@@ -1754,6 +1759,16 @@ authForm.addEventListener("submit", async (event) => {
       method: "POST",
       body: JSON.stringify(payload),
     });
+    if (result.verification_required) {
+      pendingVerificationEmail = result.email;
+      verificationEmailLabel.textContent = result.email;
+      closeDialog(authDialog);
+      emailVerificationForm.reset();
+      emailVerificationDialog.showModal();
+      document.querySelector("#email-verification-code").focus();
+      showToast("Письмо с кодом отправлено");
+      return;
+    }
     currentUser = result.user;
     updateAccountUI();
     closeDialog(authDialog);
@@ -1765,6 +1780,36 @@ authForm.addEventListener("submit", async (event) => {
   } catch (error) {
     showToast(error.message);
   }
+});
+
+emailVerificationForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const submit = emailVerificationForm.querySelector('button[type="submit"]');
+  submit.disabled = true;
+  try {
+    const code = new FormData(emailVerificationForm).get("code").trim();
+    const result = await api("/api/verify-email", {
+      method: "POST",
+      body: JSON.stringify({ email: pendingVerificationEmail, code }),
+    });
+    currentUser = result.user;
+    pendingVerificationEmail = "";
+    emailVerificationDialog.close();
+    updateAccountUI();
+    authForm.reset();
+    resetBookForm();
+    await refreshMyBooks();
+    await refreshPublishedBooks();
+    showToast(`Почта подтверждена! Добро пожаловать, ${currentUser.display_name}!`);
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    submit.disabled = false;
+  }
+});
+
+document.querySelector("#email-verification-code").addEventListener("input", (event) => {
+  event.currentTarget.value = event.currentTarget.value.replace(/\\D/g, "").slice(0, 6);
 });
 
 async function logoutCurrentUser() {
