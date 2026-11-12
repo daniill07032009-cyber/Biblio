@@ -523,11 +523,11 @@ class BiblioHandler(BaseHTTPRequestHandler):
                         {"$match": {"status": "published"}},
                         {"$sort": {"updated_at": DESCENDING, "id": DESCENDING}},
                         {
-                            "$project": {
-                                "chapters": 0,
+                            "$set": {
                                 "chapter_count": {"$size": {"$ifNull": ["$chapters", []]}},
                             }
                         },
+                        {"$unset": "chapters"},
                     ]
                 )
             )
