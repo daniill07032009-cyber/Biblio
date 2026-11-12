@@ -586,11 +586,24 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 },
                 upsert=True,
             )
-            ratings = list(db.book_ratings.find({"book_id": book_id}, {"rating": 1}))
-            average = round(sum(item["rating"] for item in ratings) / len(ratings), 1)
+            rating_summary = next(
+                db.book_ratings.aggregate(
+                    [
+                        {"$match": {"book_id": book_id}},
+                        {
+                            "$group": {
+                                "_id": None,
+                                "rating": {"$avg": "$rating"},
+                                "rating_count": {"$sum": 1},
+                            }
+                        },
+                    ]
+                ),
+                {"rating": rating, "rating_count": 1},
+            )
             return {
-                "rating": average,
-                "rating_count": len(ratings),
+                "rating": round(rating_summary["rating"], 1),
+                "rating_count": rating_summary["rating_count"],
                 "user_rating": rating,
             }, HTTPStatus.OK, []
 
