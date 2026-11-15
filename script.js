@@ -1469,7 +1469,7 @@ function renderCatalogGameDetail(game) {
   );
   ratingSection.append(ratingTitle, stars, ratingMessage);
 
-  const playButton = createElement("a", "button button--primary game-catalog-play", "Начать играть");
+  const playButton = createElement("a", "button button--primary game-catalog-play", "Начать игру");
   playButton.href = `/games/${encodeURIComponent(game.slug)}/play`;
   panel.append(header, content, stats, ratingSection, playButton);
   panel.hidden = false;
@@ -1611,12 +1611,22 @@ function createCatalogRoomCard(room) {
 
 function getCatalogPresenceToken() {
   if (catalogPresenceToken) return catalogPresenceToken;
+  const storageKey = "biblio-game-catalog-viewer-token";
+  const storedToken = localStorage.getItem(storageKey);
+  if (
+    typeof storedToken === "string" &&
+    /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(storedToken)
+  ) {
+    catalogPresenceToken = storedToken;
+    return catalogPresenceToken;
+  }
   const bytes = new Uint8Array(16);
   window.crypto.getRandomValues(bytes);
   bytes[6] = (bytes[6] & 0x0f) | 0x40;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
   const hex = [...bytes].map((value) => value.toString(16).padStart(2, "0")).join("");
   catalogPresenceToken = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  localStorage.setItem(storageKey, catalogPresenceToken);
   return catalogPresenceToken;
 }
 
