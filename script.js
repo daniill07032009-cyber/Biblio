@@ -1398,7 +1398,9 @@ async function refreshGameCatalog() {
 async function openCatalogGame(slug) {
   try {
     const result = await api(`/api/catalog/games/${encodeURIComponent(slug)}`);
-    renderCatalogGameDetail({ ...result.game, rooms: result.rooms || [] });
+    const game = { ...result.game, rooms: result.rooms || [] };
+    if (/\/play\/?$/.test(location.pathname)) renderGameRoomsPage(game);
+    else renderCatalogGameDetail(game);
   } catch (error) {
     showToast(error.message);
   }
@@ -1467,6 +1469,35 @@ function renderCatalogGameDetail(game) {
   );
   ratingSection.append(ratingTitle, stars, ratingMessage);
 
+  const playButton = createElement("a", "button button--primary game-catalog-play", "Начать играть");
+  playButton.href = `/games/${encodeURIComponent(game.slug)}/play`;
+  panel.append(header, content, stats, ratingSection, playButton);
+  panel.hidden = false;
+  panel.focus();
+  document.title = `${game.title} — Игры | Biblio`;
+  startCatalogPresence(game.slug);
+}
+
+function renderGameRoomsPage(game) {
+  const panel = document.querySelector("#game-catalog-detail-panel");
+  if (!panel) return;
+  stopCatalogPresence();
+  activeCatalogGameSlug = game.slug;
+  const catalogLayout = document.querySelector("#game-catalog-layout");
+  catalogLayout.hidden = true;
+  document.querySelector("#game-detail-panel").hidden = true;
+  panel.replaceChildren();
+
+  const header = createElement("div", "game-detail__header");
+  const heading = createElement("div");
+  heading.append(
+    createElement("span", "eyebrow", "Игровая зона"),
+    createElement("h3", "", `${game.title} — игровые комнаты`),
+  );
+  const backButton = createElement("a", "button button--secondary", "← К игре");
+  backButton.href = `/games/${encodeURIComponent(game.slug)}`;
+  header.append(heading, backButton);
+
   const roomsSection = createElement("section", "game-catalog-rooms");
   const roomsHeading = createElement("div", "game-catalog-rooms__heading");
   roomsHeading.append(
@@ -1474,67 +1505,70 @@ function renderCatalogGameDetail(game) {
     createElement("span", "", "Комнаты и прогресс сохраняются, пока создатель их не удалит."),
   );
   const roomsList = createElement("div", "game-catalog-rooms__list");
-  if (game.rooms?.length) {
+  if (game.rooms.length) {
     game.rooms.forEach((room) => roomsList.append(createCatalogRoomCard(room)));
   } else {
     roomsList.append(createElement("p", "empty-state", "Пока нет комнат. Создай первую для этой игры."));
   }
   roomsSection.append(roomsHeading, roomsList);
   if (currentUser) {
-    const form = createElement("form", "games-form");
-    form.id = "game-room-create-form";
-    form.append(
-      createElement("h4", "", "Создать комнату"),
-      createElement("label", "", "Название комнаты"),
-    );
-    const nameInput = createElement("input");
-    nameInput.name = "name";
-    nameInput.maxLength = 80;
-    nameInput.required = true;
-    nameInput.placeholder = "Например, Кампания «Северный путь»";
-    form.querySelector("label").append(nameInput);
-    const descriptionLabel = createElement("label", "", "Описание");
-    const descriptionInput = createElement("textarea");
-    descriptionInput.name = "description";
-    descriptionInput.maxLength = 500;
-    descriptionInput.rows = 3;
-    descriptionInput.placeholder = "Опиши свою кампанию";
-    descriptionLabel.append(descriptionInput);
-    const accessLabel = createElement("label", "", "Доступ");
-    const accessSelect = createElement("select");
-    accessSelect.name = "access";
-    [
-      ["public", "Публичная"],
-      ["private", "По коду"],
-      ["invite_only", "По приглашениям"],
-    ].forEach(([value, label]) => {
-      const option = createElement("option", "", label);
-      option.value = value;
-      accessSelect.append(option);
-    });
-    accessLabel.append(accessSelect);
-    const codeLabel = createElement("label", "", "Код доступа");
-    const codeInput = createElement("input");
-    codeInput.name = "join_code";
-    codeInput.maxLength = 32;
-    codeInput.placeholder = "Оставь пустым для генерации";
-    codeLabel.append(codeInput);
-    const submit = createElement("button", "button button--primary", "Создать комнату");
-    submit.type = "submit";
-    form.append(descriptionLabel, accessLabel, codeLabel, submit);
-    roomsSection.append(form);
+    roomsSection.append(createGameRoomForm());
   } else {
     const loginButton = createElement("button", "button button--primary", "Войти, чтобы создать комнату");
     loginButton.type = "button";
     loginButton.addEventListener("click", () => openDialog("auth-dialog"));
     roomsSection.append(loginButton);
   }
-
-  panel.append(header, content, stats, ratingSection, roomsSection);
+  panel.append(header, roomsSection);
   panel.hidden = false;
   panel.focus();
-  document.title = `${game.title} — Игры | Biblio`;
+  document.title = `Игровые комнаты — ${game.title} | Biblio`;
   startCatalogPresence(game.slug);
+}
+
+function createGameRoomForm() {
+  const form = createElement("form", "games-form");
+  form.id = "game-room-create-form";
+  form.append(
+    createElement("h4", "", "Создать комнату"),
+    createElement("label", "", "Название комнаты"),
+  );
+  const nameInput = createElement("input");
+  nameInput.name = "name";
+  nameInput.maxLength = 80;
+  nameInput.required = true;
+  nameInput.placeholder = "Например, Кампания «Северный путь»";
+  form.querySelector("label").append(nameInput);
+  const descriptionLabel = createElement("label", "", "Описание");
+  const descriptionInput = createElement("textarea");
+  descriptionInput.name = "description";
+  descriptionInput.maxLength = 500;
+  descriptionInput.rows = 3;
+  descriptionInput.placeholder = "Опиши свою кампанию";
+  descriptionLabel.append(descriptionInput);
+  const accessLabel = createElement("label", "", "Доступ");
+  const accessSelect = createElement("select");
+  accessSelect.name = "access";
+  [
+    ["public", "Публичная"],
+    ["private", "По коду"],
+    ["invite_only", "По приглашениям"],
+  ].forEach(([value, label]) => {
+    const option = createElement("option", "", label);
+    option.value = value;
+    accessSelect.append(option);
+  });
+  accessLabel.append(accessSelect);
+  const codeLabel = createElement("label", "", "Код доступа");
+  const codeInput = createElement("input");
+  codeInput.name = "join_code";
+  codeInput.maxLength = 32;
+  codeInput.placeholder = "Оставь пустым для генерации";
+  codeLabel.append(codeInput);
+  const submit = createElement("button", "button button--primary", "Создать комнату");
+  submit.type = "submit";
+  form.append(descriptionLabel, accessLabel, codeLabel, submit);
+  return form;
 }
 
 function createCatalogRoomCard(room) {
@@ -1719,7 +1753,7 @@ function renderGameDetail(game) {
   panel.innerHTML = `
     <div class="game-detail__header">
       <div><span class="eyebrow">Игровая комната</span><h3>${escapeHtml(title)}</h3></div>
-      <button class="button button--secondary" type="button" data-game-action="back">← К играм</button>
+      <button class="button button--secondary" type="button" data-game-action="back">${/\/play\/?$/.test(location.pathname) ? "← К комнатам" : "← К игре"}</button>
     </div>
     <p>${escapeHtml(game.description || "Без описания.")}</p>
     <ul class="game-detail-list">
@@ -1791,7 +1825,13 @@ function renderGameDetail(game) {
   `;
 
   panel.querySelector('[data-game-action="back"]')?.addEventListener("click", () => {
-    window.location.assign(game.catalog_game_slug ? `/games/${encodeURIComponent(game.catalog_game_slug)}` : "/games");
+    const gamePath = game.catalog_game_slug
+      ? `/games/${encodeURIComponent(game.catalog_game_slug)}`
+      : "/games";
+    const destination = game.catalog_game_slug && /\/play\/?$/.test(location.pathname)
+      ? `${gamePath}/play`
+      : gamePath;
+    window.location.assign(destination);
   });
 
   const joinButton = panel.querySelector('[data-game-action="join"]');
@@ -1830,7 +1870,10 @@ function renderGameDetail(game) {
     leaveButton.addEventListener("click", async () => {
       try {
         await api(`/api/games/${game.id}/leave`, { method: "DELETE" });
-        window.location.assign(game.catalog_game_slug ? `/games/${encodeURIComponent(game.catalog_game_slug)}` : "/games");
+        const gamePath = game.catalog_game_slug
+          ? `/games/${encodeURIComponent(game.catalog_game_slug)}`
+          : "/games";
+        window.location.assign(game.catalog_game_slug ? `${gamePath}/play` : gamePath);
         showToast("Ты покинул комнату");
       } catch (error) {
         showToast(error.message);
@@ -1945,7 +1988,7 @@ function applyPageLayout() {
     "/settings": "settings",
   };
   const path = location.pathname.replace(/\/+$/, "") || "/";
-  const page = routes[path] || (/^\/games\/[a-z0-9-]+$/.test(path) ? "games" : "home");
+  const page = routes[path] || (/^\/games\/[a-z0-9-]+(?:\/play)?$/.test(path) ? "games" : "home");
   const visibleSections = {
     home: [".hero", ".benefits", "#genres", "#popular", "#club", "#authors", ".newsletter"],
     catalog: ["#genres", "#popular"],
@@ -2768,7 +2811,7 @@ async function initialize() {
     updateAccountUI();
     await refreshPublishedBooks();
     await refreshGameCatalog();
-    const gamePageMatch = location.pathname.match(/^\/games\/([a-z0-9-]+)\/?$/);
+    const gamePageMatch = location.pathname.match(/^\/games\/([a-z0-9-]+)(?:\/play)?\/?$/);
     if (gamePageMatch) await openCatalogGame(decodeURIComponent(gamePageMatch[1]));
     if (currentUser) await refreshMyBooks();
     const readerRoute = location.hash.match(/^#read\/([^/]+)$/);

@@ -2704,7 +2704,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 "/library",
                 "/settings",
             }
-            or re.fullmatch(r"/games/[a-z0-9-]+/?", path)
+            or re.fullmatch(r"/games/[a-z0-9-]+(?:/play)?/?", path)
         ):
             candidate = ROOT / "index.html"
         if not candidate.is_relative_to(ROOT) or not candidate.is_file():

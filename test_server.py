@@ -795,7 +795,7 @@ class BiblioServerTests(unittest.TestCase):
         with self.client.open(request) as response:
             self.assertEqual(response.status, 200)
             self.assertIn("Biblio", response.read().decode("utf-8"))
-        for path in ("/catalog", "/authors", "/club", "/games/dnd", "/library", "/settings"):
+        for path in ("/catalog", "/authors", "/club", "/games/dnd", "/games/dnd/play", "/library", "/settings"):
             with self.subTest(path=path), self.client.open(self.base_url + path) as response:
                 self.assertEqual(response.status, 200)
                 page = response.read().decode("utf-8")
