@@ -18,7 +18,7 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="/styles.css?v=6" />
-    <script src="/script.js?v=6" defer></script>
+    <script src="/script.js?v=7" defer></script>
   </head>
   <body>
     <div class="announcement">
@@ -462,6 +462,7 @@
     </dialog>
     <dialog class="dialog auth-dialog email-verification-dialog" id="email-verification-dialog" aria-labelledby="email-verification-title">
       <button class="dialog-close" type="button" aria-label="Закрыть" data-close>×</button>
+      <button class="dialog-back" type="button" data-back hidden>← Назад</button>
       <span class="eyebrow">Последний шаг регистрации</span>
       <h2 id="email-verification-title">Проверь свою почту</h2>
       <p class="auth-note">Мы отправили шестизначный код на <strong id="verification-email"></strong>. Введи его ниже, чтобы активировать аккаунт. Код действует 10 минут.</p>

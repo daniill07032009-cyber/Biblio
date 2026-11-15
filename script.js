@@ -1978,12 +1978,16 @@ async function createGameRoom(event) {
     join_code: formData.get("join_code") || "",
     catalog_game_slug: activeCatalogGameSlug,
   };
+  const submit = form.querySelector('button[type="submit"]');
+  submit.disabled = true;
   try {
     await api("/api/games", { method: "POST", body: JSON.stringify(payload) });
     await openCatalogGame(activeCatalogGameSlug);
     showToast("Комната создана");
   } catch (error) {
     showToast(error.message);
+  } finally {
+    submit.disabled = false;
   }
 }
 
@@ -2427,9 +2431,8 @@ authForm.addEventListener("submit", async (event) => {
     if (result.verification_required) {
       pendingVerificationEmail = result.email;
       verificationEmailLabel.textContent = result.email;
-      closeDialog(authDialog);
       emailVerificationForm.reset();
-      emailVerificationDialog.showModal();
+      openDialog(emailVerificationDialog, authDialog);
       document.querySelector("#email-verification-code").focus();
       showToast("Письмо с кодом отправлено");
       return;
@@ -2439,6 +2442,8 @@ authForm.addEventListener("submit", async (event) => {
     closeDialog(authDialog);
     authForm.reset();
     resetBookForm();
+    const gamePageMatch = location.pathname.match(/^\/games\/([a-z0-9-]+)(?:\/play)?\/?$/);
+    if (gamePageMatch) await openCatalogGame(decodeURIComponent(gamePageMatch[1]));
     await refreshMyBooks();
     await refreshPublishedBooks();
     showToast(`Рады видеть тебя, ${currentUser.display_name}!`);
@@ -2459,10 +2464,12 @@ emailVerificationForm.addEventListener("submit", async (event) => {
     });
     currentUser = result.user;
     pendingVerificationEmail = "";
-    emailVerificationDialog.close();
+    closeDialog(emailVerificationDialog);
     updateAccountUI();
     authForm.reset();
     resetBookForm();
+    const gamePageMatch = location.pathname.match(/^\/games\/([a-z0-9-]+)(?:\/play)?\/?$/);
+    if (gamePageMatch) await openCatalogGame(decodeURIComponent(gamePageMatch[1]));
     await refreshMyBooks();
     await refreshPublishedBooks();
     showToast(`Почта подтверждена! Добро пожаловать, ${currentUser.display_name}!`);
@@ -2474,7 +2481,7 @@ emailVerificationForm.addEventListener("submit", async (event) => {
 });
 
 document.querySelector("#email-verification-code").addEventListener("input", (event) => {
-  event.currentTarget.value = event.currentTarget.value.replace(/\\D/g, "").slice(0, 6);
+  event.currentTarget.value = event.currentTarget.value.replace(/\D/g, "").slice(0, 6);
 });
 
 async function logoutCurrentUser() {
