@@ -1349,37 +1349,7 @@ async function refreshGames() {
       gamesList.append(createElement("p", "empty-state", "Пока нет публичных комнат. Создай первую!"));
     } else {
       games.forEach((game) => {
-        const card = createElement("article", "game-room-card");
-        card.dataset.access = game.access || "public";
-        const header = createElement("div", "game-room-card__top");
-        const titleWrap = createElement("div", "game-room-card__title-wrap");
-        titleWrap.append(createElement("h3", "", game.title || game.name || "Новая комната"));
-        const badge = createElement("span", "game-badge", game.access === "public" ? "Публичная" : game.access === "private" ? "По коду" : "По приглашениям");
-        header.append(titleWrap, badge);
-        const meta = createElement("p", "game-room-card__meta", `${game.member_count || 0} участников · ${game.hero_count || 0} героев`);
-        const description = createElement("p", "game-room-card__description", game.description || "Без описания.");
-        const actions = createElement("div", "game-room-card__actions");
-        const detailButton = createElement("button", "button button--secondary", "Подробнее");
-        detailButton.type = "button";
-        detailButton.addEventListener("click", () => renderGameDetail(game));
-        actions.append(detailButton);
-        if (currentUser && !game.is_member && game.owner_id !== currentUser.id) {
-          const joinButton = createElement("button", "button button--primary", "Вступить");
-          joinButton.type = "button";
-          joinButton.addEventListener("click", async () => {
-            try {
-              const payload = game.access === "public" ? {} : { join_code: window.prompt("Введи код доступа к комнате", "") || "" };
-              await api(`/api/games/${game.id}/join`, { method: "POST", body: JSON.stringify(payload) });
-              await refreshGames();
-              showToast("Ты вступил в комнату");
-            } catch (error) {
-              showToast(error.message);
-            }
-          });
-          actions.append(joinButton);
-        }
-        card.append(header, meta, description, actions);
-        gamesList.append(card);
+        gamesList.append(createGameCoverCard(game));
       });
     }
     myGamesList.replaceChildren();
@@ -1387,14 +1357,34 @@ async function refreshGames() {
       myGamesList.append(createElement("p", "empty-state", currentUser ? "У тебя ещё нет комнат." : "Войди, чтобы создать комнату."));
     } else {
       myGames.forEach((game) => {
-        const card = createElement("button", "game-mini-card", "");
-        card.type = "button";
-        card.addEventListener("click", () => renderGameDetail(game));
-        card.append(createElement("strong", "", game.title || game.name || "Новая комната"));
-        card.append(createElement("span", "", `• ${game.member_count || 0} участников`));
-        myGamesList.append(card);
+        myGamesList.append(createGameCoverCard(game));
       });
     }
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+function createGameCoverCard(game) {
+  const title = game.title || game.name || "Новая комната";
+  const card = createElement("button", "game-cover-card", "");
+  const coverStyle = Math.abs(Number(game.id) || [...title].reduce((sum, char) => sum + char.codePointAt(0), 0)) % 4;
+  card.type = "button";
+  card.dataset.coverStyle = String(coverStyle);
+  card.setAttribute("aria-label", `Открыть игру: ${title}`);
+  card.addEventListener("click", () => openGameRoom(game.id));
+  card.append(createElement("span", "game-cover-card__access", game.access === "public" ? "Публичная" : game.access === "private" ? "По коду" : "По приглашениям"));
+  card.append(createElement("span", "game-cover-card__symbol", "✦"));
+  card.append(createElement("strong", "game-cover-card__title", title));
+  card.append(createElement("span", "game-cover-card__meta", `${game.member_count || 0} игроков · ${game.hero_count || 0} героев`));
+  card.append(createElement("span", "game-cover-card__action", "Открыть игру →"));
+  return card;
+}
+
+async function openGameRoom(gameId) {
+  try {
+    const result = await api(`/api/games/${gameId}`);
+    renderGameDetail(result.game);
   } catch (error) {
     showToast(error.message);
   }
@@ -1412,6 +1402,9 @@ function escapeHtml(value) {
 function renderGameDetail(game) {
   const panel = document.querySelector("#game-detail-panel");
   if (!panel) return;
+  const gamesLayout = document.querySelector(".games-layout");
+  if (gamesLayout) gamesLayout.hidden = true;
+  panel.hidden = false;
   const title = game.title || game.name || "Новая комната";
   const members = Array.isArray(game.participants) ? game.participants : [];
   const heroes = Array.isArray(game.heroes) ? game.heroes : [];
@@ -1437,7 +1430,10 @@ function renderGameDetail(game) {
     : "<option value=\"\">Нет участников</option>";
 
   panel.innerHTML = `
-    <h3>${escapeHtml(title)}</h3>
+    <div class="game-detail__header">
+      <div><span class="eyebrow">Игровая комната</span><h3>${escapeHtml(title)}</h3></div>
+      <button class="button button--secondary" type="button" data-game-action="back">← К играм</button>
+    </div>
     <p>${escapeHtml(game.description || "Без описания.")}</p>
     <ul class="game-detail-list">
       <li>Доступ: ${game.access === "public" ? "Публичная" : game.access === "private" ? "По коду" : "По приглашениям"}</li>
@@ -1506,6 +1502,11 @@ function renderGameDetail(game) {
       ${currentUser && Number(game.owner_id) === Number(currentUser.id) ? `<button class="button button--secondary" type="button" data-game-action="refresh">Обновить</button>` : ""}
     </div>
   `;
+
+  panel.querySelector('[data-game-action="back"]')?.addEventListener("click", () => {
+    panel.hidden = true;
+    if (gamesLayout) gamesLayout.hidden = false;
+  });
 
   const joinButton = panel.querySelector('[data-game-action="join"]');
   if (joinButton) {
