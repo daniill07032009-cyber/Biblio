@@ -443,6 +443,8 @@ class BiblioServerTests(unittest.TestCase):
         game = result["games"][0]
         self.assertEqual(game["slug"], "dnd")
         self.assertEqual(game["title"], "Dungeons & Dragons")
+        self.assertIn("двадцатигранного кубика", game["description"])
+        self.assertGreater(len(game["description"]), 400)
         self.assertEqual(game["rating_count"], 0)
         self.assertEqual(game["active_viewers"], 0)
 
@@ -793,7 +795,7 @@ class BiblioServerTests(unittest.TestCase):
         with self.client.open(request) as response:
             self.assertEqual(response.status, 200)
             self.assertIn("Biblio", response.read().decode("utf-8"))
-        for path in ("/catalog", "/authors", "/club", "/library", "/settings"):
+        for path in ("/catalog", "/authors", "/club", "/games/dnd", "/library", "/settings"):
             with self.subTest(path=path), self.client.open(self.base_url + path) as response:
                 self.assertEqual(response.status, 200)
                 page = response.read().decode("utf-8")

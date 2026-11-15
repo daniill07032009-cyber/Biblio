@@ -42,7 +42,18 @@ GAME_CATALOG_SEED = (
     {
         "slug": "dnd",
         "title": "Dungeons & Dragons",
-        "description": "Настольная ролевая игра о приключениях, героях и мирах, которые создаются вместе.",
+        "description": (
+            "Dungeons & Dragons — настольная ролевая игра, в которой участники вместе "
+            "рассказывают историю о приключениях в фэнтезийном мире. Каждый игрок "
+            "создаёт героя: выбирает происхождение, класс, способности и собственный "
+            "путь, а ведущий описывает мир, играет за его обитателей и задаёт события "
+            "кампании. Решения героев определяют, куда повернёт история, а исход "
+            "рискованных действий часто решается броском двадцатигранного кубика и "
+            "характеристиками персонажа. Партия может быть исследованием древних "
+            "руин, дипломатией, расследованием или сражением — правила помогают "
+            "сделать приключение общим, но главное в D&D — воображение, выбор и "
+            "истории, которые игроки создают вместе."
+        ),
         "cover_symbol": "D20",
         "cover_theme": "fantasy",
     },
@@ -124,7 +135,9 @@ def initialize_db():
         db.game_catalog_presence.create_index([("expires_at", ASCENDING)])
         for game in GAME_CATALOG_SEED:
             db.game_catalog.update_one(
-                {"slug": game["slug"]}, {"$setOnInsert": game}, upsert=True
+                {"slug": game["slug"]},
+                {"$set": {"description": game["description"]}, "$setOnInsert": game},
+                upsert=True,
             )
         db.games.update_many(
             {"catalog_game_slug": {"$exists": False}},
@@ -302,9 +315,10 @@ def initialize_db():
         )
         db.executemany(
             """
-            INSERT OR IGNORE INTO game_catalog
+            INSERT INTO game_catalog
                 (slug, title, description, cover_symbol, cover_theme)
             VALUES (:slug, :title, :description, :cover_symbol, :cover_theme)
+            ON CONFLICT(slug) DO UPDATE SET description = excluded.description
             """,
             GAME_CATALOG_SEED,
         )
@@ -2681,14 +2695,17 @@ class BiblioHandler(BaseHTTPRequestHandler):
         if path in ("", "/"):
             path = "/index.html"
         candidate = (ROOT / path.lstrip("/")).resolve()
-        if not candidate.is_file() and path.rstrip("/") in {
-            "/catalog",
-            "/authors",
-            "/club",
-            "/games",
-            "/library",
-            "/settings",
-        }:
+        if not candidate.is_file() and (
+            path.rstrip("/") in {
+                "/catalog",
+                "/authors",
+                "/club",
+                "/games",
+                "/library",
+                "/settings",
+            }
+            or re.fullmatch(r"/games/[a-z0-9-]+/?", path)
+        ):
             candidate = ROOT / "index.html"
         if not candidate.is_relative_to(ROOT) or not candidate.is_file():
             self.send_error(HTTPStatus.NOT_FOUND)

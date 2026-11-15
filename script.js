@@ -1379,7 +1379,9 @@ function createGameCatalogCard(game) {
   players.append(document.createTextNode(" сейчас в блоке D&D"));
   info.append(players);
   card.append(cover, info);
-  card.addEventListener("click", () => openCatalogGame(game.slug));
+  card.addEventListener("click", () => {
+    window.location.assign(`/games/${encodeURIComponent(game.slug)}`);
+  });
   return card;
 }
 
@@ -1422,7 +1424,7 @@ function renderCatalogGameDetail(game) {
   );
   const backButton = createElement("button", "button button--secondary", "← К каталогу");
   backButton.type = "button";
-  backButton.addEventListener("click", showGameCatalog);
+  backButton.addEventListener("click", () => window.location.assign("/games"));
   header.append(heading, backButton);
 
   const content = createElement("div", "game-catalog-detail__content");
@@ -1531,6 +1533,7 @@ function renderCatalogGameDetail(game) {
   panel.append(header, content, stats, ratingSection, roomsSection);
   panel.hidden = false;
   panel.focus();
+  document.title = `${game.title} — Игры | Biblio`;
   startCatalogPresence(game.slug);
 }
 
@@ -1570,14 +1573,6 @@ function createCatalogRoomCard(room) {
     card.append(deleteButton);
   }
   return card;
-}
-
-function showGameCatalog() {
-  stopCatalogPresence();
-  activeCatalogGameSlug = "";
-  document.querySelector("#game-catalog-detail-panel").hidden = true;
-  document.querySelector("#game-detail-panel").hidden = true;
-  document.querySelector("#game-catalog-layout").hidden = false;
 }
 
 function getCatalogPresenceToken() {
@@ -1796,8 +1791,7 @@ function renderGameDetail(game) {
   `;
 
   panel.querySelector('[data-game-action="back"]')?.addEventListener("click", () => {
-    if (game.catalog_game_slug) openCatalogGame(game.catalog_game_slug);
-    else showGameCatalog();
+    window.location.assign(game.catalog_game_slug ? `/games/${encodeURIComponent(game.catalog_game_slug)}` : "/games");
   });
 
   const joinButton = panel.querySelector('[data-game-action="join"]');
@@ -1836,8 +1830,7 @@ function renderGameDetail(game) {
     leaveButton.addEventListener("click", async () => {
       try {
         await api(`/api/games/${game.id}/leave`, { method: "DELETE" });
-        if (game.catalog_game_slug) await openCatalogGame(game.catalog_game_slug);
-        else showGameCatalog();
+        window.location.assign(game.catalog_game_slug ? `/games/${encodeURIComponent(game.catalog_game_slug)}` : "/games");
         showToast("Ты покинул комнату");
       } catch (error) {
         showToast(error.message);
@@ -1951,7 +1944,8 @@ function applyPageLayout() {
     "/library": "library",
     "/settings": "settings",
   };
-  const page = routes[location.pathname.replace(/\/+$/, "") || "/"] || "home";
+  const path = location.pathname.replace(/\/+$/, "") || "/";
+  const page = routes[path] || (/^\/games\/[a-z0-9-]+$/.test(path) ? "games" : "home");
   const visibleSections = {
     home: [".hero", ".benefits", "#genres", "#popular", "#club", "#authors", ".newsletter"],
     catalog: ["#genres", "#popular"],
@@ -2774,6 +2768,8 @@ async function initialize() {
     updateAccountUI();
     await refreshPublishedBooks();
     await refreshGameCatalog();
+    const gamePageMatch = location.pathname.match(/^\/games\/([a-z0-9-]+)\/?$/);
+    if (gamePageMatch) await openCatalogGame(decodeURIComponent(gamePageMatch[1]));
     if (currentUser) await refreshMyBooks();
     const readerRoute = location.hash.match(/^#read\/([^/]+)$/);
     const bookRoute = location.hash.match(/^#book\/([^/]+)$/);
