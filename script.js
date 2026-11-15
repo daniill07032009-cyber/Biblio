@@ -425,9 +425,6 @@ confirmDialog.addEventListener("cancel", () => {
 confirmDialog.addEventListener("close", () => {
   confirmResolver?.(false);
 });
-document.addEventListener("submit", (event) => {
-  if (event.target.id === "game-room-create-form") createGameRoom(event);
-});
 document.addEventListener("visibilitychange", () => {
   if (!activeCatalogGameSlug) return;
   if (document.hidden) stopCatalogPresence();
@@ -1529,6 +1526,7 @@ function renderGameRoomsPage(game) {
 function createGameRoomForm() {
   const form = createElement("form", "games-form");
   form.id = "game-room-create-form";
+  form.addEventListener("submit", createGameRoom);
   form.append(
     createElement("h4", "", "Создать комнату"),
     createElement("label", "", "Название комнаты"),
