@@ -420,6 +420,12 @@ confirmDialog.addEventListener("cancel", () => {
 confirmDialog.addEventListener("close", () => {
   confirmResolver?.(false);
 });
+document.querySelector("#games-form")?.addEventListener("submit", createGameRoom);
+document.querySelector("#games-create-toggle")?.addEventListener("click", () => {
+  const form = document.querySelector("#games-form");
+  form?.scrollIntoView({ behavior: "smooth", block: "start" });
+  form?.querySelector("input[name='name']")?.focus();
+});
 
 function filterBooks() {
   const query = searchInput.value.trim().toLocaleLowerCase("ru");
@@ -1330,12 +1336,329 @@ function updateAccountUI() {
   profileForm.elements.bio.value = currentUser.bio || "";
 }
 
+async function refreshGames() {
+  const gamesList = document.querySelector("#games-list");
+  const myGamesList = document.querySelector("#my-games-list");
+  if (!gamesList || !myGamesList) return;
+  try {
+    const result = await api("/api/games");
+    const games = Array.isArray(result.games) ? result.games : [];
+    const myGames = currentUser ? (await api("/api/my/games")).games || [] : [];
+    gamesList.replaceChildren();
+    if (!games.length) {
+      gamesList.append(createElement("p", "empty-state", "Пока нет публичных комнат. Создай первую!"));
+    } else {
+      games.forEach((game) => {
+        const card = createElement("article", "game-room-card");
+        card.dataset.access = game.access || "public";
+        const header = createElement("div", "game-room-card__top");
+        const titleWrap = createElement("div", "game-room-card__title-wrap");
+        titleWrap.append(createElement("h3", "", game.title || game.name || "Новая комната"));
+        const badge = createElement("span", "game-badge", game.access === "public" ? "Публичная" : game.access === "private" ? "По коду" : "По приглашениям");
+        header.append(titleWrap, badge);
+        const meta = createElement("p", "game-room-card__meta", `${game.member_count || 0} участников · ${game.hero_count || 0} героев`);
+        const description = createElement("p", "game-room-card__description", game.description || "Без описания.");
+        const actions = createElement("div", "game-room-card__actions");
+        const detailButton = createElement("button", "button button--secondary", "Подробнее");
+        detailButton.type = "button";
+        detailButton.addEventListener("click", () => renderGameDetail(game));
+        actions.append(detailButton);
+        if (currentUser && !game.is_member && game.owner_id !== currentUser.id) {
+          const joinButton = createElement("button", "button button--primary", "Вступить");
+          joinButton.type = "button";
+          joinButton.addEventListener("click", async () => {
+            try {
+              const payload = game.access === "public" ? {} : { join_code: window.prompt("Введи код доступа к комнате", "") || "" };
+              await api(`/api/games/${game.id}/join`, { method: "POST", body: JSON.stringify(payload) });
+              await refreshGames();
+              showToast("Ты вступил в комнату");
+            } catch (error) {
+              showToast(error.message);
+            }
+          });
+          actions.append(joinButton);
+        }
+        card.append(header, meta, description, actions);
+        gamesList.append(card);
+      });
+    }
+    myGamesList.replaceChildren();
+    if (!currentUser || !myGames.length) {
+      myGamesList.append(createElement("p", "empty-state", currentUser ? "У тебя ещё нет комнат." : "Войди, чтобы создать комнату."));
+    } else {
+      myGames.forEach((game) => {
+        const card = createElement("button", "game-mini-card", "");
+        card.type = "button";
+        card.addEventListener("click", () => renderGameDetail(game));
+        card.append(createElement("strong", "", game.title || game.name || "Новая комната"));
+        card.append(createElement("span", "", `• ${game.member_count || 0} участников`));
+        myGamesList.append(card);
+      });
+    }
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function renderGameDetail(game) {
+  const panel = document.querySelector("#game-detail-panel");
+  if (!panel) return;
+  const title = game.title || game.name || "Новая комната";
+  const members = Array.isArray(game.participants) ? game.participants : [];
+  const heroes = Array.isArray(game.heroes) ? game.heroes : [];
+  const sessions = Array.isArray(game.sessions) ? game.sessions : [];
+  const currentHero = currentUser && Array.isArray(heroes)
+    ? heroes.find((hero) => Number(hero.user_id) === Number(currentUser.id)) || null
+    : null;
+  const canJoin = !!currentUser && !game.is_member && Number(game.owner_id) !== Number(currentUser.id);
+  const canLeave = !!currentUser && game.is_member && Number(game.owner_id) !== Number(currentUser.id);
+  const heroName = currentHero?.name || "";
+  const heroClass = currentHero?.class_name || "";
+  const heroRace = currentHero?.race || "";
+  const rankedHeroes = [...heroes].sort((first, second) => (second.xp || 0) - (first.xp || 0) || (second.level || 0) - (first.level || 0));
+  const ownerOptions = members.length
+    ? members
+        .filter((member) => Number(member.user_id) !== Number(game.owner_id))
+        .map((member) => {
+          const hero = heroes.find((item) => Number(item.user_id) === Number(member.user_id));
+          const label = hero ? `${hero.name} (${hero.level} ур.)` : `Игрок #${member.user_id}`;
+          return `<option value="${member.user_id}">${escapeHtml(label)}</option>`;
+        })
+        .join("")
+    : "<option value=\"\">Нет участников</option>";
+
+  panel.innerHTML = `
+    <h3>${escapeHtml(title)}</h3>
+    <p>${escapeHtml(game.description || "Без описания.")}</p>
+    <ul class="game-detail-list">
+      <li>Доступ: ${game.access === "public" ? "Публичная" : game.access === "private" ? "По коду" : "По приглашениям"}</li>
+      <li>Участников: ${game.member_count || members.length || 0}</li>
+      <li>Героев: ${game.hero_count || heroes.length || 0}</li>
+      <li>Сессий: ${sessions.length}</li>
+    </ul>
+    <div class="game-detail__section">
+      <strong>Лидерборд</strong>
+      ${rankedHeroes.length ? `<ol class="game-leaderboard">${rankedHeroes.slice(0, 5).map((hero, index) => `<li><span>#${index + 1}</span><strong>${escapeHtml(hero.name || "Герой")}</strong><em>${hero.level || 1} ур. · ${hero.xp || 0} XP</em></li>`).join("")}</ol>` : "<p>Пока нет лидеров. Стань первым, кто создаст героя.</p>"}
+    </div>
+    <div class="game-detail__section">
+      <strong>Герои</strong>
+      ${heroes.length ? `<ul>${heroes.map((hero) => `<li>${escapeHtml(hero.name)} · ${hero.level} ур. · ${hero.xp} XP</li>`).join("")}</ul>` : "<p>Пока нет героев.</p>"}
+    </div>
+    <div class="game-detail__section">
+      <strong>Недавние сессии</strong>
+      ${sessions.length ? `<ul>${sessions.map((session) => `<li>${escapeHtml(session.title || "Сессия")} · ${session.xp_awarded || 0} XP${session.notes ? ` · ${escapeHtml(session.notes)}` : ""}</li>`).join("")}</ul>` : "<p>Сессий ещё не было.</p>"}
+    </div>
+    ${(game.access !== "public" && currentUser && (game.is_member || game.is_owner)) ? `
+      <div class="game-detail__section">
+        <strong>Код доступа</strong>
+        <div class="game-access-code">
+          <code>${escapeHtml(game.join_code || "Не назначен")}</code>
+          ${game.is_owner ? `<button class="button button--secondary" type="button" data-game-action="regenerate-code">Сгенерировать новый</button>` : ""}
+        </div>
+      </div>
+    ` : ""}
+    ${currentUser && (game.is_member || game.is_owner) ? `
+      <div class="game-detail__section">
+        <strong>Мой герой</strong>
+        <form id="game-hero-form" class="games-form">
+          <label>Имя героя<input name="hero_name" maxlength="80" value="${escapeHtml(heroName)}" required /></label>
+          <label>Класс<input name="hero_class" maxlength="60" value="${escapeHtml(heroClass)}" /></label>
+          <label>Раса<input name="race" maxlength="60" value="${escapeHtml(heroRace)}" /></label>
+          <button class="button button--primary" type="submit">Сохранить героя</button>
+        </form>
+      </div>
+    ` : ""}
+    ${canJoin && game.access !== "public" ? `
+      <div class="game-detail__section">
+        <strong>Вступить в комнату</strong>
+        <form id="game-join-form" class="games-form">
+          <label>Код доступа<input name="join_code" maxlength="32" placeholder="Введите код" required /></label>
+          <button class="button button--primary" type="submit">Подтвердить вход</button>
+        </form>
+      </div>
+    ` : ""}
+    ${currentUser && Number(game.owner_id) === Number(currentUser.id) ? `
+      <div class="game-detail__section">
+        <strong>Провести сессию</strong>
+        <form id="game-session-form" class="games-form">
+          <label>Игрок
+            <select name="user_id">${ownerOptions}</select>
+          </label>
+          <label>Название сессии<input name="title" maxlength="120" value="Сессия" required /></label>
+          <label>XP<input name="xp_awarded" type="number" min="0" max="5000" value="25" /></label>
+          <label>Заметки<textarea name="notes" maxlength="500" rows="2" placeholder="Что произошло?"></textarea></label>
+          <button class="button button--primary" type="submit">Записать сессию</button>
+        </form>
+      </div>
+    ` : ""}
+    <div class="game-detail__section game-detail__actions">
+      ${canJoin ? `<button class="button button--primary" type="button" data-game-action="join">Вступить</button>` : ""}
+      ${canLeave ? `<button class="button button--secondary" type="button" data-game-action="leave">Покинуть</button>` : ""}
+      ${currentUser && Number(game.owner_id) === Number(currentUser.id) ? `<button class="button button--secondary" type="button" data-game-action="refresh">Обновить</button>` : ""}
+    </div>
+  `;
+
+  const joinButton = panel.querySelector('[data-game-action="join"]');
+  if (joinButton) {
+    joinButton.addEventListener("click", async () => {
+      try {
+        const payload = game.access === "public" ? {} : { join_code: window.prompt("Введи код доступа к комнате", "") || "" };
+        await api(`/api/games/${game.id}/join`, { method: "POST", body: JSON.stringify(payload) });
+        await refreshGames();
+        const refreshedGame = await api(`/api/games/${game.id}`);
+        renderGameDetail(refreshedGame.game);
+        showToast("Ты вступил в комнату");
+      } catch (error) {
+        showToast(error.message);
+      }
+    });
+  }
+
+  const joinForm = panel.querySelector("#game-join-form");
+  if (joinForm) {
+    joinForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      try {
+        const formData = new FormData(joinForm);
+        await api(`/api/games/${game.id}/join`, { method: "POST", body: JSON.stringify({ join_code: formData.get("join_code") || "" }) });
+        await refreshGames();
+        const refreshedGame = await api(`/api/games/${game.id}`);
+        renderGameDetail(refreshedGame.game);
+        showToast("Ты вступил в комнату");
+      } catch (error) {
+        showToast(error.message);
+      }
+    });
+  }
+
+  const leaveButton = panel.querySelector('[data-game-action="leave"]');
+  if (leaveButton) {
+    leaveButton.addEventListener("click", async () => {
+      try {
+        await api(`/api/games/${game.id}/leave`, { method: "DELETE" });
+        await refreshGames();
+        showToast("Ты покинул комнату");
+      } catch (error) {
+        showToast(error.message);
+      }
+    });
+  }
+
+  const refreshButton = panel.querySelector('[data-game-action="refresh"]');
+  if (refreshButton) {
+    refreshButton.addEventListener("click", async () => {
+      const refreshedGame = await api(`/api/games/${game.id}`);
+      renderGameDetail(refreshedGame.game);
+      await refreshGames();
+      showToast("Комната обновлена");
+    });
+  }
+
+  const regenerateCodeButton = panel.querySelector('[data-game-action="regenerate-code"]');
+  if (regenerateCodeButton) {
+    regenerateCodeButton.addEventListener("click", async () => {
+      try {
+        const result = await api(`/api/games/${game.id}/join-code`, { method: "POST", body: JSON.stringify({}) });
+        const refreshedGame = await api(`/api/games/${game.id}`);
+        renderGameDetail(refreshedGame.game);
+        showToast(result.game?.join_code ? `Новый код: ${result.game.join_code}` : "Код доступа обновлён");
+      } catch (error) {
+        showToast(error.message);
+      }
+    });
+  }
+
+  const heroForm = panel.querySelector("#game-hero-form");
+  if (heroForm) {
+    heroForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const formData = new FormData(heroForm);
+      try {
+        const payload = {
+          name: formData.get("hero_name") || "",
+          class_name: formData.get("hero_class") || "",
+          race: formData.get("race") || "",
+        };
+        const result = await api(`/api/games/${game.id}/characters`, { method: "POST", body: JSON.stringify(payload) });
+        if (result.character) {
+          await refreshGames();
+          const refreshedGame = await api(`/api/games/${game.id}`);
+          renderGameDetail(refreshedGame.game);
+          showToast("Герой сохранён");
+        }
+      } catch (error) {
+        showToast(error.message);
+      }
+    });
+  }
+
+  const sessionForm = panel.querySelector("#game-session-form");
+  if (sessionForm) {
+    sessionForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const formData = new FormData(sessionForm);
+      const userId = formData.get("user_id");
+      try {
+        const payload = {
+          user_id: userId ? Number(userId) : null,
+          title: formData.get("title") || "Сессия",
+          xp_awarded: Number(formData.get("xp_awarded") || 0),
+          notes: formData.get("notes") || "",
+        };
+        const result = await api(`/api/games/${game.id}/sessions`, { method: "POST", body: JSON.stringify(payload) });
+        if (result.session) {
+          const refreshedGame = await api(`/api/games/${game.id}`);
+          renderGameDetail(refreshedGame.game);
+          showToast("Сессия сохранена и XP начислен");
+        }
+      } catch (error) {
+        showToast(error.message);
+      }
+    });
+  }
+}
+
+async function createGameRoom(event) {
+  event.preventDefault();
+  if (!currentUser) {
+    openDialog("auth-dialog");
+    return;
+  }
+  const form = event.currentTarget;
+  const formData = new FormData(form);
+  const payload = {
+    name: formData.get("name") || "",
+    description: formData.get("description") || "",
+    access: formData.get("access") || "public",
+    join_code: formData.get("join_code") || "",
+  };
+  try {
+    const result = await api("/api/games", { method: "POST", body: JSON.stringify(payload) });
+    form.reset();
+    await refreshGames();
+    renderGameDetail(result.game);
+    showToast("Комната создана");
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
 function applyPageLayout() {
   const routes = {
     "/": "home",
     "/catalog": "catalog",
     "/authors": "authors",
     "/club": "club",
+    "/games": "games",
     "/library": "library",
     "/settings": "settings",
   };
@@ -1345,6 +1668,7 @@ function applyPageLayout() {
     catalog: ["#genres", "#popular"],
     authors: ["#authors"],
     club: ["#club", ".newsletter"],
+    games: ["#games-page"],
     library: ["#reading-library", "#my-library", "#library-login-page"],
     settings: ["#settings-page"],
   };
@@ -1371,6 +1695,7 @@ function applyPageLayout() {
     catalog: "Каталог книг — Biblio",
     authors: "Авторы — Biblio",
     club: "Книжный клуб — Biblio",
+    games: "Игровые комнаты — Biblio",
     library: "Моя библиотека — Biblio",
     settings: "Настройки — Biblio",
   };
@@ -2155,6 +2480,7 @@ async function initialize() {
     currentUser = result.user;
     updateAccountUI();
     await refreshPublishedBooks();
+    await refreshGames();
     if (currentUser) await refreshMyBooks();
     const readerRoute = location.hash.match(/^#read\/([^/]+)$/);
     const bookRoute = location.hash.match(/^#book\/([^/]+)$/);

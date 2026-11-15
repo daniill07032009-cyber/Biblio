@@ -379,6 +379,118 @@ class BiblioServerTests(unittest.TestCase):
             server._MONGO_CLIENTS.pop(uri, None)
             client.close()
 
+    def test_game_room_flow_supports_private_access_and_xp(self):
+        owner = self.register("owner-games@example.com")
+        status, result = self.request(
+            "POST",
+            "/api/games",
+            {
+                "name": "Кампания «Закат»",
+                "description": "Мрачная экспедиция по заброшенному городу.",
+                "access": "private",
+                "join_code": "RAID-42",
+            },
+        )
+        self.assertEqual(status, 201)
+        game_id = result["game"]["id"]
+
+        status, result = self.request("POST", f"/api/games/{game_id}/join-code", {})
+        self.assertEqual(status, 200)
+        self.assertTrue(result["game"]["join_code"])
+        wrong_code = result["game"]["join_code"]
+
+        self.request("POST", "/api/logout", {})
+        guest = self.register("guest-games@example.com")
+        status, result = self.request("GET", "/api/games")
+        self.assertEqual(status, 200)
+        self.assertNotIn(game_id, [game["id"] for game in result["games"]])
+        status, result = self.request("POST", f"/api/games/{game_id}/join", {"join_code": "wrong"})
+        self.assertEqual(status, 403)
+        status, result = self.request("POST", f"/api/games/{game_id}/join", {"join_code": wrong_code})
+        self.assertEqual(status, 200)
+
+        status, result = self.request(
+            "POST",
+            f"/api/games/{game_id}/characters",
+            {"name": "Элин", "class_name": "Воин", "race": "Человек"},
+        )
+        self.assertEqual(status, 201)
+        self.assertEqual(result["character"]["name"], "Элин")
+
+        self.request("POST", "/api/logout", {})
+        status, result = self.request(
+            "POST",
+            "/api/login",
+            {"email": owner["email"], "password": "secure-pass-123"},
+        )
+        self.assertEqual(status, 200)
+
+        status, result = self.request(
+            "POST",
+            f"/api/games/{game_id}/sessions",
+            {"user_id": guest["id"], "title": "Падение башни", "xp_awarded": 120},
+        )
+        self.assertEqual(status, 201)
+        self.assertEqual(result["session"]["xp_awarded"], 120)
+        status, result = self.request("GET", f"/api/games/{game_id}")
+        self.assertEqual(status, 200)
+        self.assertEqual(result["game"]["heroes"][0]["xp"], 120)
+        self.assertEqual(result["game"]["heroes"][0]["level"], 2)
+
+    def test_mongodb_game_room_flow_supports_private_access_and_xp(self):
+        uri = "mongodb://biblio-test/"
+        client = mongomock.MongoClient()
+        original_uri = server.MONGODB_URI
+        server.MONGODB_URI = uri
+        server._MONGO_CLIENTS[uri] = client
+        try:
+            server.initialize_db()
+            owner = self.register("mongo-owner@example.com")
+            status, result = self.request(
+                "POST",
+                "/api/games",
+                {"name": "Mongo room", "access": "private", "join_code": "MONGO-1"},
+            )
+            self.assertEqual(status, 201)
+            game_id = result["game"]["id"]
+
+            status, result = self.request("POST", f"/api/games/{game_id}/join-code", {})
+            self.assertEqual(status, 200)
+            join_code = result["game"]["join_code"]
+
+            self.request("POST", "/api/logout", {})
+            guest = self.register("mongo-guest@example.com")
+            status, result = self.request("POST", f"/api/games/{game_id}/join", {"join_code": join_code})
+            self.assertEqual(status, 200)
+            status, result = self.request(
+                "POST",
+                f"/api/games/{game_id}/characters",
+                {"name": "Свет", "class_name": "Маг", "race": "Эльф"},
+            )
+            self.assertEqual(status, 201)
+
+            self.request("POST", "/api/logout", {})
+            status, result = self.request(
+                "POST",
+                "/api/login",
+                {"email": owner["email"], "password": "secure-pass-123"},
+            )
+            self.assertEqual(status, 200)
+            status, result = self.request(
+                "POST",
+                f"/api/games/{game_id}/sessions",
+                {"user_id": guest["id"], "title": "Бой", "xp_awarded": 120},
+            )
+            self.assertEqual(status, 201)
+            status, result = self.request("GET", f"/api/games/{game_id}")
+            self.assertEqual(status, 200)
+            self.assertEqual(result["game"]["heroes"][0]["xp"], 120)
+            self.assertEqual(result["game"]["heroes"][0]["level"], 2)
+        finally:
+            server.MONGODB_URI = original_uri
+            server._MONGO_CLIENTS.pop(uri, None)
+            client.close()
+
     def test_existing_database_is_migrated_with_catalog_metadata(self):
         original_path = server.DATABASE_PATH
         legacy_path = Path(self.temp_dir.name) / "legacy.sqlite3"

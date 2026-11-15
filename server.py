@@ -97,10 +97,14 @@ def initialize_db():
         db.sessions.create_index([("token_hash", ASCENDING)], unique=True)
         db.sessions.create_index([("expires_at", ASCENDING)])
         db.newsletter_subscribers.create_index([("email", ASCENDING)], unique=True)
+        db.games.create_index([("id", ASCENDING)], unique=True)
+        db.games.create_index([("access", ASCENDING), ("updated_at", DESCENDING), ("id", DESCENDING)])
+        db.games.create_index([("owner_id", ASCENDING), ("updated_at", DESCENDING), ("id", DESCENDING)])
+        db.game_participants.create_index([("game_id", ASCENDING), ("user_id", ASCENDING)], unique=True)
         db.book_ratings.create_index(
             [("book_id", ASCENDING), ("user_id", ASCENDING)], unique=True
         )
-        for collection in ("users", "books"):
+        for collection in ("users", "books", "games", "game_participants", "game_characters", "game_sessions", "xp_history"):
             maximum = db[collection].find_one(sort=[("id", DESCENDING)])
             db.counters.update_one(
                 {"_id": collection},
@@ -171,6 +175,60 @@ def initialize_db():
                 created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
                 UNIQUE(book_id, user_id)
             );
+            CREATE TABLE IF NOT EXISTS games (
+                id INTEGER PRIMARY KEY,
+                owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                name TEXT NOT NULL,
+                title TEXT NOT NULL DEFAULT '',
+                room_name TEXT NOT NULL DEFAULT '',
+                description TEXT NOT NULL DEFAULT '',
+                access TEXT NOT NULL DEFAULT 'public' CHECK (access IN ('public', 'private', 'invite_only')),
+                join_code TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+            );
+            CREATE TABLE IF NOT EXISTS game_participants (
+                id INTEGER PRIMARY KEY,
+                game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                role TEXT NOT NULL DEFAULT 'player' CHECK (role IN ('gm', 'owner', 'player')),
+                status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'pending', 'removed')),
+                joined_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+                UNIQUE(game_id, user_id)
+            );
+            CREATE TABLE IF NOT EXISTS game_characters (
+                id INTEGER PRIMARY KEY,
+                game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                name TEXT NOT NULL,
+                class_name TEXT NOT NULL DEFAULT '',
+                archetype TEXT NOT NULL DEFAULT '',
+                race TEXT NOT NULL DEFAULT '',
+                level INTEGER NOT NULL DEFAULT 1,
+                xp INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+                UNIQUE(game_id, user_id),
+                UNIQUE(game_id, name)
+            );
+            CREATE TABLE IF NOT EXISTS game_sessions (
+                id INTEGER PRIMARY KEY,
+                game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+                host_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                title TEXT NOT NULL DEFAULT '',
+                xp_awarded INTEGER NOT NULL DEFAULT 0,
+                notes TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+            );
+            CREATE TABLE IF NOT EXISTS xp_history (
+                id INTEGER PRIMARY KEY,
+                game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                amount INTEGER NOT NULL DEFAULT 0,
+                reason TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+            );
             CREATE INDEX IF NOT EXISTS book_ratings_book_user_idx
             ON book_ratings(book_id, user_id);
             CREATE INDEX IF NOT EXISTS books_status_updated_idx
@@ -179,6 +237,16 @@ def initialize_db():
             ON books(owner_id, updated_at DESC, id DESC);
             CREATE INDEX IF NOT EXISTS chapters_book_position_idx
             ON chapters(book_id, position);
+            CREATE INDEX IF NOT EXISTS games_access_updated_idx
+            ON games(access, updated_at DESC, id DESC);
+            CREATE INDEX IF NOT EXISTS game_participants_game_user_idx
+            ON game_participants(game_id, user_id);
+            CREATE INDEX IF NOT EXISTS game_characters_game_user_idx
+            ON game_characters(game_id, user_id);
+            CREATE INDEX IF NOT EXISTS game_sessions_game_idx
+            ON game_sessions(game_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS xp_history_game_user_idx
+            ON xp_history(game_id, user_id, created_at DESC);
             """
         )
         columns = {row["name"] for row in db.execute("PRAGMA table_info(users)")}
@@ -235,7 +303,14 @@ def email_code_hash(email, code):
     return hashlib.sha256((email.lower() + ":" + code).encode("utf-8")).hexdigest()
 
 
+def email_verification_enabled():
+    value = os.environ.get("BIBLIO_EMAIL_VERIFICATION", "").strip().lower()
+    return bool(RESEND_API_KEY) or value in {"1", "true", "yes", "on"}
+
+
 def send_verification_email(email, display_name, code):
+    if not email_verification_enabled():
+        return None
     if not RESEND_API_KEY:
         raise APIError(HTTPStatus.SERVICE_UNAVAILABLE, "Отправка писем ещё не настроена: добавь RESEND_API_KEY в Render.")
     safe_name = display_name.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -280,6 +355,66 @@ def public_user(row):
         "display_name": row["display_name"],
         "bio": row.get("bio", "") if isinstance(row, dict) else (row["bio"] if "bio" in row.keys() else ""),
         "avatar_url": row.get("avatar_url", "") if isinstance(row, dict) else (row["avatar_url"] if "avatar_url" in row.keys() else ""),
+    }
+
+
+def normalize_game_access(value):
+    access = str(value or "public").strip().lower()
+    if access in {"public", "open"}:
+        return "public"
+    if access in {"private", "restricted"}:
+        return "private"
+    if access in {"invite_only", "invite-only", "invite only", "closed"}:
+        return "invite_only"
+    return "public"
+
+
+def calculate_character_level(xp):
+    xp_total = max(0, int(xp or 0))
+    return max(1, 1 + (xp_total // 100))
+
+
+def game_record_row(game, user_id=None):
+    name = (game.get("name") or game.get("title") or game.get("room_name") or "Новая комната").strip() or "Новая комната"
+    title = (game.get("title") or game.get("name") or game.get("room_name") or name).strip() or name
+    room_name = (game.get("room_name") or game.get("name") or game.get("title") or name).strip() or name
+    result = {
+        "id": game["id"],
+        "owner_id": game.get("owner_id"),
+        "name": name,
+        "title": title,
+        "room_name": room_name,
+        "description": game.get("description", ""),
+        "access": normalize_game_access(game.get("access", "public")),
+        "join_code": game.get("join_code", "") or "",
+        "created_at": game.get("created_at", utc_timestamp()),
+        "updated_at": game.get("updated_at", utc_timestamp()),
+    }
+    if user_id is not None:
+        result["is_member"] = bool(game.get("is_member") or False)
+        result["is_owner"] = bool(game.get("is_owner") or False)
+    result["member_count"] = int(game.get("member_count", 0) or 0)
+    result["hero_count"] = int(game.get("hero_count", 0) or 0)
+    result["participants"] = game.get("participants", []) or []
+    result["heroes"] = game.get("heroes", []) or []
+    result["sessions"] = game.get("sessions", []) or []
+    return result
+
+
+def game_character_record(row):
+    xp = int(row.get("xp", 0) or 0)
+    return {
+        "id": row["id"],
+        "game_id": row["game_id"],
+        "user_id": row["user_id"],
+        "name": row.get("name", ""),
+        "class_name": row.get("class_name") or row.get("archetype") or row.get("hero_class", ""),
+        "archetype": row.get("archetype") or row.get("class_name") or row.get("hero_class", ""),
+        "race": row.get("race", ""),
+        "level": int(row.get("level", calculate_character_level(xp)) or calculate_character_level(xp)),
+        "xp": xp,
+        "created_at": row.get("created_at", utc_timestamp()),
+        "updated_at": row.get("updated_at", utc_timestamp()),
     }
 
 
@@ -409,6 +544,16 @@ class BiblioHandler(BaseHTTPRequestHandler):
         if not isinstance(data, dict):
             raise APIError(HTTPStatus.BAD_REQUEST, "Ожидался JSON-объект.")
         return data
+
+    def read_json_or_empty(self):
+        if self.headers.get("Content-Length") in (None, "0"):
+            return {}
+        try:
+            return self.read_json()
+        except APIError as exc:
+            if exc.status == HTTPStatus.BAD_REQUEST and self.headers.get("Content-Length") in (None, "0"):
+                return {}
+            raise
 
     def check_origin(self):
         origin = self.headers.get("Origin")
@@ -646,7 +791,6 @@ class BiblioHandler(BaseHTTPRequestHandler):
                                 "chapter_count": {"$size": {"$ifNull": ["$chapters", []]}},
                             }
                         },
-                        {"$unset": ["chapters", "_catalog_ratings"]},
                     ]
                 )
             )
@@ -753,6 +897,17 @@ class BiblioHandler(BaseHTTPRequestHandler):
             password = self.valid_password(data.get("password"))
             if db.users.find_one({"email": email}, {"_id": 1}):
                 raise APIError(HTTPStatus.CONFLICT, "Аккаунт с такой почтой уже существует.")
+            if not email_verification_enabled():
+                user = {
+                    "id": next_mongo_id(db, "users"),
+                    "email": email,
+                    "display_name": display_name,
+                    "password_hash": password_digest(password),
+                    "created_at": utc_timestamp(),
+                }
+                db.users.insert_one(user)
+                headers = self.create_mongo_session(db, user["id"])
+                return {"user": public_user(user)}, HTTPStatus.CREATED, headers
             pending = db.pending_email_verifications.find_one({"email": email})
             if pending and int(time.time()) - pending.get("created_at", 0) < 60:
                 raise APIError(HTTPStatus.TOO_MANY_REQUESTS, "Подожди минуту перед повторной отправкой кода.")
@@ -918,6 +1073,292 @@ class BiblioHandler(BaseHTTPRequestHandler):
             headers = self.create_mongo_session(db, user["id"])
             return {"ok": True}, HTTPStatus.OK, headers
 
+        if method == "GET" and path == "/api/games":
+            user = self.current_user_mongo(db)
+            visible_games = []
+            visible_ids = set()
+            if user is not None:
+                member_ids = [entry["game_id"] for entry in db.game_participants.find({"user_id": user["id"]}, {"game_id": 1})]
+                visible_ids.update(member_ids)
+                visible_ids.add(user["id"])
+            for game in db.games.find({"access": "public"}).sort([("updated_at", DESCENDING), ("id", DESCENDING)]):
+                visible_games.append(game)
+                visible_ids.add(game["id"])
+            if user is not None:
+                for game in db.games.find({"$or": [{"owner_id": user["id"]}, {"id": {"$in": list(member_ids)}}]}).sort([("updated_at", DESCENDING), ("id", DESCENDING)]):
+                    if game["id"] not in visible_ids:
+                        visible_games.append(game)
+                        visible_ids.add(game["id"])
+            result = []
+            for game in visible_games:
+                member_count = db.game_participants.count_documents({"game_id": game["id"]})
+                hero_count = db.game_characters.count_documents({"game_id": game["id"]})
+                is_owner = user is not None and game["owner_id"] == user["id"]
+                is_member = user is not None and bool(db.game_participants.find_one({"game_id": game["id"], "user_id": user["id"]}))
+                result.append(game_record_row({
+                    "id": game["id"],
+                    "owner_id": game["owner_id"],
+                    "name": game.get("name") or game.get("title") or game.get("room_name") or "Новая комната",
+                    "title": game.get("title") or game.get("name") or game.get("room_name") or "Новая комната",
+                    "room_name": game.get("room_name") or game.get("name") or game.get("title") or "Новая комната",
+                    "description": game.get("description", ""),
+                    "access": game.get("access", "public"),
+                    "join_code": game.get("join_code", ""),
+                    "created_at": game.get("created_at", utc_timestamp()),
+                    "updated_at": game.get("updated_at", utc_timestamp()),
+                    "member_count": member_count,
+                    "hero_count": hero_count,
+                    "is_member": is_member,
+                    "is_owner": is_owner,
+                }, user_id=user["id"] if user else None))
+            return {"games": result}, HTTPStatus.OK, []
+
+        game_match = re.fullmatch(r"/api/games/(\d+)", path)
+        if method == "GET" and game_match:
+            game_id = int(game_match.group(1))
+            game = db.games.find_one({"id": game_id})
+            if game is None:
+                raise APIError(HTTPStatus.NOT_FOUND, "Комната не найдена.")
+            user = self.current_user_mongo(db)
+            if game["access"] != "public" and (user is None or game["owner_id"] != user["id"] and not db.game_participants.find_one({"game_id": game_id, "user_id": user["id"]} if user else None)):
+                raise APIError(HTTPStatus.FORBIDDEN, "У тебя нет доступа к этой комнате.")
+            members = list(db.game_participants.find({"game_id": game_id}).sort([("joined_at", DESCENDING), ("id", DESCENDING)]))
+            characters = list(db.game_characters.find({"game_id": game_id}).sort([("level", DESCENDING), ("xp", DESCENDING), ("name", ASCENDING)]))
+            sessions = list(db.game_sessions.find({"game_id": game_id}).sort([("created_at", DESCENDING), ("id", DESCENDING)]))
+            return {
+                "game": game_record_row({
+                    "id": game["id"],
+                    "owner_id": game["owner_id"],
+                    "name": game.get("name") or game.get("title") or game.get("room_name") or "Новая комната",
+                    "title": game.get("title") or game.get("name") or game.get("room_name") or "Новая комната",
+                    "room_name": game.get("room_name") or game.get("name") or game.get("title") or "Новая комната",
+                    "description": game.get("description", ""),
+                    "access": game.get("access", "public"),
+                    "join_code": game.get("join_code", ""),
+                    "created_at": game.get("created_at", utc_timestamp()),
+                    "updated_at": game.get("updated_at", utc_timestamp()),
+                    "member_count": len(members),
+                    "hero_count": len(characters),
+                    "participants": [{
+                        "id": member.get("id"),
+                        "game_id": member.get("game_id"),
+                        "user_id": member.get("user_id"),
+                        "role": member.get("role", "player"),
+                        "status": member.get("status", "active"),
+                        "joined_at": member.get("joined_at"),
+                    } for member in members],
+                    "heroes": [game_character_record(character) for character in characters],
+                    "sessions": [{
+                        "id": session["id"],
+                        "game_id": session["game_id"],
+                        "user_id": session.get("user_id"),
+                        "title": session.get("title", ""),
+                        "xp_awarded": session.get("xp_awarded", 0),
+                        "notes": session.get("notes", ""),
+                        "created_at": session.get("created_at"),
+                    } for session in sessions],
+                }, user_id=user["id"] if user else None),
+                "members": [{
+                    "id": member.get("id"),
+                    "game_id": member.get("game_id"),
+                    "user_id": member.get("user_id"),
+                    "role": member.get("role", "player"),
+                    "status": member.get("status", "active"),
+                    "joined_at": member.get("joined_at"),
+                } for member in members],
+                "heroes": [game_character_record(character) for character in characters],
+                "sessions": [{
+                    "id": session["id"],
+                    "game_id": session["game_id"],
+                    "user_id": session.get("user_id"),
+                    "title": session.get("title", ""),
+                    "xp_awarded": session.get("xp_awarded", 0),
+                    "notes": session.get("notes", ""),
+                    "created_at": session.get("created_at"),
+                } for session in sessions],
+            }, HTTPStatus.OK, []
+
+        if method == "GET" and path == "/api/my/games":
+            user = self.current_user_mongo(db, required=True)
+            member_game_ids = [entry["game_id"] for entry in db.game_participants.find({"user_id": user["id"]}, {"game_id": 1})]
+            games = list(db.games.find({"$or": [{"owner_id": user["id"]}, {"id": {"$in": member_game_ids}}]}).sort([("updated_at", DESCENDING), ("id", DESCENDING)]))
+            return {"games": [
+                game_record_row({
+                    "id": game["id"],
+                    "owner_id": game["owner_id"],
+                    "name": game.get("name") or game.get("title") or game.get("room_name") or "Новая комната",
+                    "title": game.get("title") or game.get("name") or game.get("room_name") or "Новая комната",
+                    "room_name": game.get("room_name") or game.get("name") or game.get("title") or "Новая комната",
+                    "description": game.get("description", ""),
+                    "access": game.get("access", "public"),
+                    "join_code": game.get("join_code", ""),
+                    "created_at": game.get("created_at", utc_timestamp()),
+                    "updated_at": game.get("updated_at", utc_timestamp()),
+                    "member_count": db.game_participants.count_documents({"game_id": game["id"]}),
+                    "hero_count": db.game_characters.count_documents({"game_id": game["id"]}),
+                    "is_member": True,
+                    "is_owner": game["owner_id"] == user["id"],
+                }, user_id=user["id"]) for game in games
+            ]}, HTTPStatus.OK, []
+
+        if method == "POST" and path == "/api/games":
+            user = self.current_user_mongo(db, required=True)
+            data = self.read_json()
+            name = self.valid_text(data.get("name") or data.get("title") or data.get("room_name"), "Название комнаты", 1, 80)
+            description = self.valid_text(data.get("description", ""), "Описание", 0, 500)
+            access = normalize_game_access(data.get("access", "public"))
+            join_code = str(data.get("join_code") or "").strip().upper()
+            if access in {"private", "invite_only"} and not join_code:
+                join_code = f"{secrets.token_hex(2).upper()}"
+            game_id = next_mongo_id(db, "games")
+            game = {
+                "id": game_id,
+                "owner_id": user["id"],
+                "name": name,
+                "title": name,
+                "room_name": name,
+                "description": description,
+                "access": access,
+                "join_code": join_code,
+                "created_at": utc_timestamp(),
+                "updated_at": utc_timestamp(),
+            }
+            db.games.insert_one(game)
+            db.game_participants.insert_one({
+                "id": next_mongo_id(db, "game_participants"),
+                "game_id": game_id,
+                "user_id": user["id"],
+                "role": "owner",
+                "status": "active",
+                "joined_at": utc_timestamp(),
+            })
+            return {"game": game_record_row(game, user_id=user["id"])}, HTTPStatus.CREATED, []
+
+        game_action_match = re.fullmatch(r"/api/games/(\d+)/(join|leave|characters|heroes|sessions|xp|join-code)", path)
+        if method in {"POST", "DELETE"} and game_action_match:
+            user = self.current_user_mongo(db, required=True)
+            game_id = int(game_action_match.group(1))
+            game = db.games.find_one({"id": game_id})
+            if game is None:
+                raise APIError(HTTPStatus.NOT_FOUND, "Комната не найдена.")
+            if game_action_match.group(2) == "join-code":
+                if game["owner_id"] != user["id"]:
+                    raise APIError(HTTPStatus.FORBIDDEN, "Только владелец комнаты может менять код доступа.")
+                payload = self.read_json()
+                requested = str(payload.get("join_code") or payload.get("code") or "").strip().upper()
+                access = normalize_game_access(game.get("access", "public"))
+                if access == "public":
+                    new_code = ""
+                elif requested:
+                    if not re.fullmatch(r"[A-Z0-9-]{4,32}", requested):
+                        raise APIError(HTTPStatus.BAD_REQUEST, "Код доступа должен содержать 4–32 символа из латиницы, цифр и тире.")
+                    new_code = requested
+                else:
+                    new_code = f"{secrets.token_hex(2).upper()}-{game_id}"
+                db.games.update_one({"id": game_id}, {"$set": {"join_code": new_code, "updated_at": utc_timestamp()}})
+                refreshed = db.games.find_one({"id": game_id})
+                return {"game": game_record_row(refreshed, user_id=user["id"])}, HTTPStatus.OK, []
+            if game_action_match.group(2) == "join":
+                if db.game_participants.find_one({"game_id": game_id, "user_id": user["id"]}):
+                    return {"ok": True, "joined": True}, HTTPStatus.OK, []
+                if game["access"] in {"private", "invite_only"}:
+                    payload = self.read_json()
+                    code = str(payload.get("join_code") or "").strip().upper()
+                    if code != str(game.get("join_code", "")).strip().upper():
+                        raise APIError(HTTPStatus.FORBIDDEN, "Код приглашения не подходит.")
+                db.game_participants.insert_one({
+                    "id": next_mongo_id(db, "game_participants"),
+                    "game_id": game_id,
+                    "user_id": user["id"],
+                    "role": "player",
+                    "status": "active",
+                    "joined_at": utc_timestamp(),
+                })
+                return {"ok": True, "joined": True}, HTTPStatus.OK, []
+            if game_action_match.group(2) == "leave":
+                db.game_participants.delete_one({"game_id": game_id, "user_id": user["id"]})
+                return {"ok": True}, HTTPStatus.OK, []
+            if game_action_match.group(2) in {"characters", "heroes"}:
+                participant = db.game_participants.find_one({"game_id": game_id, "user_id": user["id"]})
+                if participant is None and game["owner_id"] != user["id"]:
+                    raise APIError(HTTPStatus.FORBIDDEN, "Сначала вступи в комнату.")
+                payload = self.read_json()
+                name = self.valid_text(payload.get("name") or payload.get("hero_name"), "Имя героя", 1, 80)
+                class_name = self.valid_text(payload.get("class_name") or payload.get("archetype") or payload.get("hero_class") or "", "Класс героя", 0, 60)
+                archetype = self.valid_text(payload.get("archetype") or class_name or "", "Архетип", 0, 60)
+                race = self.valid_text(payload.get("race") or "", "Раса", 0, 60)
+                character_id = next_mongo_id(db, "game_characters")
+                character = {
+                    "id": character_id,
+                    "game_id": game_id,
+                    "user_id": user["id"],
+                    "name": name,
+                    "class_name": class_name,
+                    "archetype": archetype,
+                    "race": race,
+                    "level": 1,
+                    "xp": 0,
+                    "created_at": utc_timestamp(),
+                    "updated_at": utc_timestamp(),
+                }
+                db.game_characters.update_one({"game_id": game_id, "user_id": user["id"]}, {"$set": character}, upsert=True)
+                return {"character": game_character_record(character)}, HTTPStatus.CREATED, []
+            if game_action_match.group(2) == "sessions":
+                if game["owner_id"] != user["id"]:
+                    raise APIError(HTTPStatus.FORBIDDEN, "Только ведущий может вести сессию.")
+                payload = self.read_json()
+                title = self.valid_text(payload.get("title") or "Сессия", "Название сессии", 1, 120)
+                xp_awarded = int(payload.get("xp_awarded", 0) or 0)
+                target_user_id = payload.get("user_id")
+                if target_user_id is not None:
+                    target_user_id = int(target_user_id)
+                note = self.valid_text(payload.get("notes", ""), "Заметки", 0, 500)
+                session_id = next_mongo_id(db, "game_sessions")
+                session = {
+                    "id": session_id,
+                    "game_id": game_id,
+                    "host_user_id": user["id"],
+                    "user_id": target_user_id if target_user_id is not None else user["id"],
+                    "title": title,
+                    "xp_awarded": xp_awarded,
+                    "notes": note,
+                    "created_at": utc_timestamp(),
+                }
+                db.game_sessions.insert_one(session)
+                if xp_awarded > 0 and target_user_id is not None:
+                    db.game_characters.update_one({"game_id": game_id, "user_id": target_user_id}, {"$inc": {"xp": xp_awarded}, "$set": {"level": calculate_character_level((db.game_characters.find_one({"game_id": game_id, "user_id": target_user_id}) or {}).get("xp", 0) + xp_awarded), "updated_at": utc_timestamp()}})
+                    db.xp_history.insert_one({
+                        "id": next_mongo_id(db, "xp_history"),
+                        "game_id": game_id,
+                        "user_id": target_user_id,
+                        "amount": xp_awarded,
+                        "reason": title,
+                        "created_at": utc_timestamp(),
+                    })
+                session_response = {key: value for key, value in session.items() if key != "_id"}
+                return {"session": session_response}, HTTPStatus.CREATED, []
+            if game_action_match.group(2) == "xp":
+                if game["owner_id"] != user["id"]:
+                    raise APIError(HTTPStatus.FORBIDDEN, "Только ведущий может выдавать XP.")
+                payload = self.read_json()
+                target_user_id = int(payload.get("user_id"))
+                amount = max(0, int(payload.get("amount", 0) or 0))
+                reason = self.valid_text(payload.get("reason", "Награда"), "Причина", 0, 200)
+                update = db.game_characters.find_one({"game_id": game_id, "user_id": target_user_id})
+                if update is None:
+                    raise APIError(HTTPStatus.NOT_FOUND, "Герой участника не найден.")
+                new_xp = int(update.get("xp", 0)) + amount
+                db.game_characters.update_one({"game_id": game_id, "user_id": target_user_id}, {"$set": {"xp": new_xp, "level": calculate_character_level(new_xp), "updated_at": utc_timestamp()}})
+                db.xp_history.insert_one({
+                    "id": next_mongo_id(db, "xp_history"),
+                    "game_id": game_id,
+                    "user_id": target_user_id,
+                    "amount": amount,
+                    "reason": reason,
+                    "created_at": utc_timestamp(),
+                })
+                return {"ok": True, "xp": new_xp}, HTTPStatus.OK, []
+
         raise APIError(HTTPStatus.NOT_FOUND, "Маршрут не найден.")
 
     def dispatch_api(self, db, method, path, query=None):
@@ -1070,6 +1511,14 @@ class BiblioHandler(BaseHTTPRequestHandler):
             password = self.valid_password(data.get("password"))
             if db.execute("SELECT 1 FROM users WHERE email = ?", (email,)).fetchone():
                 raise APIError(HTTPStatus.CONFLICT, "Аккаунт с такой почтой уже существует.")
+            if not email_verification_enabled():
+                cursor = db.execute(
+                    "INSERT INTO users (email, display_name, password_hash) VALUES (?, ?, ?)",
+                    (email, display_name, password_digest(password)),
+                )
+                user = db.execute("SELECT * FROM users WHERE id = ?", (cursor.lastrowid,)).fetchone()
+                headers = self.create_session(db, user["id"])
+                return {"user": public_user(user)}, HTTPStatus.CREATED, headers
             pending = db.execute("SELECT created_at FROM pending_email_verifications WHERE email = ?", (email,)).fetchone()
             if pending and int(time.time()) - pending["created_at"] < 60:
                 raise APIError(HTTPStatus.TOO_MANY_REQUESTS, "Подожди минуту перед повторной отправкой кода.")
@@ -1264,6 +1713,379 @@ class BiblioHandler(BaseHTTPRequestHandler):
             headers = self.create_session(db, user["id"])
             return {"ok": True}, HTTPStatus.OK, headers
 
+        if method == "GET" and path == "/api/games":
+            user = self.current_user(db)
+            visible_games = []
+            allowed_ids = set()
+            if user is not None:
+                rows = db.execute(
+                    "SELECT game_id FROM game_participants WHERE user_id = ?",
+                    (user["id"],),
+                ).fetchall()
+                allowed_ids = {row["game_id"] for row in rows}
+            public_games = db.execute(
+                "SELECT * FROM games WHERE access = 'public' ORDER BY updated_at DESC, id DESC"
+            ).fetchall()
+            visible_games.extend(public_games)
+            for game in public_games:
+                allowed_ids.add(game["id"])
+            if user is not None:
+                owned_or_joined = db.execute(
+                    "SELECT * FROM games WHERE owner_id = ? OR id IN ({placeholders}) ORDER BY updated_at DESC, id DESC".format(
+                        placeholders=", ".join("?" for _ in allowed_ids) if allowed_ids else "-1"
+                    ),
+                    (user["id"], *sorted(allowed_ids)) if allowed_ids else (user["id"],),
+                ).fetchall()
+                for game in owned_or_joined:
+                    if game["id"] not in {item["id"] for item in visible_games}:
+                        visible_games.append(game)
+            result = []
+            for game in visible_games:
+                member_count = db.execute(
+                    "SELECT COUNT(*) AS total FROM game_participants WHERE game_id = ?",
+                    (game["id"],),
+                ).fetchone()["total"]
+                hero_count = db.execute(
+                    "SELECT COUNT(*) AS total FROM game_characters WHERE game_id = ?",
+                    (game["id"],),
+                ).fetchone()["total"]
+                is_owner = user is not None and game["owner_id"] == user["id"]
+                is_member = user is not None and bool(
+                    db.execute(
+                        "SELECT 1 FROM game_participants WHERE game_id = ? AND user_id = ?",
+                        (game["id"], user["id"]),
+                    ).fetchone()
+                )
+                result.append(game_record_row({
+                    "id": game["id"],
+                    "owner_id": game["owner_id"],
+                    "name": game["name"],
+                    "title": game["title"] or game["name"],
+                    "room_name": game["room_name"] or game["name"],
+                    "description": game["description"],
+                    "access": game["access"],
+                    "join_code": game["join_code"],
+                    "created_at": game["created_at"],
+                    "updated_at": game["updated_at"],
+                    "member_count": member_count,
+                    "hero_count": hero_count,
+                    "is_member": is_member,
+                    "is_owner": is_owner,
+                }, user_id=user["id"] if user else None))
+            return {"games": result}, HTTPStatus.OK, []
+
+        game_match = re.fullmatch(r"/api/games/(\d+)", path)
+        if method == "GET" and game_match:
+            user = self.current_user(db)
+            game_id = int(game_match.group(1))
+            game = db.execute("SELECT * FROM games WHERE id = ?", (game_id,)).fetchone()
+            if game is None:
+                raise APIError(HTTPStatus.NOT_FOUND, "Комната не найдена.")
+            if game["access"] != "public" and (
+                user is None
+                or (game["owner_id"] != user["id"] and not db.execute(
+                    "SELECT 1 FROM game_participants WHERE game_id = ? AND user_id = ?",
+                    (game_id, user["id"]),
+                ).fetchone())
+            ):
+                raise APIError(HTTPStatus.FORBIDDEN, "У тебя нет доступа к этой комнате.")
+            members = db.execute(
+                "SELECT * FROM game_participants WHERE game_id = ? ORDER BY joined_at DESC, id DESC",
+                (game_id,),
+            ).fetchall()
+            characters = db.execute(
+                "SELECT * FROM game_characters WHERE game_id = ? ORDER BY level DESC, xp DESC, name ASC",
+                (game_id,),
+            ).fetchall()
+            sessions = db.execute(
+                "SELECT * FROM game_sessions WHERE game_id = ? ORDER BY created_at DESC, id DESC",
+                (game_id,),
+            ).fetchall()
+            game_payload = game_record_row({
+                "id": game["id"],
+                "owner_id": game["owner_id"],
+                "name": game["name"],
+                "title": game["title"] or game["name"],
+                "room_name": game["room_name"] or game["name"],
+                "description": game["description"],
+                "access": game["access"],
+                "join_code": game["join_code"],
+                "created_at": game["created_at"],
+                "updated_at": game["updated_at"],
+                "member_count": len(members),
+                "hero_count": len(characters),
+                "participants": [{
+                    "id": member["id"],
+                    "game_id": member["game_id"],
+                    "user_id": member["user_id"],
+                    "role": member["role"],
+                    "status": member["status"],
+                    "joined_at": member["joined_at"],
+                } for member in members],
+                "heroes": [game_character_record(dict(character)) for character in characters],
+                "sessions": [{
+                    "id": session["id"],
+                    "game_id": session["game_id"],
+                    "user_id": session["user_id"],
+                    "title": session["title"],
+                    "xp_awarded": session["xp_awarded"],
+                    "notes": session["notes"],
+                    "created_at": session["created_at"],
+                } for session in sessions],
+            }, user_id=user["id"] if user else None)
+            return {
+                "game": game_payload,
+                "members": [{
+                    "id": member["id"],
+                    "game_id": member["game_id"],
+                    "user_id": member["user_id"],
+                    "role": member["role"],
+                    "status": member["status"],
+                    "joined_at": member["joined_at"],
+                } for member in members],
+                "heroes": [game_character_record(dict(character)) for character in characters],
+                "sessions": [{
+                    "id": session["id"],
+                    "game_id": session["game_id"],
+                    "user_id": session["user_id"],
+                    "title": session["title"],
+                    "xp_awarded": session["xp_awarded"],
+                    "notes": session["notes"],
+                    "created_at": session["created_at"],
+                } for session in sessions],
+            }, HTTPStatus.OK, []
+
+        if method == "GET" and path == "/api/my/games":
+            user = self.current_user(db, required=True)
+            games = db.execute(
+                "SELECT * FROM games WHERE owner_id = ? OR id IN (SELECT game_id FROM game_participants WHERE user_id = ?) ORDER BY updated_at DESC, id DESC",
+                (user["id"], user["id"]),
+            ).fetchall()
+            return {"games": [game_record_row({
+                "id": game["id"],
+                "owner_id": game["owner_id"],
+                "name": game["name"],
+                "title": game["title"] or game["name"],
+                "room_name": game["room_name"] or game["name"],
+                "description": game["description"],
+                "access": game["access"],
+                "join_code": game["join_code"],
+                "created_at": game["created_at"],
+                "updated_at": game["updated_at"],
+                "member_count": db.execute("SELECT COUNT(*) AS total FROM game_participants WHERE game_id = ?", (game["id"],)).fetchone()["total"],
+                "hero_count": db.execute("SELECT COUNT(*) AS total FROM game_characters WHERE game_id = ?", (game["id"],)).fetchone()["total"],
+                "is_member": True,
+                "is_owner": game["owner_id"] == user["id"],
+            }, user_id=user["id"]) for game in games]}, HTTPStatus.OK, []
+
+        if method == "POST" and path == "/api/games":
+            user = self.current_user(db, required=True)
+            data = self.read_json()
+            name = self.valid_text(data.get("name") or data.get("title") or data.get("room_name"), "Название комнаты", 1, 80)
+            description = self.valid_text(data.get("description", ""), "Описание", 0, 500)
+            access = normalize_game_access(data.get("access", "public"))
+            join_code = str(data.get("join_code") or "").strip().upper()
+            if access in {"private", "invite_only"} and not join_code:
+                join_code = secrets.token_hex(2).upper()
+            cursor = db.execute(
+                "INSERT INTO games (owner_id, name, title, room_name, description, access, join_code) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (user["id"], name, name, name, description, access, join_code),
+            )
+            game_id = cursor.lastrowid
+            db.execute(
+                "INSERT INTO game_participants (game_id, user_id, role, status, joined_at) VALUES (?, ?, 'owner', 'active', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+                (game_id, user["id"]),
+            )
+            game = db.execute("SELECT * FROM games WHERE id = ?", (game_id,)).fetchone()
+            return {"game": game_record_row({
+                "id": game["id"],
+                "owner_id": game["owner_id"],
+                "name": game["name"],
+                "title": game["title"] or game["name"],
+                "room_name": game["room_name"] or game["name"],
+                "description": game["description"],
+                "access": game["access"],
+                "join_code": game["join_code"],
+                "created_at": game["created_at"],
+                "updated_at": game["updated_at"],
+                "member_count": 1,
+                "hero_count": 0,
+                "is_member": True,
+                "is_owner": True,
+            }, user_id=user["id"])}, HTTPStatus.CREATED, []
+
+        game_action_match = re.fullmatch(r"/api/games/(\d+)/(join|leave|characters|heroes|sessions|xp|join-code)", path)
+        if method in {"POST", "DELETE"} and game_action_match:
+            user = self.current_user(db, required=True)
+            game = db.execute("SELECT * FROM games WHERE id = ?", (int(game_action_match.group(1)),)).fetchone()
+            if game is None:
+                raise APIError(HTTPStatus.NOT_FOUND, "Комната не найдена.")
+            game_id = game["id"]
+            action = game_action_match.group(2)
+            if action == "join-code":
+                if game["owner_id"] != user["id"]:
+                    raise APIError(HTTPStatus.FORBIDDEN, "Только владелец комнаты может менять код доступа.")
+                payload = self.read_json()
+                requested = str(payload.get("join_code") or payload.get("code") or "").strip().upper()
+                access = normalize_game_access(game["access"])
+                if access == "public":
+                    new_code = ""
+                elif requested:
+                    if not re.fullmatch(r"[A-Z0-9-]{4,32}", requested):
+                        raise APIError(HTTPStatus.BAD_REQUEST, "Код доступа должен содержать 4–32 символа из латиницы, цифр и тире.")
+                    new_code = requested
+                else:
+                    new_code = f"{secrets.token_hex(2).upper()}-{game_id}"
+                db.execute(
+                    "UPDATE games SET join_code = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?",
+                    (new_code, game_id),
+                )
+                refreshed = db.execute("SELECT * FROM games WHERE id = ?", (game_id,)).fetchone()
+                return {"game": game_record_row({
+                    "id": refreshed["id"],
+                    "owner_id": refreshed["owner_id"],
+                    "name": refreshed["name"],
+                    "title": refreshed["title"] or refreshed["name"],
+                    "room_name": refreshed["room_name"] or refreshed["name"],
+                    "description": refreshed["description"],
+                    "access": refreshed["access"],
+                    "join_code": refreshed["join_code"],
+                    "created_at": refreshed["created_at"],
+                    "updated_at": refreshed["updated_at"],
+                    "member_count": db.execute("SELECT COUNT(*) AS count FROM game_participants WHERE game_id = ?", (game_id,)).fetchone()["count"],
+                    "hero_count": db.execute("SELECT COUNT(*) AS count FROM game_characters WHERE game_id = ?", (game_id,)).fetchone()["count"],
+                    "is_member": True,
+                    "is_owner": True,
+                }, user_id=user["id"])}, HTTPStatus.OK, []
+            if action == "join":
+                existing = db.execute(
+                    "SELECT 1 FROM game_participants WHERE game_id = ? AND user_id = ?",
+                    (game_id, user["id"]),
+                ).fetchone()
+                if existing is not None:
+                    return {"ok": True, "joined": True}, HTTPStatus.OK, []
+                if game["access"] in {"private", "invite_only"}:
+                    payload = self.read_json()
+                    supplied = str(payload.get("code") or payload.get("join_code") or "").strip().upper()
+                    required = str(game["join_code"] or "").strip().upper()
+                    if not required or supplied != required:
+                        raise APIError(HTTPStatus.FORBIDDEN, "Неверный код доступа к комнате.")
+                db.execute(
+                    "INSERT INTO game_participants (game_id, user_id, role, status, joined_at) VALUES (?, ?, 'player', 'active', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+                    (game_id, user["id"]),
+                )
+                return {"ok": True, "joined": True}, HTTPStatus.OK, []
+            if action == "leave":
+                if game["owner_id"] == user["id"]:
+                    raise APIError(HTTPStatus.FORBIDDEN, "Владелец комнаты не может её покинуть.")
+                db.execute(
+                    "DELETE FROM game_participants WHERE game_id = ? AND user_id = ?",
+                    (game_id, user["id"]),
+                )
+                db.execute("DELETE FROM game_characters WHERE game_id = ? AND user_id = ?", (game_id, user["id"]))
+                return {"ok": True}, HTTPStatus.OK, []
+            if action in {"characters", "heroes"}:
+                participant = db.execute(
+                    "SELECT 1 FROM game_participants WHERE game_id = ? AND user_id = ?",
+                    (game_id, user["id"]),
+                ).fetchone()
+                if participant is None and game["owner_id"] != user["id"]:
+                    raise APIError(HTTPStatus.FORBIDDEN, "Сначала вступи в комнату.")
+                payload = self.read_json()
+                name = self.valid_text(payload.get("name") or payload.get("hero_name"), "Имя героя", 1, 80)
+                class_name = self.valid_text(payload.get("class_name") or payload.get("archetype") or payload.get("hero_class") or "", "Класс героя", 0, 60)
+                archetype = self.valid_text(payload.get("archetype") or class_name or "", "Архетип", 0, 60)
+                race = self.valid_text(payload.get("race") or "", "Раса", 0, 60)
+                existing = db.execute(
+                    "SELECT * FROM game_characters WHERE game_id = ? AND user_id = ?",
+                    (game_id, user["id"]),
+                ).fetchone()
+                if existing is None:
+                    cursor = db.execute(
+                        "INSERT INTO game_characters (game_id, user_id, name, class_name, archetype, race, level, xp, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 1, 0, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+                        (game_id, user["id"], name, class_name, archetype, race),
+                    )
+                    character = db.execute("SELECT * FROM game_characters WHERE id = ?", (cursor.lastrowid,)).fetchone()
+                else:
+                    db.execute(
+                        "UPDATE game_characters SET name = ?, class_name = ?, archetype = ?, race = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?",
+                        (name, class_name, archetype, race, existing["id"]),
+                    )
+                    character = db.execute("SELECT * FROM game_characters WHERE id = ?", (existing["id"],)).fetchone()
+                return {"character": game_character_record(dict(character))}, HTTPStatus.CREATED, []
+            if action == "sessions":
+                if game["owner_id"] != user["id"]:
+                    raise APIError(HTTPStatus.FORBIDDEN, "Только ведущий может вести сессию.")
+                payload = self.read_json()
+                title = self.valid_text(payload.get("title") or "Сессия", "Название сессии", 1, 120)
+                xp_awarded = int(payload.get("xp_awarded", 0) or 0)
+                target_user_id = payload.get("user_id")
+                if target_user_id is not None:
+                    target_user_id = int(target_user_id)
+                else:
+                    target_user_id = user["id"]
+                note = self.valid_text(payload.get("notes", ""), "Заметки", 0, 500)
+                participant = db.execute(
+                    "SELECT 1 FROM game_participants WHERE game_id = ? AND user_id = ?",
+                    (game_id, target_user_id),
+                ).fetchone()
+                if participant is None and game["owner_id"] != target_user_id:
+                    raise APIError(HTTPStatus.NOT_FOUND, "Участник комнаты не найден.")
+                cursor = db.execute(
+                    "INSERT INTO game_sessions (game_id, host_user_id, user_id, title, xp_awarded, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+                    (game_id, user["id"], target_user_id, title, xp_awarded, note),
+                )
+                session_id = cursor.lastrowid
+                if xp_awarded > 0:
+                    character = db.execute(
+                        "SELECT * FROM game_characters WHERE game_id = ? AND user_id = ?",
+                        (game_id, target_user_id),
+                    ).fetchone()
+                    if character is None:
+                        raise APIError(HTTPStatus.NOT_FOUND, "Герой участника не найден.")
+                    new_xp = int(character["xp"]) + xp_awarded
+                    db.execute(
+                        "UPDATE game_characters SET xp = ?, level = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?",
+                        (new_xp, calculate_character_level(new_xp), character["id"]),
+                    )
+                    db.execute(
+                        "INSERT INTO xp_history (game_id, user_id, amount, reason, created_at) VALUES (?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+                        (game_id, target_user_id, xp_awarded, title),
+                    )
+                session = db.execute("SELECT * FROM game_sessions WHERE id = ?", (session_id,)).fetchone()
+                return {"session": {
+                    "id": session["id"],
+                    "game_id": session["game_id"],
+                    "user_id": session["user_id"],
+                    "title": session["title"],
+                    "xp_awarded": session["xp_awarded"],
+                    "notes": session["notes"],
+                    "created_at": session["created_at"],
+                }}, HTTPStatus.CREATED, []
+            if action == "xp":
+                if game["owner_id"] != user["id"]:
+                    raise APIError(HTTPStatus.FORBIDDEN, "Только ведущий может выдавать XP.")
+                payload = self.read_json()
+                target_user_id = int(payload.get("user_id"))
+                amount = max(0, int(payload.get("amount", 0) or 0))
+                reason = self.valid_text(payload.get("reason", "Награда"), "Причина", 0, 200)
+                character = db.execute(
+                    "SELECT * FROM game_characters WHERE game_id = ? AND user_id = ?",
+                    (game_id, target_user_id),
+                ).fetchone()
+                if character is None:
+                    raise APIError(HTTPStatus.NOT_FOUND, "Герой участника не найден.")
+                new_xp = int(character["xp"]) + amount
+                db.execute(
+                    "UPDATE game_characters SET xp = ?, level = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?",
+                    (new_xp, calculate_character_level(new_xp), character["id"]),
+                )
+                db.execute(
+                    "INSERT INTO xp_history (game_id, user_id, amount, reason, created_at) VALUES (?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+                    (game_id, target_user_id, amount, reason),
+                )
+                return {"ok": True, "xp": new_xp}, HTTPStatus.OK, []
+
         raise APIError(HTTPStatus.NOT_FOUND, "Маршрут не найден.")
 
     def create_session(self, db, user_id):
@@ -1402,6 +2224,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
             "/catalog",
             "/authors",
             "/club",
+            "/games",
             "/library",
             "/settings",
         }:
