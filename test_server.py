@@ -490,6 +490,64 @@ class BiblioServerTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(result["games"][0]["user_rating"], 5)
 
+    def test_game_catalog_rooms_persist_until_the_creator_deletes_them(self):
+        with server.connect_db() as db:
+            db.execute(
+                """
+                INSERT INTO game_catalog (slug, title, description, cover_symbol, cover_theme)
+                VALUES ('other-game', 'Другая игра', 'Описание', 'OG', 'fantasy')
+                """
+            )
+        owner = self.register("catalog-room-owner@example.com")
+        status, result = self.request(
+            "POST",
+            "/api/games",
+            {
+                "name": "Кампания «Северный путь»",
+                "description": "Сохранённое описание кампании.",
+                "access": "public",
+                "catalog_game_slug": "dnd",
+            },
+        )
+        self.assertEqual(status, 201)
+        room_id = result["game"]["id"]
+        self.assertEqual(result["game"]["catalog_game_slug"], "dnd")
+        status, other_room = self.request(
+            "POST",
+            "/api/games",
+            {"name": "Чужая кампания", "catalog_game_slug": "other-game"},
+        )
+        self.assertEqual(status, 201)
+
+        status, result = self.request("GET", "/api/catalog/games/dnd")
+        self.assertEqual(status, 200)
+        self.assertEqual(len(result["rooms"]), 1)
+        self.assertEqual(result["rooms"][0]["id"], room_id)
+        self.assertEqual(result["rooms"][0]["description"], "Сохранённое описание кампании.")
+
+        self.request("POST", "/api/logout", {})
+        self.register("catalog-room-visitor@example.com")
+        status, result = self.request("GET", "/api/catalog/games/dnd")
+        self.assertEqual(status, 200)
+        self.assertEqual(result["rooms"][0]["id"], room_id)
+        status, _ = self.request("DELETE", f"/api/games/{room_id}")
+        self.assertEqual(status, 403)
+
+        self.request("POST", "/api/logout", {})
+        self.request(
+            "POST",
+            "/api/login",
+            {"email": owner["email"], "password": "secure-pass-123"},
+        )
+        status, result = self.request("DELETE", f"/api/games/{room_id}")
+        self.assertEqual(status, 200)
+        status, result = self.request("GET", "/api/catalog/games/dnd")
+        self.assertEqual(status, 200)
+        self.assertEqual(result["rooms"], [])
+        status, result = self.request("GET", "/api/catalog/games/other-game")
+        self.assertEqual(status, 200)
+        self.assertEqual(result["rooms"][0]["id"], other_room["game"]["id"])
+
     def test_mongodb_game_catalog_ratings_and_live_viewer_presence(self):
         uri = "mongodb://biblio-catalog-test/"
         client = mongomock.MongoClient()
@@ -522,6 +580,70 @@ class BiblioServerTests(unittest.TestCase):
             status, result = self.request("GET", "/api/catalog/games")
             self.assertEqual(status, 200)
             self.assertEqual(result["games"][0]["active_viewers"], 1)
+        finally:
+            server.MONGODB_URI = original_uri
+            server._MONGO_CLIENTS.pop(uri, None)
+            client.close()
+
+    def test_mongodb_game_catalog_rooms_persist_until_the_creator_deletes_them(self):
+        uri = "mongodb://biblio-catalog-rooms-test/"
+        client = mongomock.MongoClient()
+        original_uri = server.MONGODB_URI
+        server.MONGODB_URI = uri
+        server._MONGO_CLIENTS[uri] = client
+        try:
+            server.initialize_db()
+            client["biblio"].game_catalog.insert_one({
+                "slug": "other-game",
+                "title": "Другая игра",
+                "description": "Описание",
+                "cover_symbol": "OG",
+                "cover_theme": "fantasy",
+            })
+            owner = self.register("mongo-catalog-room-owner@example.com")
+            status, result = self.request(
+                "POST",
+                "/api/games",
+                {
+                    "name": "Mongo campaign",
+                    "description": "Persistent room",
+                    "catalog_game_slug": "dnd",
+                },
+            )
+            self.assertEqual(status, 201)
+            room_id = result["game"]["id"]
+            status, other_room = self.request(
+                "POST",
+                "/api/games",
+                {"name": "Other campaign", "catalog_game_slug": "other-game"},
+            )
+            self.assertEqual(status, 201)
+
+            status, result = self.request("GET", "/api/catalog/games/dnd")
+            self.assertEqual(status, 200)
+            self.assertEqual(len(result["rooms"]), 1)
+            self.assertEqual(result["rooms"][0]["id"], room_id)
+            self.assertEqual(result["rooms"][0]["description"], "Persistent room")
+
+            self.request("POST", "/api/logout", {})
+            self.register("mongo-catalog-room-visitor@example.com")
+            status, _ = self.request("DELETE", f"/api/games/{room_id}")
+            self.assertEqual(status, 403)
+
+            self.request("POST", "/api/logout", {})
+            self.request(
+                "POST",
+                "/api/login",
+                {"email": owner["email"], "password": "secure-pass-123"},
+            )
+            status, _ = self.request("DELETE", f"/api/games/{room_id}")
+            self.assertEqual(status, 200)
+            status, result = self.request("GET", "/api/catalog/games/dnd")
+            self.assertEqual(status, 200)
+            self.assertEqual(result["rooms"], [])
+            status, result = self.request("GET", "/api/catalog/games/other-game")
+            self.assertEqual(status, 200)
+            self.assertEqual(result["rooms"][0]["id"], other_room["game"]["id"])
         finally:
             server.MONGODB_URI = original_uri
             server._MONGO_CLIENTS.pop(uri, None)

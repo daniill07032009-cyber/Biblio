@@ -1344,6 +1344,18 @@ html[data-reader-theme="dark"] .reader-dialog { --surface: #20231f; }
 .game-catalog-rating-stars button { padding: 0 2px; border: 0; background: transparent; color: #c6c1b5; cursor: pointer; font-size: 24px; }
 .game-catalog-rating-stars button:hover, .game-catalog-rating-stars button.is-selected { color: #bc9055; }
 .game-catalog-detail__rating-message { color: var(--muted); font-size: 10px; }
+.game-catalog-rooms { display: grid; gap: 14px; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
+.game-catalog-rooms__heading { display: grid; gap: 5px; }
+.game-catalog-rooms__heading h4, .game-catalog-rooms .games-form h4 { margin: 0; font: 500 20px/1.2 var(--serif); }
+.game-catalog-rooms__heading span { color: var(--muted); font-size: 10px; }
+.game-catalog-rooms__list { display: grid; gap: 8px; }
+.game-catalog-room { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-raised, rgba(122, 141, 118, 0.04)); }
+.game-catalog-room__open { display: grid; flex: 1; gap: 5px; padding: 0; border: 0; background: transparent; color: var(--ink); text-align: left; cursor: pointer; }
+.game-catalog-room__open strong { font: 500 16px/1.2 var(--serif); }
+.game-catalog-room__open span { color: var(--muted); font-size: 10px; }
+.game-catalog-room__delete { flex: 0 0 auto; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--muted); font: inherit; font-size: 10px; cursor: pointer; }
+.game-catalog-room__delete:hover { border-color: #b76a5b88; color: #a44f43; }
+.game-catalog-rooms .games-form { max-width: 620px; margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--line); }
 .game-cover-card { position: relative; display: flex; min-width: 0; min-height: 238px; aspect-ratio: .68; flex-direction: column; justify-content: space-between; overflow: hidden; padding: 15px 13px; border: 1px solid #ffffff35; border-radius: 8px; background: linear-gradient(155deg, #344a59, #24333a); box-shadow: 0 8px 20px #28272218; color: #f3ead9; text-align: left; cursor: pointer; transition: transform .2s, box-shadow .2s; }
 .game-cover-card::before { position: absolute; inset: 8px; border: 1px solid #f3ead944; content: ""; pointer-events: none; }
 .game-cover-card::after { position: absolute; top: 50%; left: 50%; color: #f3d9ad20; content: "✦"; font-size: 105px; line-height: 1; transform: translate(-50%, -50%); pointer-events: none; }

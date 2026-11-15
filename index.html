@@ -413,7 +413,6 @@
             <h1>Каталог игр</h1>
             <p>Выбирай игру, смотри оценки сообщества и узнавай, кто сейчас заглянул в игровой блок.</p>
           </div>
-          <button class="button button--secondary" type="button" id="game-rooms-toggle">Игровые комнаты</button>
         </div>
 
         <div class="game-catalog-layout" id="game-catalog-layout">
@@ -425,35 +424,6 @@
           </div>
         </div>
         <div class="game-detail-panel game-catalog-detail" id="game-catalog-detail-panel" tabindex="-1" hidden></div>
-
-        <div class="games-layout" id="games-room-layout" hidden>
-          <div class="games-panel">
-            <div class="games-panel__header">
-              <h2>Доступные комнаты</h2>
-              <button class="text-link" type="button" id="games-create-toggle">Создать комнату</button>
-            </div>
-            <div class="games-list" id="games-list" aria-live="polite"></div>
-          </div>
-          <aside class="games-panel games-panel--sidebar">
-            <div class="games-panel__header">
-              <h2>Мои комнаты</h2>
-            </div>
-            <form id="games-form" class="games-form">
-              <label>Название комнаты<input name="name" maxlength="80" required /></label>
-              <label>Описание<textarea name="description" maxlength="500" rows="3" placeholder="Что происходит в этой кампании?"></textarea></label>
-              <label>Доступ
-                <select name="access">
-                  <option value="public">Публичная</option>
-                  <option value="private">По коду</option>
-                  <option value="invite_only">По приглашениям</option>
-                </select>
-              </label>
-              <label>Код доступа<input name="join_code" maxlength="32" placeholder="Оставьте пустым, чтобы сгенерировать" /></label>
-              <button class="button button--primary" type="submit">Сохранить комнату</button>
-            </form>
-            <div class="games-my-list" id="my-games-list"></div>
-          </aside>
-        </div>
         <div class="game-detail-panel" id="game-detail-panel" tabindex="-1" hidden></div>
       </section>
 

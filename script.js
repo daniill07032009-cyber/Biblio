@@ -425,18 +425,8 @@ confirmDialog.addEventListener("cancel", () => {
 confirmDialog.addEventListener("close", () => {
   confirmResolver?.(false);
 });
-document.querySelector("#games-form")?.addEventListener("submit", createGameRoom);
-document.querySelector("#games-create-toggle")?.addEventListener("click", () => {
-  const form = document.querySelector("#games-form");
-  form?.scrollIntoView({ behavior: "smooth", block: "start" });
-  form?.querySelector("input[name='name']")?.focus();
-});
-document.querySelector("#game-rooms-toggle")?.addEventListener("click", () => {
-  if (document.querySelector("#games-room-layout").hidden) showGameRooms();
-  else {
-    showGameCatalog();
-    document.querySelector("#game-rooms-toggle").textContent = "Игровые комнаты";
-  }
+document.addEventListener("submit", (event) => {
+  if (event.target.id === "game-room-create-form") createGameRoom(event);
 });
 document.addEventListener("visibilitychange", () => {
   if (!activeCatalogGameSlug) return;
@@ -1406,7 +1396,7 @@ async function refreshGameCatalog() {
 async function openCatalogGame(slug) {
   try {
     const result = await api(`/api/catalog/games/${encodeURIComponent(slug)}`);
-    renderCatalogGameDetail(result.game);
+    renderCatalogGameDetail({ ...result.game, rooms: result.rooms || [] });
   } catch (error) {
     showToast(error.message);
   }
@@ -1415,14 +1405,13 @@ async function openCatalogGame(slug) {
 function renderCatalogGameDetail(game) {
   const panel = document.querySelector("#game-catalog-detail-panel");
   const catalogLayout = document.querySelector("#game-catalog-layout");
-  const roomsLayout = document.querySelector("#games-room-layout");
   if (!panel) return;
   stopCatalogPresence();
   activeCatalogGameSlug = game.slug;
   const listedGame = gameCatalogGames.find((item) => item.slug === game.slug);
   if (listedGame) Object.assign(listedGame, game);
   catalogLayout.hidden = true;
-  roomsLayout.hidden = true;
+  document.querySelector("#game-detail-panel").hidden = true;
   panel.replaceChildren();
 
   const header = createElement("div", "game-detail__header");
@@ -1475,10 +1464,112 @@ function renderCatalogGameDetail(game) {
     currentUser ? "Оцени игру — оценку можно изменить." : "Войди, чтобы оставить оценку.",
   );
   ratingSection.append(ratingTitle, stars, ratingMessage);
-  panel.append(header, content, stats, ratingSection);
+
+  const roomsSection = createElement("section", "game-catalog-rooms");
+  const roomsHeading = createElement("div", "game-catalog-rooms__heading");
+  roomsHeading.append(
+    createElement("h4", "", "Игровые комнаты"),
+    createElement("span", "", "Комнаты и прогресс сохраняются, пока создатель их не удалит."),
+  );
+  const roomsList = createElement("div", "game-catalog-rooms__list");
+  if (game.rooms?.length) {
+    game.rooms.forEach((room) => roomsList.append(createCatalogRoomCard(room)));
+  } else {
+    roomsList.append(createElement("p", "empty-state", "Пока нет комнат. Создай первую для этой игры."));
+  }
+  roomsSection.append(roomsHeading, roomsList);
+  if (currentUser) {
+    const form = createElement("form", "games-form");
+    form.id = "game-room-create-form";
+    form.append(
+      createElement("h4", "", "Создать комнату"),
+      createElement("label", "", "Название комнаты"),
+    );
+    const nameInput = createElement("input");
+    nameInput.name = "name";
+    nameInput.maxLength = 80;
+    nameInput.required = true;
+    nameInput.placeholder = "Например, Кампания «Северный путь»";
+    form.querySelector("label").append(nameInput);
+    const descriptionLabel = createElement("label", "", "Описание");
+    const descriptionInput = createElement("textarea");
+    descriptionInput.name = "description";
+    descriptionInput.maxLength = 500;
+    descriptionInput.rows = 3;
+    descriptionInput.placeholder = "Опиши свою кампанию";
+    descriptionLabel.append(descriptionInput);
+    const accessLabel = createElement("label", "", "Доступ");
+    const accessSelect = createElement("select");
+    accessSelect.name = "access";
+    [
+      ["public", "Публичная"],
+      ["private", "По коду"],
+      ["invite_only", "По приглашениям"],
+    ].forEach(([value, label]) => {
+      const option = createElement("option", "", label);
+      option.value = value;
+      accessSelect.append(option);
+    });
+    accessLabel.append(accessSelect);
+    const codeLabel = createElement("label", "", "Код доступа");
+    const codeInput = createElement("input");
+    codeInput.name = "join_code";
+    codeInput.maxLength = 32;
+    codeInput.placeholder = "Оставь пустым для генерации";
+    codeLabel.append(codeInput);
+    const submit = createElement("button", "button button--primary", "Создать комнату");
+    submit.type = "submit";
+    form.append(descriptionLabel, accessLabel, codeLabel, submit);
+    roomsSection.append(form);
+  } else {
+    const loginButton = createElement("button", "button button--primary", "Войти, чтобы создать комнату");
+    loginButton.type = "button";
+    loginButton.addEventListener("click", () => openDialog("auth-dialog"));
+    roomsSection.append(loginButton);
+  }
+
+  panel.append(header, content, stats, ratingSection, roomsSection);
   panel.hidden = false;
   panel.focus();
   startCatalogPresence(game.slug);
+}
+
+function createCatalogRoomCard(room) {
+  const card = createElement("article", "game-catalog-room");
+  const openButton = createElement("button", "game-catalog-room__open");
+  openButton.type = "button";
+  const roomName = createElement("strong", "", room.title || room.name || "Новая комната");
+  openButton.append(
+    roomName,
+    createElement(
+      "span",
+      "",
+      `${room.access === "public" ? "Публичная" : room.access === "private" ? "По коду" : "По приглашениям"} · ${room.member_count || 0} участников · ${room.hero_count || 0} героев`,
+    ),
+  );
+  openButton.addEventListener("click", () => openGameRoom(room.id));
+  card.append(openButton);
+  if (room.is_owner) {
+    const deleteButton = createElement("button", "game-catalog-room__delete", "Удалить");
+    deleteButton.type = "button";
+    deleteButton.addEventListener("click", async () => {
+      const confirmed = await askForConfirmation(
+        `Комната «${room.title || room.name}» и её данные будут удалены без возможности восстановления.`,
+        "Удалить комнату?",
+        "Удалить",
+      );
+      if (!confirmed) return;
+      try {
+        await api(`/api/games/${room.id}`, { method: "DELETE" });
+        await openCatalogGame(activeCatalogGameSlug);
+        showToast("Комната удалена");
+      } catch (error) {
+        showToast(error.message);
+      }
+    });
+    card.append(deleteButton);
+  }
+  return card;
 }
 
 function showGameCatalog() {
@@ -1487,18 +1578,6 @@ function showGameCatalog() {
   document.querySelector("#game-catalog-detail-panel").hidden = true;
   document.querySelector("#game-detail-panel").hidden = true;
   document.querySelector("#game-catalog-layout").hidden = false;
-  document.querySelector("#games-room-layout").hidden = true;
-  document.querySelector("#game-rooms-toggle").textContent = "Игровые комнаты";
-}
-
-function showGameRooms() {
-  stopCatalogPresence();
-  activeCatalogGameSlug = "";
-  document.querySelector("#game-catalog-detail-panel").hidden = true;
-  document.querySelector("#game-detail-panel").hidden = true;
-  document.querySelector("#game-catalog-layout").hidden = true;
-  document.querySelector("#games-room-layout").hidden = false;
-  document.querySelector("#game-rooms-toggle").textContent = "Каталог игр";
 }
 
 function getCatalogPresenceToken() {
@@ -1523,7 +1602,8 @@ async function updateCatalogPresence(slug) {
     const game = gameCatalogGames.find((item) => item.slug === slug);
     if (game && activeCatalogGameSlug === slug) {
       game.active_viewers = result.active_viewers;
-      document.querySelector(".game-catalog-active-count").textContent = String(result.active_viewers);
+      const activeCount = document.querySelector(".game-catalog-active-count");
+      if (activeCount) activeCount.textContent = String(result.active_viewers);
       const card = [...document.querySelectorAll(".game-catalog-card")]
         .find((item) => item.dataset.slug === slug)
         ?.querySelector(".game-catalog-card__online-count");
@@ -1593,51 +1673,6 @@ window.setInterval(() => {
   }
 }, GAME_CATALOG_PRESENCE_INTERVAL_MS);
 
-async function refreshGames() {
-  const gamesList = document.querySelector("#games-list");
-  const myGamesList = document.querySelector("#my-games-list");
-  if (!gamesList || !myGamesList) return;
-  try {
-    const result = await api("/api/games");
-    const games = Array.isArray(result.games) ? result.games : [];
-    const myGames = currentUser ? (await api("/api/my/games")).games || [] : [];
-    gamesList.replaceChildren();
-    if (!games.length) {
-      gamesList.append(createElement("p", "empty-state", "Пока нет публичных комнат. Создай первую!"));
-    } else {
-      games.forEach((game) => {
-        gamesList.append(createGameCoverCard(game));
-      });
-    }
-    myGamesList.replaceChildren();
-    if (!currentUser || !myGames.length) {
-      myGamesList.append(createElement("p", "empty-state", currentUser ? "У тебя ещё нет комнат." : "Войди, чтобы создать комнату."));
-    } else {
-      myGames.forEach((game) => {
-        myGamesList.append(createGameCoverCard(game));
-      });
-    }
-  } catch (error) {
-    showToast(error.message);
-  }
-}
-
-function createGameCoverCard(game) {
-  const title = game.title || game.name || "Новая комната";
-  const card = createElement("button", "game-cover-card", "");
-  const coverStyle = Math.abs(Number(game.id) || [...title].reduce((sum, char) => sum + char.codePointAt(0), 0)) % 4;
-  card.type = "button";
-  card.dataset.coverStyle = String(coverStyle);
-  card.setAttribute("aria-label", `Открыть игру: ${title}`);
-  card.addEventListener("click", () => openGameRoom(game.id));
-  card.append(createElement("span", "game-cover-card__access", game.access === "public" ? "Публичная" : game.access === "private" ? "По коду" : "По приглашениям"));
-  card.append(createElement("span", "game-cover-card__symbol", "✦"));
-  card.append(createElement("strong", "game-cover-card__title", title));
-  card.append(createElement("span", "game-cover-card__meta", `${game.member_count || 0} игроков · ${game.hero_count || 0} героев`));
-  card.append(createElement("span", "game-cover-card__action", "Открыть игру →"));
-  return card;
-}
-
 async function openGameRoom(gameId) {
   try {
     const result = await api(`/api/games/${gameId}`);
@@ -1659,8 +1694,8 @@ function escapeHtml(value) {
 function renderGameDetail(game) {
   const panel = document.querySelector("#game-detail-panel");
   if (!panel) return;
-  const gamesLayout = document.querySelector(".games-layout");
-  if (gamesLayout) gamesLayout.hidden = true;
+  document.querySelector("#game-catalog-layout").hidden = true;
+  document.querySelector("#game-catalog-detail-panel").hidden = true;
   panel.hidden = false;
   const title = game.title || game.name || "Новая комната";
   const members = Array.isArray(game.participants) ? game.participants : [];
@@ -1761,8 +1796,8 @@ function renderGameDetail(game) {
   `;
 
   panel.querySelector('[data-game-action="back"]')?.addEventListener("click", () => {
-    panel.hidden = true;
-    if (gamesLayout) gamesLayout.hidden = false;
+    if (game.catalog_game_slug) openCatalogGame(game.catalog_game_slug);
+    else showGameCatalog();
   });
 
   const joinButton = panel.querySelector('[data-game-action="join"]');
@@ -1771,7 +1806,6 @@ function renderGameDetail(game) {
       try {
         const payload = game.access === "public" ? {} : { join_code: window.prompt("Введи код доступа к комнате", "") || "" };
         await api(`/api/games/${game.id}/join`, { method: "POST", body: JSON.stringify(payload) });
-        await refreshGames();
         const refreshedGame = await api(`/api/games/${game.id}`);
         renderGameDetail(refreshedGame.game);
         showToast("Ты вступил в комнату");
@@ -1788,7 +1822,6 @@ function renderGameDetail(game) {
       try {
         const formData = new FormData(joinForm);
         await api(`/api/games/${game.id}/join`, { method: "POST", body: JSON.stringify({ join_code: formData.get("join_code") || "" }) });
-        await refreshGames();
         const refreshedGame = await api(`/api/games/${game.id}`);
         renderGameDetail(refreshedGame.game);
         showToast("Ты вступил в комнату");
@@ -1803,7 +1836,8 @@ function renderGameDetail(game) {
     leaveButton.addEventListener("click", async () => {
       try {
         await api(`/api/games/${game.id}/leave`, { method: "DELETE" });
-        await refreshGames();
+        if (game.catalog_game_slug) await openCatalogGame(game.catalog_game_slug);
+        else showGameCatalog();
         showToast("Ты покинул комнату");
       } catch (error) {
         showToast(error.message);
@@ -1816,7 +1850,6 @@ function renderGameDetail(game) {
     refreshButton.addEventListener("click", async () => {
       const refreshedGame = await api(`/api/games/${game.id}`);
       renderGameDetail(refreshedGame.game);
-      await refreshGames();
       showToast("Комната обновлена");
     });
   }
@@ -1848,7 +1881,6 @@ function renderGameDetail(game) {
         };
         const result = await api(`/api/games/${game.id}/characters`, { method: "POST", body: JSON.stringify(payload) });
         if (result.character) {
-          await refreshGames();
           const refreshedGame = await api(`/api/games/${game.id}`);
           renderGameDetail(refreshedGame.game);
           showToast("Герой сохранён");
@@ -1898,12 +1930,11 @@ async function createGameRoom(event) {
     description: formData.get("description") || "",
     access: formData.get("access") || "public",
     join_code: formData.get("join_code") || "",
+    catalog_game_slug: activeCatalogGameSlug,
   };
   try {
-    const result = await api("/api/games", { method: "POST", body: JSON.stringify(payload) });
-    form.reset();
-    await refreshGames();
-    renderGameDetail(result.game);
+    await api("/api/games", { method: "POST", body: JSON.stringify(payload) });
+    await openCatalogGame(activeCatalogGameSlug);
     showToast("Комната создана");
   } catch (error) {
     showToast(error.message);
@@ -1933,6 +1964,10 @@ function applyPageLayout() {
   const currentUserIsLoggedIn = Boolean(currentUser);
 
   document.body.dataset.page = page;
+  if (page !== "games" && activeCatalogGameSlug) {
+    stopCatalogPresence();
+    activeCatalogGameSlug = "";
+  }
   document.querySelectorAll("main > section").forEach((section) => {
     const shouldShow = visibleSections[page].some((selector) => section.matches(selector));
     if (section.id === "my-library") {
@@ -2738,7 +2773,6 @@ async function initialize() {
     currentUser = result.user;
     updateAccountUI();
     await refreshPublishedBooks();
-    await refreshGames();
     await refreshGameCatalog();
     if (currentUser) await refreshMyBooks();
     const readerRoute = location.hash.match(/^#read\/([^/]+)$/);
