@@ -558,6 +558,7 @@ class BiblioServerTests(unittest.TestCase):
         server._MONGO_CLIENTS[uri] = client
         try:
             server.initialize_db()
+            server.initialize_db()
             status, result = self.request("GET", "/api/catalog/games")
             self.assertEqual(status, 200)
             self.assertEqual(result["games"][0]["slug"], "dnd")

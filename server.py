@@ -136,7 +136,12 @@ def initialize_db():
         for game in GAME_CATALOG_SEED:
             db.game_catalog.update_one(
                 {"slug": game["slug"]},
-                {"$set": {"description": game["description"]}, "$setOnInsert": game},
+                {
+                    "$set": {"description": game["description"]},
+                    "$setOnInsert": {
+                        key: value for key, value in game.items() if key != "description"
+                    },
+                },
                 upsert=True,
             )
         db.games.update_many(
