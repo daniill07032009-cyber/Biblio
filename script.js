@@ -244,6 +244,11 @@ let editingBookId = null;
 let authMode = "login";
 let activeReaderBook = null;
 let activeReaderChapter = 0;
+let gameCatalogGames = [];
+let activeCatalogGameSlug = "";
+let catalogPresenceTimer = 0;
+let catalogPresenceToken = "";
+let catalogPresenceRequestPending = false;
 let readerReturnHash = "#popular";
 let toastTimeout;
 let activeDialog = null;
@@ -426,6 +431,19 @@ document.querySelector("#games-create-toggle")?.addEventListener("click", () => 
   form?.scrollIntoView({ behavior: "smooth", block: "start" });
   form?.querySelector("input[name='name']")?.focus();
 });
+document.querySelector("#game-rooms-toggle")?.addEventListener("click", () => {
+  if (document.querySelector("#games-room-layout").hidden) showGameRooms();
+  else {
+    showGameCatalog();
+    document.querySelector("#game-rooms-toggle").textContent = "Игровые комнаты";
+  }
+});
+document.addEventListener("visibilitychange", () => {
+  if (!activeCatalogGameSlug) return;
+  if (document.hidden) stopCatalogPresence();
+  else startCatalogPresence(activeCatalogGameSlug);
+});
+window.addEventListener("pagehide", stopCatalogPresence);
 
 function filterBooks() {
   const query = searchInput.value.trim().toLocaleLowerCase("ru");
@@ -1336,6 +1354,245 @@ function updateAccountUI() {
   profileForm.elements.bio.value = currentUser.bio || "";
 }
 
+function renderGameCatalogCards() {
+  const list = document.querySelector("#game-catalog-list");
+  if (!list) return;
+  list.replaceChildren();
+  if (!gameCatalogGames.length) {
+    list.append(createElement("p", "empty-state", "В каталоге пока нет игр."));
+    return;
+  }
+  gameCatalogGames.forEach((game) => list.append(createGameCatalogCard(game)));
+}
+
+function createGameCatalogCard(game) {
+  const card = createElement("button", "game-catalog-card", "");
+  card.type = "button";
+  card.dataset.slug = game.slug;
+  card.setAttribute("aria-label", `Открыть игру: ${game.title}`);
+  const cover = createElement("span", "game-catalog-card__cover");
+  cover.dataset.theme = game.cover_theme;
+  cover.append(
+    createElement("span", "game-catalog-card__cover-mark", game.cover_symbol),
+    createElement("strong", "game-catalog-card__cover-title", game.title),
+  );
+  const info = createElement("span", "game-catalog-card__info");
+  info.append(createElement("strong", "game-catalog-card__title", game.title));
+  info.append(createElement(
+    "span",
+    "game-catalog-card__rating",
+    `★ ${game.rating_count ? Number(game.rating).toFixed(1) : "—"} · ${game.rating_count} оценок`,
+  ));
+  const players = createElement("span", "game-catalog-card__players");
+  players.append(createElement("span", "game-catalog-card__online-dot", ""));
+  players.append(createElement("span", "game-catalog-card__online-count", String(game.active_viewers || 0)));
+  players.append(document.createTextNode(" сейчас в блоке D&D"));
+  info.append(players);
+  card.append(cover, info);
+  card.addEventListener("click", () => openCatalogGame(game.slug));
+  return card;
+}
+
+async function refreshGameCatalog() {
+  try {
+    const result = await api("/api/catalog/games");
+    gameCatalogGames = Array.isArray(result.games) ? result.games : [];
+    renderGameCatalogCards();
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function openCatalogGame(slug) {
+  try {
+    const result = await api(`/api/catalog/games/${encodeURIComponent(slug)}`);
+    renderCatalogGameDetail(result.game);
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+function renderCatalogGameDetail(game) {
+  const panel = document.querySelector("#game-catalog-detail-panel");
+  const catalogLayout = document.querySelector("#game-catalog-layout");
+  const roomsLayout = document.querySelector("#games-room-layout");
+  if (!panel) return;
+  stopCatalogPresence();
+  activeCatalogGameSlug = game.slug;
+  const listedGame = gameCatalogGames.find((item) => item.slug === game.slug);
+  if (listedGame) Object.assign(listedGame, game);
+  catalogLayout.hidden = true;
+  roomsLayout.hidden = true;
+  panel.replaceChildren();
+
+  const header = createElement("div", "game-detail__header");
+  const heading = createElement("div");
+  heading.append(
+    createElement("span", "eyebrow", "Игра сообщества"),
+    createElement("h3", "", game.title),
+  );
+  const backButton = createElement("button", "button button--secondary", "← К каталогу");
+  backButton.type = "button";
+  backButton.addEventListener("click", showGameCatalog);
+  header.append(heading, backButton);
+
+  const content = createElement("div", "game-catalog-detail__content");
+  const cover = createElement("div", "game-catalog-detail__cover");
+  cover.dataset.theme = game.cover_theme;
+  cover.append(createElement("span", "", game.cover_symbol), createElement("strong", "", game.title));
+  const description = createElement("p", "game-catalog-detail__description", game.description);
+  content.append(cover, description);
+
+  const stats = createElement("div", "game-catalog-detail__stats");
+  stats.append(createElement(
+    "span",
+    "",
+    `★ ${game.rating_count ? Number(game.rating).toFixed(1) : "—"} · ${game.rating_count} оценок`,
+  ));
+  const online = createElement("span", "game-catalog-detail__online");
+  online.append(createElement("span", "game-catalog-card__online-dot", ""));
+  online.append(createElement("strong", "game-catalog-active-count", String(game.active_viewers || 0)));
+  online.append(document.createTextNode(" сейчас внутри блока D&D"));
+  stats.append(online);
+
+  const ratingSection = createElement("div", "game-catalog-detail__rating");
+  const ratingTitle = createElement("strong", "", "Оценка игры");
+  const stars = createElement("div", "game-catalog-rating-stars");
+  stars.setAttribute("role", "group");
+  stars.setAttribute("aria-label", "Оценка игры");
+  for (let value = 1; value <= 5; value += 1) {
+    const button = createElement("button", "", "★");
+    button.type = "button";
+    button.dataset.rating = String(value);
+    button.setAttribute("aria-label", `${value} из 5`);
+    button.classList.toggle("is-selected", value <= Number(game.user_rating || 0));
+    button.addEventListener("click", () => rateCatalogGame(game.slug, value));
+    stars.append(button);
+  }
+  const ratingMessage = createElement(
+    "small",
+    "game-catalog-detail__rating-message",
+    currentUser ? "Оцени игру — оценку можно изменить." : "Войди, чтобы оставить оценку.",
+  );
+  ratingSection.append(ratingTitle, stars, ratingMessage);
+  panel.append(header, content, stats, ratingSection);
+  panel.hidden = false;
+  panel.focus();
+  startCatalogPresence(game.slug);
+}
+
+function showGameCatalog() {
+  stopCatalogPresence();
+  activeCatalogGameSlug = "";
+  document.querySelector("#game-catalog-detail-panel").hidden = true;
+  document.querySelector("#game-detail-panel").hidden = true;
+  document.querySelector("#game-catalog-layout").hidden = false;
+  document.querySelector("#games-room-layout").hidden = true;
+  document.querySelector("#game-rooms-toggle").textContent = "Игровые комнаты";
+}
+
+function showGameRooms() {
+  stopCatalogPresence();
+  activeCatalogGameSlug = "";
+  document.querySelector("#game-catalog-detail-panel").hidden = true;
+  document.querySelector("#game-detail-panel").hidden = true;
+  document.querySelector("#game-catalog-layout").hidden = true;
+  document.querySelector("#games-room-layout").hidden = false;
+  document.querySelector("#game-rooms-toggle").textContent = "Каталог игр";
+}
+
+function getCatalogPresenceToken() {
+  if (catalogPresenceToken) return catalogPresenceToken;
+  const bytes = new Uint8Array(16);
+  window.crypto.getRandomValues(bytes);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = [...bytes].map((value) => value.toString(16).padStart(2, "0")).join("");
+  catalogPresenceToken = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  return catalogPresenceToken;
+}
+
+async function updateCatalogPresence(slug) {
+  if (catalogPresenceRequestPending || document.hidden || activeCatalogGameSlug !== slug) return;
+  catalogPresenceRequestPending = true;
+  try {
+    const result = await api(`/api/catalog/games/${encodeURIComponent(slug)}/presence`, {
+      method: "POST",
+      body: JSON.stringify({ viewer_token: getCatalogPresenceToken() }),
+    });
+    const game = gameCatalogGames.find((item) => item.slug === slug);
+    if (game && activeCatalogGameSlug === slug) {
+      game.active_viewers = result.active_viewers;
+      document.querySelector(".game-catalog-active-count").textContent = String(result.active_viewers);
+      const card = [...document.querySelectorAll(".game-catalog-card")]
+        .find((item) => item.dataset.slug === slug)
+        ?.querySelector(".game-catalog-card__online-count");
+      if (card) card.textContent = String(result.active_viewers);
+    }
+  } catch (error) {
+    window.clearInterval(catalogPresenceTimer);
+    catalogPresenceTimer = 0;
+    showToast(error.message);
+  } finally {
+    catalogPresenceRequestPending = false;
+  }
+}
+
+function startCatalogPresence(slug) {
+  stopCatalogPresence();
+  activeCatalogGameSlug = slug;
+  updateCatalogPresence(slug);
+  catalogPresenceTimer = window.setInterval(
+    () => updateCatalogPresence(slug),
+    Math.floor(GAME_CATALOG_PRESENCE_INTERVAL_MS),
+  );
+}
+
+function stopCatalogPresence() {
+  window.clearInterval(catalogPresenceTimer);
+  catalogPresenceTimer = 0;
+}
+
+async function rateCatalogGame(slug, rating) {
+  if (!currentUser) {
+    openDialog("auth-dialog");
+    return;
+  }
+  try {
+    const result = await api(`/api/catalog/games/${encodeURIComponent(slug)}/rating`, {
+      method: "POST",
+      body: JSON.stringify({ rating }),
+    });
+    const game = gameCatalogGames.find((item) => item.slug === slug);
+    if (game) Object.assign(game, result);
+    renderGameCatalogCards();
+    const currentGame = gameCatalogGames.find((item) => item.slug === slug);
+    if (currentGame && activeCatalogGameSlug === slug) {
+      document.querySelector(".game-catalog-detail__stats > span").textContent =
+        `★ ${Number(result.rating).toFixed(1)} · ${result.rating_count} оценок`;
+      document.querySelectorAll(".game-catalog-rating-stars [data-rating]").forEach((button) => {
+        button.classList.toggle("is-selected", Number(button.dataset.rating) <= rating);
+      });
+      document.querySelector(".game-catalog-detail__rating-message").textContent = "Твоя оценка сохранена.";
+    }
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+const GAME_CATALOG_PRESENCE_INTERVAL_MS = 15_000;
+window.setInterval(() => {
+  const catalogLayout = document.querySelector("#game-catalog-layout");
+  if (
+    document.body.dataset.page === "games" &&
+    !document.hidden &&
+    catalogLayout &&
+    !catalogLayout.hidden
+  ) {
+    refreshGameCatalog();
+  }
+}, GAME_CATALOG_PRESENCE_INTERVAL_MS);
+
 async function refreshGames() {
   const gamesList = document.querySelector("#games-list");
   const myGamesList = document.querySelector("#my-games-list");
@@ -1696,7 +1953,7 @@ function applyPageLayout() {
     catalog: "Каталог книг — Biblio",
     authors: "Авторы — Biblio",
     club: "Книжный клуб — Biblio",
-    games: "Игровые комнаты — Biblio",
+    games: "Каталог игр — Biblio",
     library: "Моя библиотека — Biblio",
     settings: "Настройки — Biblio",
   };
@@ -2482,6 +2739,7 @@ async function initialize() {
     updateAccountUI();
     await refreshPublishedBooks();
     await refreshGames();
+    await refreshGameCatalog();
     if (currentUser) await refreshMyBooks();
     const readerRoute = location.hash.match(/^#read\/([^/]+)$/);
     const bookRoute = location.hash.match(/^#book\/([^/]+)$/);

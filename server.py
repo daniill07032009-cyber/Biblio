@@ -38,6 +38,16 @@ RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 RESEND_FROM = os.environ.get("RESEND_FROM", "Biblio <onboarding@resend.dev>")
 EMAIL_CODE_TTL = 600
 EMAIL_CODE_MAX_ATTEMPTS = 5
+GAME_CATALOG_SEED = (
+    {
+        "slug": "dnd",
+        "title": "Dungeons & Dragons",
+        "description": "Настольная ролевая игра о приключениях, героях и мирах, которые создаются вместе.",
+        "cover_symbol": "D20",
+        "cover_theme": "fantasy",
+    },
+)
+GAME_CATALOG_PRESENCE_SECONDS = 45
 
 _MONGO_CLIENTS = {}
 _MONGO_CLIENTS_LOCK = threading.Lock()
@@ -104,6 +114,18 @@ def initialize_db():
         db.book_ratings.create_index(
             [("book_id", ASCENDING), ("user_id", ASCENDING)], unique=True
         )
+        db.game_catalog.create_index([("slug", ASCENDING)], unique=True)
+        db.game_catalog_ratings.create_index(
+            [("game_slug", ASCENDING), ("user_id", ASCENDING)], unique=True
+        )
+        db.game_catalog_presence.create_index(
+            [("game_slug", ASCENDING), ("viewer_token", ASCENDING)], unique=True
+        )
+        db.game_catalog_presence.create_index([("expires_at", ASCENDING)])
+        for game in GAME_CATALOG_SEED:
+            db.game_catalog.update_one(
+                {"slug": game["slug"]}, {"$setOnInsert": game}, upsert=True
+            )
         for collection in ("users", "books", "games", "game_participants", "game_characters", "game_sessions", "xp_history"):
             maximum = db[collection].find_one(sort=[("id", DESCENDING)])
             db.counters.update_one(
@@ -196,6 +218,27 @@ def initialize_db():
                 joined_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
                 UNIQUE(game_id, user_id)
             );
+            CREATE TABLE IF NOT EXISTS game_catalog (
+                slug TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                description TEXT NOT NULL,
+                cover_symbol TEXT NOT NULL,
+                cover_theme TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS game_catalog_ratings (
+                id INTEGER PRIMARY KEY,
+                game_slug TEXT NOT NULL REFERENCES game_catalog(slug) ON DELETE CASCADE,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+                UNIQUE(game_slug, user_id)
+            );
+            CREATE TABLE IF NOT EXISTS game_catalog_presence (
+                game_slug TEXT NOT NULL REFERENCES game_catalog(slug) ON DELETE CASCADE,
+                viewer_token TEXT NOT NULL,
+                expires_at INTEGER NOT NULL,
+                PRIMARY KEY(game_slug, viewer_token)
+            );
             CREATE TABLE IF NOT EXISTS game_characters (
                 id INTEGER PRIMARY KEY,
                 game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
@@ -231,6 +274,10 @@ def initialize_db():
             );
             CREATE INDEX IF NOT EXISTS book_ratings_book_user_idx
             ON book_ratings(book_id, user_id);
+            CREATE INDEX IF NOT EXISTS game_catalog_ratings_game_user_idx
+            ON game_catalog_ratings(game_slug, user_id);
+            CREATE INDEX IF NOT EXISTS game_catalog_presence_expires_idx
+            ON game_catalog_presence(expires_at);
             CREATE INDEX IF NOT EXISTS books_status_updated_idx
             ON books(status, updated_at DESC, id DESC);
             CREATE INDEX IF NOT EXISTS books_owner_updated_idx
@@ -248,6 +295,14 @@ def initialize_db():
             CREATE INDEX IF NOT EXISTS xp_history_game_user_idx
             ON xp_history(game_id, user_id, created_at DESC);
             """
+        )
+        db.executemany(
+            """
+            INSERT OR IGNORE INTO game_catalog
+                (slug, title, description, cover_symbol, cover_theme)
+            VALUES (:slug, :title, :description, :cover_symbol, :cover_theme)
+            """,
+            GAME_CATALOG_SEED,
         )
         columns = {row["name"] for row in db.execute("PRAGMA table_info(users)")}
         for name in ("bio", "avatar_url"):
@@ -399,6 +454,20 @@ def game_record_row(game, user_id=None):
     result["heroes"] = game.get("heroes", []) or []
     result["sessions"] = game.get("sessions", []) or []
     return result
+
+
+def game_catalog_record(game, rating=0, rating_count=0, active_viewers=0, user_rating=0):
+    return {
+        "slug": game["slug"],
+        "title": game["title"],
+        "description": game["description"],
+        "cover_symbol": game["cover_symbol"],
+        "cover_theme": game["cover_theme"],
+        "rating": round(float(rating or 0), 1),
+        "rating_count": int(rating_count or 0),
+        "active_viewers": int(active_viewers or 0),
+        "user_rating": int(user_rating or 0),
+    }
 
 
 def game_character_record(row):
@@ -1073,6 +1142,161 @@ class BiblioHandler(BaseHTTPRequestHandler):
             headers = self.create_mongo_session(db, user["id"])
             return {"ok": True}, HTTPStatus.OK, headers
 
+        catalog_match = re.fullmatch(
+            r"/api/catalog/games(?:/([a-z0-9-]+))?(?:/(rating|presence))?", path
+        )
+        if catalog_match and method == "GET" and not catalog_match.group(1) and catalog_match.group(2) is None:
+            user = self.current_user_mongo(db)
+            now = int(time.time())
+            db.game_catalog_presence.delete_many({"expires_at": {"$lte": now}})
+            games = list(db.game_catalog.find().sort("title", ASCENDING))
+            game_ids = [game["slug"] for game in games]
+            rating_stats = {}
+            if game_ids:
+                rating_stats = {
+                    item["_id"]: item
+                    for item in db.game_catalog_ratings.aggregate(
+                        [
+                            {"$match": {"game_slug": {"$in": game_ids}}},
+                            {
+                                "$group": {
+                                    "_id": "$game_slug",
+                                    "rating": {"$avg": "$rating"},
+                                    "rating_count": {"$sum": 1},
+                                }
+                            },
+                        ]
+                    )
+                }
+            presence_stats = {
+                item["_id"]: item["count"]
+                for item in db.game_catalog_presence.aggregate(
+                    [
+                        {"$match": {"game_slug": {"$in": game_ids}, "expires_at": {"$gt": now}}},
+                        {"$group": {"_id": "$game_slug", "count": {"$sum": 1}}},
+                    ]
+                )
+            } if game_ids else {}
+            return {
+                "games": [
+                    game_catalog_record(
+                        game,
+                        rating=rating_stats.get(game["slug"], {}).get("rating", 0),
+                        rating_count=rating_stats.get(game["slug"], {}).get("rating_count", 0),
+                        active_viewers=presence_stats.get(game["slug"], 0),
+                        user_rating=(
+                            (db.game_catalog_ratings.find_one(
+                                {"game_slug": game["slug"], "user_id": user["id"]},
+                                {"rating": 1},
+                            ) or {}).get("rating", 0)
+                            if user else 0
+                        ),
+                    )
+                    for game in games
+                ]
+            }, HTTPStatus.OK, []
+
+        if catalog_match and method == "GET" and catalog_match.group(1) and catalog_match.group(2) is None:
+            slug = catalog_match.group(1)
+            game = db.game_catalog.find_one({"slug": slug})
+            if game is None:
+                raise APIError(HTTPStatus.NOT_FOUND, "Игра не найдена в каталоге.")
+            user = self.current_user_mongo(db)
+            now = int(time.time())
+            db.game_catalog_presence.delete_many({"expires_at": {"$lte": now}})
+            rating_stats = next(
+                db.game_catalog_ratings.aggregate(
+                    [
+                        {"$match": {"game_slug": slug}},
+                        {
+                            "$group": {
+                                "_id": None,
+                                "rating": {"$avg": "$rating"},
+                                "rating_count": {"$sum": 1},
+                            }
+                        },
+                    ]
+                ),
+                {},
+            )
+            own_rating = db.game_catalog_ratings.find_one(
+                {"game_slug": slug, "user_id": user["id"]}, {"rating": 1}
+            ) if user else None
+            return {
+                "game": game_catalog_record(
+                    game,
+                    rating=rating_stats.get("rating", 0),
+                    rating_count=rating_stats.get("rating_count", 0),
+                    active_viewers=db.game_catalog_presence.count_documents(
+                        {"game_slug": slug, "expires_at": {"$gt": now}}
+                    ),
+                    user_rating=(own_rating or {}).get("rating", 0),
+                )
+            }, HTTPStatus.OK, []
+
+        if catalog_match and method == "POST" and catalog_match.group(1):
+            slug, action = catalog_match.groups()
+            game = db.game_catalog.find_one({"slug": slug})
+            if game is None:
+                raise APIError(HTTPStatus.NOT_FOUND, "Игра не найдена в каталоге.")
+            data = self.read_json()
+            if action == "rating":
+                user = self.current_user_mongo(db, required=True)
+                rating = data.get("rating")
+                if isinstance(rating, bool) or not isinstance(rating, int) or not 1 <= rating <= 5:
+                    raise APIError(HTTPStatus.BAD_REQUEST, "Оценка должна быть от 1 до 5.")
+                db.game_catalog_ratings.update_one(
+                    {"game_slug": slug, "user_id": user["id"]},
+                    {
+                        "$set": {"rating": rating, "created_at": utc_timestamp()},
+                        "$setOnInsert": {"game_slug": slug, "user_id": user["id"]},
+                    },
+                    upsert=True,
+                )
+                summary = next(
+                    db.game_catalog_ratings.aggregate(
+                        [
+                            {"$match": {"game_slug": slug}},
+                            {
+                                "$group": {
+                                    "_id": None,
+                                    "rating": {"$avg": "$rating"},
+                                    "rating_count": {"$sum": 1},
+                                }
+                            },
+                        ]
+                    ),
+                    {},
+                )
+                return {
+                    "rating": round(summary.get("rating", 0), 1),
+                    "rating_count": summary.get("rating_count", 0),
+                    "user_rating": rating,
+                }, HTTPStatus.OK, []
+            if action == "presence":
+                viewer_token = data.get("viewer_token")
+                if not isinstance(viewer_token, str) or not re.fullmatch(
+                    r"[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}",
+                    viewer_token,
+                    re.IGNORECASE,
+                ):
+                    raise APIError(HTTPStatus.BAD_REQUEST, "Не удалось подтвердить присутствие.")
+                now = int(time.time())
+                db.game_catalog_presence.delete_many({"expires_at": {"$lte": now}})
+                db.game_catalog_presence.update_one(
+                    {"game_slug": slug, "viewer_token": viewer_token},
+                    {
+                        "$set": {"expires_at": now + GAME_CATALOG_PRESENCE_SECONDS},
+                        "$setOnInsert": {"game_slug": slug, "viewer_token": viewer_token},
+                    },
+                    upsert=True,
+                )
+                return {
+                    "active_viewers": db.game_catalog_presence.count_documents(
+                        {"game_slug": slug, "expires_at": {"$gt": now}}
+                    )
+                }, HTTPStatus.OK, []
+
         if method == "GET" and path == "/api/games":
             user = self.current_user_mongo(db)
             visible_games = []
@@ -1712,6 +1936,132 @@ class BiblioHandler(BaseHTTPRequestHandler):
             db.execute("DELETE FROM sessions WHERE user_id = ?", (user["id"],))
             headers = self.create_session(db, user["id"])
             return {"ok": True}, HTTPStatus.OK, headers
+
+        catalog_match = re.fullmatch(
+            r"/api/catalog/games(?:/([a-z0-9-]+))?(?:/(rating|presence))?", path
+        )
+        if catalog_match and method == "GET" and not catalog_match.group(1) and catalog_match.group(2) is None:
+            user = self.current_user(db)
+            now = int(time.time())
+            db.execute("DELETE FROM game_catalog_presence WHERE expires_at <= ?", (now,))
+            games = db.execute(
+                """
+                SELECT game_catalog.*,
+                    COALESCE(rating_stats.rating, 0) AS rating,
+                    COALESCE(rating_stats.rating_count, 0) AS rating_count,
+                    (SELECT COUNT(*) FROM game_catalog_presence
+                     WHERE game_slug = game_catalog.slug AND expires_at > ?) AS active_viewers,
+                    (SELECT rating FROM game_catalog_ratings
+                     WHERE game_slug = game_catalog.slug AND user_id = ?) AS user_rating
+                FROM game_catalog
+                LEFT JOIN (
+                    SELECT game_slug, AVG(rating) AS rating, COUNT(*) AS rating_count
+                    FROM game_catalog_ratings GROUP BY game_slug
+                ) AS rating_stats ON rating_stats.game_slug = game_catalog.slug
+                ORDER BY title COLLATE NOCASE
+                """,
+                (now, user["id"] if user else None),
+            ).fetchall()
+            return {
+                "games": [
+                    game_catalog_record(
+                        dict(game),
+                        rating=game["rating"],
+                        rating_count=game["rating_count"],
+                        active_viewers=game["active_viewers"],
+                        user_rating=game["user_rating"],
+                    )
+                    for game in games
+                ]
+            }, HTTPStatus.OK, []
+
+        if catalog_match and method == "GET" and catalog_match.group(1) and catalog_match.group(2) is None:
+            slug = catalog_match.group(1)
+            user = self.current_user(db)
+            now = int(time.time())
+            db.execute("DELETE FROM game_catalog_presence WHERE expires_at <= ?", (now,))
+            game = db.execute(
+                """
+                SELECT game_catalog.*,
+                    COALESCE((SELECT AVG(rating) FROM game_catalog_ratings
+                              WHERE game_slug = game_catalog.slug), 0) AS rating,
+                    (SELECT COUNT(*) FROM game_catalog_ratings
+                     WHERE game_slug = game_catalog.slug) AS rating_count,
+                    (SELECT COUNT(*) FROM game_catalog_presence
+                     WHERE game_slug = game_catalog.slug AND expires_at > ?) AS active_viewers,
+                    (SELECT rating FROM game_catalog_ratings
+                     WHERE game_slug = game_catalog.slug AND user_id = ?) AS user_rating
+                FROM game_catalog WHERE slug = ?
+                """,
+                (now, user["id"] if user else None, slug),
+            ).fetchone()
+            if game is None:
+                raise APIError(HTTPStatus.NOT_FOUND, "Игра не найдена в каталоге.")
+            return {
+                "game": game_catalog_record(
+                    dict(game),
+                    rating=game["rating"],
+                    rating_count=game["rating_count"],
+                    active_viewers=game["active_viewers"],
+                    user_rating=game["user_rating"],
+                )
+            }, HTTPStatus.OK, []
+
+        if catalog_match and method == "POST" and catalog_match.group(1):
+            slug, action = catalog_match.groups()
+            game = db.execute("SELECT slug FROM game_catalog WHERE slug = ?", (slug,)).fetchone()
+            if game is None:
+                raise APIError(HTTPStatus.NOT_FOUND, "Игра не найдена в каталоге.")
+            data = self.read_json()
+            if action == "rating":
+                user = self.current_user(db, required=True)
+                rating = data.get("rating")
+                if isinstance(rating, bool) or not isinstance(rating, int) or not 1 <= rating <= 5:
+                    raise APIError(HTTPStatus.BAD_REQUEST, "Оценка должна быть от 1 до 5.")
+                db.execute(
+                    """
+                    INSERT INTO game_catalog_ratings (game_slug, user_id, rating)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(game_slug, user_id) DO UPDATE SET
+                        rating = excluded.rating,
+                        created_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                    """,
+                    (slug, user["id"], rating),
+                )
+                summary = db.execute(
+                    "SELECT ROUND(AVG(rating), 1) AS rating, COUNT(*) AS rating_count "
+                    "FROM game_catalog_ratings WHERE game_slug = ?",
+                    (slug,),
+                ).fetchone()
+                return {
+                    "rating": summary["rating"],
+                    "rating_count": summary["rating_count"],
+                    "user_rating": rating,
+                }, HTTPStatus.OK, []
+            if action == "presence":
+                viewer_token = data.get("viewer_token")
+                if not isinstance(viewer_token, str) or not re.fullmatch(
+                    r"[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}",
+                    viewer_token,
+                    re.IGNORECASE,
+                ):
+                    raise APIError(HTTPStatus.BAD_REQUEST, "Не удалось подтвердить присутствие.")
+                now = int(time.time())
+                db.execute("DELETE FROM game_catalog_presence WHERE expires_at <= ?", (now,))
+                db.execute(
+                    """
+                    INSERT INTO game_catalog_presence (game_slug, viewer_token, expires_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(game_slug, viewer_token) DO UPDATE SET expires_at = excluded.expires_at
+                    """,
+                    (slug, viewer_token, now + GAME_CATALOG_PRESENCE_SECONDS),
+                )
+                count = db.execute(
+                    "SELECT COUNT(*) AS total FROM game_catalog_presence "
+                    "WHERE game_slug = ? AND expires_at > ?",
+                    (slug, now),
+                ).fetchone()["total"]
+                return {"active_viewers": count}, HTTPStatus.OK, []
 
         if method == "GET" and path == "/api/games":
             user = self.current_user(db)

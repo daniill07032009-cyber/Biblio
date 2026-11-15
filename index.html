@@ -410,20 +410,30 @@
         <div class="games-page__header">
           <div>
             <span class="eyebrow">Игровая зона</span>
-            <h1>Игровые комнаты</h1>
-            <p>Создавай свою кампанию, собирай героев и награждай участников XP за достижения.</p>
+            <h1>Каталог игр</h1>
+            <p>Выбирай игру, смотри оценки сообщества и узнавай, кто сейчас заглянул в игровой блок.</p>
           </div>
-          <button class="button button--primary" type="button" id="games-create-toggle">Создать комнату</button>
+          <button class="button button--secondary" type="button" id="game-rooms-toggle">Игровые комнаты</button>
         </div>
 
-        <div class="games-layout">
+        <div class="game-catalog-layout" id="game-catalog-layout">
+          <div class="games-panel">
+            <div class="games-panel__header">
+              <h2>Игры сообщества</h2>
+            </div>
+            <div class="game-catalog-list" id="game-catalog-list" aria-live="polite"></div>
+          </div>
+        </div>
+        <div class="game-detail-panel game-catalog-detail" id="game-catalog-detail-panel" tabindex="-1" hidden></div>
+
+        <div class="games-layout" id="games-room-layout" hidden>
           <div class="games-panel">
             <div class="games-panel__header">
               <h2>Доступные комнаты</h2>
+              <button class="text-link" type="button" id="games-create-toggle">Создать комнату</button>
             </div>
             <div class="games-list" id="games-list" aria-live="polite"></div>
           </div>
-
           <aside class="games-panel games-panel--sidebar">
             <div class="games-panel__header">
               <h2>Мои комнаты</h2>

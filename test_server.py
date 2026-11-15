@@ -437,6 +437,96 @@ class BiblioServerTests(unittest.TestCase):
         self.assertEqual(result["game"]["heroes"][0]["xp"], 120)
         self.assertEqual(result["game"]["heroes"][0]["level"], 2)
 
+    def test_game_catalog_ratings_and_live_viewer_presence(self):
+        status, result = self.request("GET", "/api/catalog/games")
+        self.assertEqual(status, 200)
+        game = result["games"][0]
+        self.assertEqual(game["slug"], "dnd")
+        self.assertEqual(game["title"], "Dungeons & Dragons")
+        self.assertEqual(game["rating_count"], 0)
+        self.assertEqual(game["active_viewers"], 0)
+
+        viewer_token = "123e4567-e89b-12d3-a456-426614174000"
+        status, result = self.request(
+            "POST",
+            "/api/catalog/games/dnd/presence",
+            {"viewer_token": viewer_token},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(result["active_viewers"], 1)
+        status, result = self.request(
+            "POST",
+            "/api/catalog/games/dnd/presence",
+            {"viewer_token": viewer_token},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(result["active_viewers"], 1)
+        status, result = self.request("GET", "/api/catalog/games/dnd")
+        self.assertEqual(status, 200)
+        self.assertEqual(result["game"]["active_viewers"], 1)
+        status, result = self.request("GET", "/api/catalog/games")
+        self.assertEqual(status, 200)
+        self.assertEqual(result["games"][0]["active_viewers"], 1)
+
+        status, result = self.request(
+            "POST",
+            "/api/catalog/games/dnd/presence",
+            {"viewer_token": "not-a-uuid"},
+        )
+        self.assertEqual(status, 400)
+        status, _ = self.request(
+            "POST", "/api/catalog/games/dnd/rating", {"rating": 5}
+        )
+        self.assertEqual(status, 401)
+
+        self.register("catalog-rater@example.com")
+        status, result = self.request(
+            "POST", "/api/catalog/games/dnd/rating", {"rating": 5}
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(result["rating"], 5.0)
+        self.assertEqual(result["rating_count"], 1)
+        status, result = self.request("GET", "/api/catalog/games")
+        self.assertEqual(status, 200)
+        self.assertEqual(result["games"][0]["user_rating"], 5)
+
+    def test_mongodb_game_catalog_ratings_and_live_viewer_presence(self):
+        uri = "mongodb://biblio-catalog-test/"
+        client = mongomock.MongoClient()
+        original_uri = server.MONGODB_URI
+        server.MONGODB_URI = uri
+        server._MONGO_CLIENTS[uri] = client
+        try:
+            server.initialize_db()
+            status, result = self.request("GET", "/api/catalog/games")
+            self.assertEqual(status, 200)
+            self.assertEqual(result["games"][0]["slug"], "dnd")
+            viewer_token = "123e4567-e89b-12d3-a456-426614174000"
+            status, result = self.request(
+                "POST",
+                "/api/catalog/games/dnd/presence",
+                {"viewer_token": viewer_token},
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(result["active_viewers"], 1)
+            self.register("mongo-catalog-rater@example.com")
+            status, result = self.request(
+                "POST", "/api/catalog/games/dnd/rating", {"rating": 4}
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(result["rating"], 4.0)
+            status, result = self.request("GET", "/api/catalog/games/dnd")
+            self.assertEqual(status, 200)
+            self.assertEqual(result["game"]["user_rating"], 4)
+            self.assertEqual(result["game"]["active_viewers"], 1)
+            status, result = self.request("GET", "/api/catalog/games")
+            self.assertEqual(status, 200)
+            self.assertEqual(result["games"][0]["active_viewers"], 1)
+        finally:
+            server.MONGODB_URI = original_uri
+            server._MONGO_CLIENTS.pop(uri, None)
+            client.close()
+
     def test_mongodb_game_room_flow_supports_private_access_and_xp(self):
         uri = "mongodb://biblio-test/"
         client = mongomock.MongoClient()
