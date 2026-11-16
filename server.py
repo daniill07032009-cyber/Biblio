@@ -8,8 +8,6 @@ import json
 import os
 import re
 import secrets
-import smtplib
-from email.message import EmailMessage
 import sqlite3
 import threading
 import time
@@ -36,8 +34,8 @@ SESSION_SECONDS = 60 * 60 * 24 * 14
 PASSWORD_ITERATIONS = 310_000
 MAX_REQUEST_BYTES = 2_000_000
 EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s.]+(?:\.[^@\s.]+)+$")
-GMAIL_ADDRESS = os.environ.get("GMAIL_ADDRESS", "").strip()
-GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "").replace(" ", "").strip()
+GMAIL_SCRIPT_URL = os.environ.get("GMAIL_SCRIPT_URL", "").strip()
+GMAIL_SCRIPT_SECRET = os.environ.get("GMAIL_SCRIPT_SECRET", "").strip()
 EMAIL_CODE_TTL = 600
 EMAIL_CODE_MAX_ATTEMPTS = 5
 GAME_CATALOG_SEED = (
@@ -408,7 +406,7 @@ def verify_password(password, encoded):
 def email_code_hash(email, code):
     secret = (
         os.environ.get("EMAIL_CODE_SECRET")
-        or GMAIL_APP_PASSWORD
+        or GMAIL_SCRIPT_SECRET
         or "biblio-email-verification-local-only"
     )
     message = (email.lower() + ":" + code).encode("utf-8")
@@ -417,16 +415,16 @@ def email_code_hash(email, code):
 
 def email_verification_enabled():
     value = os.environ.get("BIBLIO_EMAIL_VERIFICATION", "").strip().lower()
-    return bool(GMAIL_ADDRESS and GMAIL_APP_PASSWORD) or value in {"1", "true", "yes", "on"}
+    return bool(GMAIL_SCRIPT_URL and GMAIL_SCRIPT_SECRET) or value in {"1", "true", "yes", "on"}
 
 
 def send_verification_email(email, display_name, code):
     if not email_verification_enabled():
         return None
-    if not GMAIL_ADDRESS or not GMAIL_APP_PASSWORD:
+    if not GMAIL_SCRIPT_URL or not GMAIL_SCRIPT_SECRET:
         raise APIError(
             HTTPStatus.SERVICE_UNAVAILABLE,
-            "Отправка писем не настроена: добавь GMAIL_ADDRESS и GMAIL_APP_PASSWORD в Render.",
+            "Отправка писем не настроена: добавь GMAIL_SCRIPT_URL и GMAIL_SCRIPT_SECRET в Render.",
         )
 
     safe_name = (
@@ -435,11 +433,11 @@ def send_verification_email(email, display_name, code):
         .replace(">", "&gt;")
     )
     text_body = (
-        f"Привет, {display_name}!\\n\\n"
+        f"Привет, {display_name}!\n\n"
         "Спасибо за регистрацию в Biblio. "
-        f"Твой код подтверждения: {code}\\n\\n"
+        f"Твой код подтверждения: {code}\n\n"
         "Код действует 10 минут. Если ты не регистрировался(-ась), "
-        "проигнорируй это письмо.\\n\\nС теплом, команда Biblio"
+        "проигнорируй это письмо.\n\nС теплом, команда Biblio"
     )
     html_body = (
         '<div style="max-width:520px;margin:24px auto;padding:36px;background:#fff;border:1px solid #e5e1d7;color:#29352c;font-family:Arial,sans-serif">'
@@ -451,26 +449,32 @@ def send_verification_email(email, display_name, code):
         '<p>Код действует <b>10 минут</b>. Если ты не создавал(-а) аккаунт, проигнорируй письмо.</p>'
         '<p style="color:#788078;font-size:12px">С теплом, команда Biblio</p></div>'
     )
-
-    message = EmailMessage()
-    message["Subject"] = "Подтверждение регистрации в Biblio"
-    message["From"] = f"Biblio <{GMAIL_ADDRESS}>"
-    message["To"] = email
-    message.set_content(text_body)
-    message.add_alternative(html_body, subtype="html")
-
+    payload = {
+        "secret": GMAIL_SCRIPT_SECRET,
+        "to": email,
+        "name": display_name,
+        "subject": "Подтверждение регистрации в Biblio",
+        "text": text_body,
+        "html": html_body,
+    }
+    request = urllib.request.Request(
+        GMAIL_SCRIPT_URL,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
     try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=15) as smtp:
-            smtp.login(GMAIL_ADDRESS, GMAIL_APP_PASSWORD)
-            smtp.send_message(message)
+        with urllib.request.urlopen(request, timeout=20) as response:
+            result = json.loads(response.read().decode("utf-8"))
+        if not isinstance(result, dict) or not result.get("accepted"):
+            raise ValueError("Mail relay did not confirm acceptance")
         return {"accepted": True}
-    except (smtplib.SMTPException, OSError, TimeoutError) as error:
-        print(f"Gmail SMTP error: {type(error).__name__}: {error}", flush=True)
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError, ValueError) as error:
+        print(f"Google Apps Script mail relay error: {type(error).__name__}", flush=True)
         raise APIError(
             HTTPStatus.SERVICE_UNAVAILABLE,
-            "Gmail временно не смог отправить письмо. Проверь пароль приложения и попробуй позже.",
+            "Не удалось отправить письмо через Gmail. Проверь настройки почтового сервиса и попробуй позже.",
         )
-
 
 def public_user(row):
     return {
