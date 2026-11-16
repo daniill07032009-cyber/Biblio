@@ -120,6 +120,8 @@ def initialize_db():
         db.books.create_index([("owner_id", ASCENDING), ("updated_at", DESCENDING), ("id", DESCENDING)])
         db.sessions.create_index([("token_hash", ASCENDING)], unique=True)
         db.sessions.create_index([("expires_at", ASCENDING)])
+        db.pending_email_verifications.create_index([("email", ASCENDING)], unique=True)
+        db.pending_email_verifications.create_index([("expires_at", ASCENDING)], expireAfterSeconds=0)
         db.newsletter_subscribers.create_index([("email", ASCENDING)], unique=True)
         db.games.create_index([("id", ASCENDING)], unique=True)
         db.games.create_index([("access", ASCENDING), ("updated_at", DESCENDING), ("id", DESCENDING)])
@@ -405,7 +407,14 @@ def verify_password(password, encoded):
 
 
 def email_code_hash(email, code):
-    return hashlib.sha256((email.lower() + ":" + code).encode("utf-8")).hexdigest()
+    secret = (
+        os.environ.get("EMAIL_CODE_SECRET")
+        or EMAILIT_API_KEY
+        or RESEND_API_KEY
+        or "biblio-email-verification-local-only"
+    )
+    message = (email.lower() + ":" + code).encode("utf-8")
+    return hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
 
 
 def email_verification_enabled():
@@ -1137,12 +1146,17 @@ class BiblioHandler(BaseHTTPRequestHandler):
             if pending and int(time.time()) - pending.get("created_at", 0) < 60:
                 raise APIError(HTTPStatus.TOO_MANY_REQUESTS, "Подожди минуту перед повторной отправкой кода.")
             code = f"{secrets.randbelow(1_000_000):06d}"
+            code_hash = email_code_hash(email, code)
             db.pending_email_verifications.replace_one({"email": email}, {
                 "email": email, "display_name": display_name, "password_hash": password_digest(password),
-                "code_hash": email_code_hash(email, code), "expires_at": int(time.time()) + EMAIL_CODE_TTL,
+                "code_hash": code_hash, "expires_at": int(time.time()) + EMAIL_CODE_TTL,
                 "attempts": 0, "created_at": int(time.time()),
             }, upsert=True)
-            send_verification_email(email, display_name, code)
+            try:
+                send_verification_email(email, display_name, code)
+            except Exception:
+                db.pending_email_verifications.delete_one({"email": email, "code_hash": code_hash})
+                raise
             return {"verification_required": True, "email": email}, HTTPStatus.ACCEPTED, []
 
         if method == "POST" and path == "/api/verify-email":
