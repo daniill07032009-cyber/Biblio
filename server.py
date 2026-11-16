@@ -433,7 +433,12 @@ def send_verification_email(email, display_name, code):
     }
     request = urllib.request.Request(
         "https://api.resend.com/emails", data=json.dumps(payload).encode("utf-8"),
-        headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+        headers={
+            "Authorization": f"Bearer {RESEND_API_KEY}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "Biblio/1.0 (https://biblio-eqwo.onrender.com; mailer)",
+        },
         method="POST",
     )
     try:
