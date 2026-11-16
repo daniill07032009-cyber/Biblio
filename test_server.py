@@ -4,6 +4,7 @@ import sqlite3
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import HTTPCookieProcessor, Request, build_opener
@@ -896,12 +897,12 @@ class BiblioServerTests(unittest.TestCase):
         self.assertEqual(result["user"]["email"], "new@example.com")
 
     def test_registration_requires_six_digit_email_verification(self):
-        original_emailit_key = server.EMAILIT_API_KEY
-        original_resend_key = server.RESEND_API_KEY
+        original_gmail_address = server.GMAIL_ADDRESS
+        original_gmail_password = server.GMAIL_APP_PASSWORD
         original_sender = server.send_verification_email
         sent = {}
-        server.EMAILIT_API_KEY = "test-emailit-key"
-        server.RESEND_API_KEY = ""
+        server.GMAIL_ADDRESS = "bibliomail2026@gmail.com"
+        server.GMAIL_APP_PASSWORD = "test-app-password"
         server.send_verification_email = lambda email, name, code: sent.update(
             {"email": email, "name": name, "code": code}
         )
@@ -944,22 +945,22 @@ class BiblioServerTests(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(result["user"]["email"], "verified-reader@example.com")
         finally:
-            server.EMAILIT_API_KEY = original_emailit_key
-            server.RESEND_API_KEY = original_resend_key
+            server.GMAIL_ADDRESS = original_gmail_address
+            server.GMAIL_APP_PASSWORD = original_gmail_password
             server.send_verification_email = original_sender
 
     def test_mongodb_registration_requires_six_digit_email_verification(self):
         uri = "mongodb://biblio-email-verification-test/"
         client = mongomock.MongoClient()
         original_uri = server.MONGODB_URI
-        original_emailit_key = server.EMAILIT_API_KEY
-        original_resend_key = server.RESEND_API_KEY
+        original_gmail_address = server.GMAIL_ADDRESS
+        original_gmail_password = server.GMAIL_APP_PASSWORD
         original_sender = server.send_verification_email
         sent = {}
         server.MONGODB_URI = uri
         server._MONGO_CLIENTS[uri] = client
-        server.EMAILIT_API_KEY = "test-emailit-key"
-        server.RESEND_API_KEY = ""
+        server.GMAIL_ADDRESS = "bibliomail2026@gmail.com"
+        server.GMAIL_APP_PASSWORD = "test-app-password"
         server.send_verification_email = lambda email, name, code: sent.update(
             {"email": email, "name": name, "code": code}
         )
@@ -992,8 +993,8 @@ class BiblioServerTests(unittest.TestCase):
             self.assertEqual(result["user"]["email"], "mongo-verified-reader@example.com")
         finally:
             server.MONGODB_URI = original_uri
-            server.EMAILIT_API_KEY = original_emailit_key
-            server.RESEND_API_KEY = original_resend_key
+            server.GMAIL_ADDRESS = original_gmail_address
+            server.GMAIL_APP_PASSWORD = original_gmail_password
             server.send_verification_email = original_sender
             server._MONGO_CLIENTS.pop(uri, None)
             client.close()
