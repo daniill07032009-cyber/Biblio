@@ -38,9 +38,9 @@ function doPost(e) {
     const subject = String(data.subject || '');
     const textBody = String(data.text || '');
     const htmlBody = String(data.html || '');
-    if (!/^[^@\\s]{1,64}@[^@\\s.]+(?:\\.[^@\\s.]+)+$/.test(recipient) ||
+    if (!/^[^@\s]{1,64}@[^@\s.]+(?:\.[^@\s.]+)+$/.test(recipient) ||
         subject !== 'Подтверждение регистрации в Biblio' ||
-        !/\\b\\d{6}\\b/.test(textBody) ||
+        !/\b\\d{6}\b/.test(textBody) ||
         textBody.length > 3000 || htmlBody.length > 9000) {
       return jsonResponse({ accepted: false, error: 'invalid_request' });
     }
