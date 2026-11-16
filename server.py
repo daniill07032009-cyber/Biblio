@@ -34,6 +34,9 @@ SESSION_SECONDS = 60 * 60 * 24 * 14
 PASSWORD_ITERATIONS = 310_000
 MAX_REQUEST_BYTES = 2_000_000
 EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s.]+(?:\.[^@\s.]+)+$")
+EMAILIT_API_KEY = os.environ.get("EMAILIT_API_KEY", "")
+EMAILIT_FROM = os.environ.get("EMAILIT_FROM", "Biblio <no-reply@biblio-mail.pntr.dev>")
+# Legacy fallback while existing deployments finish rotating their mail configuration.
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 RESEND_FROM = os.environ.get("RESEND_FROM", "Biblio <onboarding@resend.dev>")
 EMAIL_CODE_TTL = 600
@@ -407,56 +410,115 @@ def email_code_hash(email, code):
 
 def email_verification_enabled():
     value = os.environ.get("BIBLIO_EMAIL_VERIFICATION", "").strip().lower()
-    return bool(RESEND_API_KEY) or value in {"1", "true", "yes", "on"}
+    return bool(EMAILIT_API_KEY or RESEND_API_KEY) or value in {"1", "true", "yes", "on"}
 
 
 def send_verification_email(email, display_name, code):
     if not email_verification_enabled():
         return None
-    if not RESEND_API_KEY:
-        raise APIError(HTTPStatus.SERVICE_UNAVAILABLE, "Отправка писем ещё не настроена: добавь RESEND_API_KEY в Render.")
-    safe_name = display_name.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    payload = {
-        "from": RESEND_FROM, "to": [email],
-        "subject": "Подтверждение регистрации в Biblio",
-        "text": f"Привет, {display_name}!\\n\\nСпасибо за регистрацию в Biblio. Твой код подтверждения: {code}\\n\\nКод действует 10 минут. Если ты не регистрировался(-ась), проигнорируй это письмо.\\n\\nС теплом, команда Biblio",
-        "html": (
-            '<div style="max-width:520px;margin:24px auto;padding:36px;background:#fff;border:1px solid #e5e1d7;color:#29352c;font-family:Arial,sans-serif">'
-            '<div style="font-size:13px;letter-spacing:4px;color:#6b806d;font-weight:bold">BIBLIO</div>'
-            '<h1 style="font-family:Georgia,serif;font-weight:normal">Добро пожаловать!</h1>'
-            f'<p>Привет, {safe_name}! Спасибо, что присоединился(-ась) к Biblio.</p>'
-            '<p>Чтобы подтвердить адрес электронной почты, введи этот код:</p>'
-            f'<div style="margin:26px 0;padding:20px;background:#f1f3ed;text-align:center;font-size:34px;letter-spacing:9px;font-weight:bold">{code}</div>'
-            '<p>Код действует <b>10 минут</b>. Если ты не создавал(-а) аккаунт, проигнорируй письмо.</p>'
-            '<p style="color:#788078;font-size:12px">С теплом, команда Biblio</p></div>'
-        ),
-    }
+    if not EMAILIT_API_KEY and not RESEND_API_KEY:
+        raise APIError(
+            HTTPStatus.SERVICE_UNAVAILABLE,
+            "Отправка писем ещё не настроена: добавь EMAILIT_API_KEY в Render.",
+        )
+
+    safe_name = (
+        display_name.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+    text_body = (
+        f"Привет, {display_name}!\\n\\n"
+        "Спасибо за регистрацию в Biblio. "
+        f"Твой код подтверждения: {code}\\n\\n"
+        "Код действует 10 минут. Если ты не регистрировался(-ась), "
+        "проигнорируй это письмо.\\n\\nС теплом, команда Biblio"
+    )
+    html_body = (
+        '<div style="max-width:520px;margin:24px auto;padding:36px;background:#fff;border:1px solid #e5e1d7;color:#29352c;font-family:Arial,sans-serif">'
+        '<div style="font-size:13px;letter-spacing:4px;color:#6b806d;font-weight:bold">BIBLIO</div>'
+        '<h1 style="font-family:Georgia,serif;font-weight:normal">Добро пожаловать!</h1>'
+        f'<p>Привет, {safe_name}! Спасибо, что присоединился(-ась) к Biblio.</p>'
+        '<p>Чтобы подтвердить адрес электронной почты, введи этот код:</p>'
+        f'<div style="margin:26px 0;padding:20px;background:#f1f3ed;text-align:center;font-size:34px;letter-spacing:9px;font-weight:bold">{code}</div>'
+        '<p>Код действует <b>10 минут</b>. Если ты не создавал(-а) аккаунт, проигнорируй письмо.</p>'
+        '<p style="color:#788078;font-size:12px">С теплом, команда Biblio</p></div>'
+    )
+
+    if EMAILIT_API_KEY:
+        payload = {
+            "from": EMAILIT_FROM,
+            "to": email,
+            "subject": "Подтверждение регистрации в Biblio",
+            "text": text_body,
+            "html": html_body,
+        }
+        endpoint = "https://api.emailit.com/v2/emails"
+        authorization = EMAILIT_API_KEY
+        service_name = "Emailit"
+    else:
+        payload = {
+            "from": RESEND_FROM,
+            "to": [email],
+            "subject": "Подтверждение регистрации в Biblio",
+            "text": text_body,
+            "html": html_body,
+        }
+        endpoint = "https://api.resend.com/emails"
+        authorization = RESEND_API_KEY
+        service_name = "Resend"
+
     request = urllib.request.Request(
-        "https://api.resend.com/emails", data=json.dumps(payload).encode("utf-8"),
+        endpoint,
+        data=json.dumps(payload).encode("utf-8"),
         headers={
-            "Authorization": f"Bearer {RESEND_API_KEY}",
+            "Authorization": f"Bearer {authorization}",
             "Content-Type": "application/json",
             "Accept": "application/json",
-            "User-Agent": "Biblio/1.0 (https://biblio-eqwo.onrender.com; mailer)",
+            "User-Agent": "Biblio/1.0 (https://biblio.pntr.dev; mailer)",
         },
         method="POST",
     )
     try:
         with urllib.request.urlopen(request, timeout=15) as response:
             result = json.loads(response.read().decode("utf-8"))
-            if response.status >= 300:
-                raise APIError(HTTPStatus.SERVICE_UNAVAILABLE, "Почта временно не отправляется. Проверь настройки отправителя Resend и попробуй зарегистрироваться позже.")
+            if response.status < 200 or response.status >= 300:
+                raise APIError(
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    "Почтовый сервис временно не принял письмо. Попробуй позже.",
+                )
             return result
     except urllib.error.HTTPError as error:
         detail = error.read().decode("utf-8", "replace")[:500]
-        print(f"Resend API error {error.code}: {detail}", flush=True)
-        if error.code == 403 and ("verify a domain" in detail or "testing emails" in detail):
-            message = "Resend пока не может отправлять письма другим пользователям: подтверди домен отправителя в Resend и укажи адрес с этим доменом в RESEND_FROM."
+        print(f"{service_name} API error {error.code}: {detail}", flush=True)
+        if service_name == "Emailit":
+            if error.code == 401:
+                message = "Emailit отклонил API-ключ. Проверь EMAILIT_API_KEY в Render."
+            elif error.code == 403 and (
+                "unverified_workspace_recipient" in detail
+                or "production access" in detail.lower()
+            ):
+                message = "Emailit пока работает в тестовом режиме. Разреши отправку писем обычным пользователям в настройках Production access."
+            elif error.code == 403 and "domain" in detail.lower():
+                message = "Emailit отклонил домен отправителя. Проверь, что biblio-mail.pntr.dev подтверждён и разрешён для API-ключа."
+            elif error.code == 422:
+                message = "Emailit не принял адрес отправителя. Проверь EMAILIT_FROM и подтверждение домена."
+            elif error.code == 402:
+                message = "В Emailit недостаточно кредитов для отправки письма."
+            else:
+                message = "Emailit временно не смог отправить письмо. Проверь домен, Production access и настройки API-ключа."
+        elif error.code == 403 and (
+            "verify a domain" in detail or "testing emails" in detail
+        ):
+            message = "Resend пока не может отправлять письма другим пользователям: подтверди домен отправителя и укажи адрес с этим доменом в RESEND_FROM."
         else:
-            message = "Почтовый сервис отклонил письмо. Проверь настройки Resend и попробуй позже."
+            message = "Почтовый сервис отклонил письмо. Проверь настройки отправителя и попробуй позже."
         raise APIError(HTTPStatus.SERVICE_UNAVAILABLE, message)
     except (urllib.error.URLError, TimeoutError):
-        raise APIError(HTTPStatus.SERVICE_UNAVAILABLE, "Почтовый сервис временно недоступен. Попробуй ещё раз.")
+        raise APIError(
+            HTTPStatus.SERVICE_UNAVAILABLE,
+            "Почтовый сервис временно недоступен. Попробуй ещё раз.",
+        )
 
 
 def public_user(row):
