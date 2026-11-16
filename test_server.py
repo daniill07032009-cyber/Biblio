@@ -896,6 +896,32 @@ class BiblioServerTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(result["user"]["email"], "new@example.com")
 
+    def test_verification_email_is_sent_through_gmail_smtp(self):
+        original_address = server.GMAIL_ADDRESS
+        original_password = server.GMAIL_APP_PASSWORD
+        server.GMAIL_ADDRESS = "bibliomail2026@gmail.com"
+        server.GMAIL_APP_PASSWORD = "test-app-password"
+        try:
+            with patch("server.smtplib.SMTP_SSL") as smtp_factory:
+                smtp = smtp_factory.return_value.__enter__.return_value
+                result = server.send_verification_email(
+                    "reader@example.com", "Тестовый читатель", "123456"
+                )
+                self.assertEqual(result, {"accepted": True})
+                smtp_factory.assert_called_once_with("smtp.gmail.com", 465, timeout=15)
+                smtp.login.assert_called_once_with(
+                    "bibliomail2026@gmail.com", "test-app-password"
+                )
+                smtp.send_message.assert_called_once()
+                message = smtp.send_message.call_args.args[0]
+                self.assertEqual(message["To"], "reader@example.com")
+                self.assertIn("Biblio", message["From"])
+                self.assertIn("123456", message.get_body(preferencelist=("plain",)).get_content())
+                self.assertIn("123456", message.get_body(preferencelist=("html",)).get_content())
+        finally:
+            server.GMAIL_ADDRESS = original_address
+            server.GMAIL_APP_PASSWORD = original_password
+
     def test_registration_requires_six_digit_email_verification(self):
         original_gmail_address = server.GMAIL_ADDRESS
         original_gmail_password = server.GMAIL_APP_PASSWORD
