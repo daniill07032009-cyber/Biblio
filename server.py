@@ -8,6 +8,8 @@ import json
 import os
 import re
 import secrets
+import smtplib
+from email.message import EmailMessage
 import sqlite3
 import threading
 import time
@@ -34,11 +36,8 @@ SESSION_SECONDS = 60 * 60 * 24 * 14
 PASSWORD_ITERATIONS = 310_000
 MAX_REQUEST_BYTES = 2_000_000
 EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s.]+(?:\.[^@\s.]+)+$")
-EMAILIT_API_KEY = os.environ.get("EMAILIT_API_KEY", "")
-EMAILIT_FROM = os.environ.get("EMAILIT_FROM", "Biblio <no-reply@biblio-mail.pntr.dev>")
-# Legacy fallback while existing deployments finish rotating their mail configuration.
-RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
-RESEND_FROM = os.environ.get("RESEND_FROM", "Biblio <onboarding@resend.dev>")
+GMAIL_ADDRESS = os.environ.get("GMAIL_ADDRESS", "").strip()
+GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "").replace(" ", "").strip()
 EMAIL_CODE_TTL = 600
 EMAIL_CODE_MAX_ATTEMPTS = 5
 GAME_CATALOG_SEED = (
@@ -409,8 +408,7 @@ def verify_password(password, encoded):
 def email_code_hash(email, code):
     secret = (
         os.environ.get("EMAIL_CODE_SECRET")
-        or EMAILIT_API_KEY
-        or RESEND_API_KEY
+        or GMAIL_APP_PASSWORD
         or "biblio-email-verification-local-only"
     )
     message = (email.lower() + ":" + code).encode("utf-8")
@@ -419,16 +417,16 @@ def email_code_hash(email, code):
 
 def email_verification_enabled():
     value = os.environ.get("BIBLIO_EMAIL_VERIFICATION", "").strip().lower()
-    return bool(EMAILIT_API_KEY or RESEND_API_KEY) or value in {"1", "true", "yes", "on"}
+    return bool(GMAIL_ADDRESS and GMAIL_APP_PASSWORD) or value in {"1", "true", "yes", "on"}
 
 
 def send_verification_email(email, display_name, code):
     if not email_verification_enabled():
         return None
-    if not EMAILIT_API_KEY and not RESEND_API_KEY:
+    if not GMAIL_ADDRESS or not GMAIL_APP_PASSWORD:
         raise APIError(
             HTTPStatus.SERVICE_UNAVAILABLE,
-            "Отправка писем ещё не настроена: добавь EMAILIT_API_KEY в Render.",
+            "Отправка писем не настроена: добавь GMAIL_ADDRESS и GMAIL_APP_PASSWORD в Render.",
         )
 
     safe_name = (
@@ -437,11 +435,11 @@ def send_verification_email(email, display_name, code):
         .replace(">", "&gt;")
     )
     text_body = (
-        f"Привет, {display_name}!\n\n"
+        f"Привет, {display_name}!\\n\\n"
         "Спасибо за регистрацию в Biblio. "
-        f"Твой код подтверждения: {code}\n\n"
+        f"Твой код подтверждения: {code}\\n\\n"
         "Код действует 10 минут. Если ты не регистрировался(-ась), "
-        "проигнорируй это письмо.\n\nС теплом, команда Biblio"
+        "проигнорируй это письмо.\\n\\nС теплом, команда Biblio"
     )
     html_body = (
         '<div style="max-width:520px;margin:24px auto;padding:36px;background:#fff;border:1px solid #e5e1d7;color:#29352c;font-family:Arial,sans-serif">'
@@ -454,79 +452,23 @@ def send_verification_email(email, display_name, code):
         '<p style="color:#788078;font-size:12px">С теплом, команда Biblio</p></div>'
     )
 
-    if EMAILIT_API_KEY:
-        payload = {
-            "from": EMAILIT_FROM,
-            "to": email,
-            "subject": "Подтверждение регистрации в Biblio",
-            "text": text_body,
-            "html": html_body,
-        }
-        endpoint = "https://api.emailit.com/v2/emails"
-        authorization = EMAILIT_API_KEY
-        service_name = "Emailit"
-    else:
-        payload = {
-            "from": RESEND_FROM,
-            "to": [email],
-            "subject": "Подтверждение регистрации в Biblio",
-            "text": text_body,
-            "html": html_body,
-        }
-        endpoint = "https://api.resend.com/emails"
-        authorization = RESEND_API_KEY
-        service_name = "Resend"
+    message = EmailMessage()
+    message["Subject"] = "Подтверждение регистрации в Biblio"
+    message["From"] = f"Biblio <{GMAIL_ADDRESS}>"
+    message["To"] = email
+    message.set_content(text_body)
+    message.add_alternative(html_body, subtype="html")
 
-    request = urllib.request.Request(
-        endpoint,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {authorization}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "User-Agent": "Biblio/1.0 (https://biblio.pntr.dev; mailer)",
-        },
-        method="POST",
-    )
     try:
-        with urllib.request.urlopen(request, timeout=15) as response:
-            result = json.loads(response.read().decode("utf-8"))
-            if response.status < 200 or response.status >= 300:
-                raise APIError(
-                    HTTPStatus.SERVICE_UNAVAILABLE,
-                    "Почтовый сервис временно не принял письмо. Попробуй позже.",
-                )
-            return result
-    except urllib.error.HTTPError as error:
-        detail = error.read().decode("utf-8", "replace")[:500]
-        print(f"{service_name} API error {error.code}: {detail}", flush=True)
-        if service_name == "Emailit":
-            if error.code == 401:
-                message = "Emailit отклонил API-ключ. Проверь EMAILIT_API_KEY в Render."
-            elif error.code == 403 and (
-                "unverified_workspace_recipient" in detail
-                or "production access" in detail.lower()
-            ):
-                message = "Emailit пока работает в тестовом режиме. Разреши отправку писем обычным пользователям в настройках Production access."
-            elif error.code == 403 and "domain" in detail.lower():
-                message = "Emailit отклонил домен отправителя. Проверь, что biblio-mail.pntr.dev подтверждён и разрешён для API-ключа."
-            elif error.code == 422:
-                message = "Emailit не принял адрес отправителя. Проверь EMAILIT_FROM и подтверждение домена."
-            elif error.code == 402:
-                message = "В Emailit недостаточно кредитов для отправки письма."
-            else:
-                message = "Emailit временно не смог отправить письмо. Проверь домен, Production access и настройки API-ключа."
-        elif error.code == 403 and (
-            "verify a domain" in detail or "testing emails" in detail
-        ):
-            message = "Resend пока не может отправлять письма другим пользователям: подтверди домен отправителя и укажи адрес с этим доменом в RESEND_FROM."
-        else:
-            message = "Почтовый сервис отклонил письмо. Проверь настройки отправителя и попробуй позже."
-        raise APIError(HTTPStatus.SERVICE_UNAVAILABLE, message)
-    except (urllib.error.URLError, TimeoutError):
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=15) as smtp:
+            smtp.login(GMAIL_ADDRESS, GMAIL_APP_PASSWORD)
+            smtp.send_message(message)
+        return {"accepted": True}
+    except (smtplib.SMTPException, OSError, TimeoutError) as error:
+        print(f"Gmail SMTP error: {type(error).__name__}: {error}", flush=True)
         raise APIError(
             HTTPStatus.SERVICE_UNAVAILABLE,
-            "Почтовый сервис временно недоступен. Попробуй ещё раз.",
+            "Gmail временно не смог отправить письмо. Проверь пароль приложения и попробуй позже.",
         )
 
 
