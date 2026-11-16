@@ -428,11 +428,11 @@ def send_verification_email(email, display_name, code):
         .replace(">", "&gt;")
     )
     text_body = (
-        f"Привет, {display_name}!\\n\\n"
+        f"Привет, {display_name}!\n\n"
         "Спасибо за регистрацию в Biblio. "
-        f"Твой код подтверждения: {code}\\n\\n"
+        f"Твой код подтверждения: {code}\n\n"
         "Код действует 10 минут. Если ты не регистрировался(-ась), "
-        "проигнорируй это письмо.\\n\\nС теплом, команда Biblio"
+        "проигнорируй это письмо.\n\nС теплом, команда Biblio"
     )
     html_body = (
         '<div style="max-width:520px;margin:24px auto;padding:36px;background:#fff;border:1px solid #e5e1d7;color:#29352c;font-family:Arial,sans-serif">'
