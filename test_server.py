@@ -896,39 +896,45 @@ class BiblioServerTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(result["user"]["email"], "new@example.com")
 
-    def test_verification_email_is_sent_through_gmail_smtp(self):
-        original_address = server.GMAIL_ADDRESS
-        original_password = server.GMAIL_APP_PASSWORD
-        server.GMAIL_ADDRESS = "bibliomail2026@gmail.com"
-        server.GMAIL_APP_PASSWORD = "test-app-password"
+    def test_verification_email_is_sent_through_google_apps_script(self):
+        original_url = server.GMAIL_SCRIPT_URL
+        original_secret = server.GMAIL_SCRIPT_SECRET
+        server.GMAIL_SCRIPT_URL = "https://script.google.com/macros/s/test/exec"
+        server.GMAIL_SCRIPT_SECRET = "test-shared-secret"
         try:
-            with patch("server.smtplib.SMTP_SSL") as smtp_factory:
-                smtp = smtp_factory.return_value.__enter__.return_value
+            response = type("Response", (), {
+                "__enter__": lambda self: self,
+                "__exit__": lambda self, *args: None,
+                "read": lambda self: b'{"accepted":true}',
+            })()
+            with patch("server.urllib.request.urlopen", return_value=response) as urlopen:
                 result = server.send_verification_email(
                     "reader@example.com", "Тестовый читатель", "123456"
                 )
                 self.assertEqual(result, {"accepted": True})
-                smtp_factory.assert_called_once_with("smtp.gmail.com", 465, timeout=15)
-                smtp.login.assert_called_once_with(
-                    "bibliomail2026@gmail.com", "test-app-password"
-                )
-                smtp.send_message.assert_called_once()
-                message = smtp.send_message.call_args.args[0]
-                self.assertEqual(message["To"], "reader@example.com")
-                self.assertIn("Biblio", message["From"])
-                self.assertIn("123456", message.get_body(preferencelist=("plain",)).get_content())
-                self.assertIn("123456", message.get_body(preferencelist=("html",)).get_content())
+                urlopen.assert_called_once()
+                request = urlopen.call_args.args[0]
+                self.assertEqual(request.full_url, server.GMAIL_SCRIPT_URL)
+                self.assertEqual(request.get_method(), "POST")
+                self.assertEqual(request.get_header("Content-type"), "application/json")
+                payload = json.loads(request.data.decode("utf-8"))
+                self.assertEqual(payload["secret"], "test-shared-secret")
+                self.assertEqual(payload["to"], "reader@example.com")
+                self.assertEqual(payload["name"], "Тестовый читатель")
+                self.assertIn("123456", payload["text"])
+                self.assertIn("123456", payload["html"])
+                self.assertEqual(urlopen.call_args.kwargs["timeout"], 20)
         finally:
-            server.GMAIL_ADDRESS = original_address
-            server.GMAIL_APP_PASSWORD = original_password
+            server.GMAIL_SCRIPT_URL = original_url
+            server.GMAIL_SCRIPT_SECRET = original_secret
 
     def test_registration_requires_six_digit_email_verification(self):
-        original_gmail_address = server.GMAIL_ADDRESS
-        original_gmail_password = server.GMAIL_APP_PASSWORD
+        original_script_url = server.GMAIL_SCRIPT_URL
+        original_script_secret = server.GMAIL_SCRIPT_SECRET
         original_sender = server.send_verification_email
         sent = {}
-        server.GMAIL_ADDRESS = "bibliomail2026@gmail.com"
-        server.GMAIL_APP_PASSWORD = "test-app-password"
+        server.GMAIL_SCRIPT_URL = "https://script.google.com/macros/s/test/exec"
+        server.GMAIL_SCRIPT_SECRET = "test-shared-secret"
         server.send_verification_email = lambda email, name, code: sent.update(
             {"email": email, "name": name, "code": code}
         )
@@ -971,22 +977,22 @@ class BiblioServerTests(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(result["user"]["email"], "verified-reader@example.com")
         finally:
-            server.GMAIL_ADDRESS = original_gmail_address
-            server.GMAIL_APP_PASSWORD = original_gmail_password
+            server.GMAIL_SCRIPT_URL = original_script_url
+            server.GMAIL_SCRIPT_SECRET = original_script_secret
             server.send_verification_email = original_sender
 
     def test_mongodb_registration_requires_six_digit_email_verification(self):
         uri = "mongodb://biblio-email-verification-test/"
         client = mongomock.MongoClient()
         original_uri = server.MONGODB_URI
-        original_gmail_address = server.GMAIL_ADDRESS
-        original_gmail_password = server.GMAIL_APP_PASSWORD
+        original_script_url = server.GMAIL_SCRIPT_URL
+        original_script_secret = server.GMAIL_SCRIPT_SECRET
         original_sender = server.send_verification_email
         sent = {}
         server.MONGODB_URI = uri
         server._MONGO_CLIENTS[uri] = client
-        server.GMAIL_ADDRESS = "bibliomail2026@gmail.com"
-        server.GMAIL_APP_PASSWORD = "test-app-password"
+        server.GMAIL_SCRIPT_URL = "https://script.google.com/macros/s/test/exec"
+        server.GMAIL_SCRIPT_SECRET = "test-shared-secret"
         server.send_verification_email = lambda email, name, code: sent.update(
             {"email": email, "name": name, "code": code}
         )
@@ -1019,8 +1025,8 @@ class BiblioServerTests(unittest.TestCase):
             self.assertEqual(result["user"]["email"], "mongo-verified-reader@example.com")
         finally:
             server.MONGODB_URI = original_uri
-            server.GMAIL_ADDRESS = original_gmail_address
-            server.GMAIL_APP_PASSWORD = original_gmail_password
+            server.GMAIL_SCRIPT_URL = original_script_url
+            server.GMAIL_SCRIPT_SECRET = original_script_secret
             server.send_verification_email = original_sender
             server._MONGO_CLIENTS.pop(uri, None)
             client.close()
