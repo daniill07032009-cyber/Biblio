@@ -445,14 +445,18 @@ def send_verification_email(email, display_name, code):
         with urllib.request.urlopen(request, timeout=15) as response:
             result = json.loads(response.read().decode("utf-8"))
             if response.status >= 300:
-                raise APIError(HTTPStatus.BAD_GATEWAY, "Почтовый сервис не принял письмо.")
+                raise APIError(HTTPStatus.SERVICE_UNAVAILABLE, "Почта временно не отправляется. Проверь настройки отправителя Resend и попробуй зарегистрироваться позже.")
             return result
     except urllib.error.HTTPError as error:
         detail = error.read().decode("utf-8", "replace")[:500]
         print(f"Resend API error {error.code}: {detail}", flush=True)
-        raise APIError(HTTPStatus.BAD_GATEWAY, "Не удалось отправить письмо. Проверь настройки Resend.")
+        if error.code == 403 and ("verify a domain" in detail or "testing emails" in detail):
+            message = "Resend пока не может отправлять письма другим пользователям: подтверди домен отправителя в Resend и укажи адрес с этим доменом в RESEND_FROM."
+        else:
+            message = "Почтовый сервис отклонил письмо. Проверь настройки Resend и попробуй позже."
+        raise APIError(HTTPStatus.SERVICE_UNAVAILABLE, message)
     except (urllib.error.URLError, TimeoutError):
-        raise APIError(HTTPStatus.BAD_GATEWAY, "Почтовый сервис временно недоступен. Попробуй ещё раз.")
+        raise APIError(HTTPStatus.SERVICE_UNAVAILABLE, "Почтовый сервис временно недоступен. Попробуй ещё раз.")
 
 
 def public_user(row):
@@ -1076,11 +1080,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 "code_hash": email_code_hash(email, code), "expires_at": int(time.time()) + EMAIL_CODE_TTL,
                 "attempts": 0, "created_at": int(time.time()),
             }, upsert=True)
-            try:
-                send_verification_email(email, display_name, code)
-            except Exception:
-                db.pending_email_verifications.delete_one({"email": email})
-                raise
+            send_verification_email(email, display_name, code)
             return {"verification_required": True, "email": email}, HTTPStatus.ACCEPTED, []
 
         if method == "POST" and path == "/api/verify-email":
@@ -1951,11 +1951,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 (email, display_name, password_digest(password), email_code_hash(email, code),
                  int(time.time()) + EMAIL_CODE_TTL, int(time.time())),
             )
-            try:
-                send_verification_email(email, display_name, code)
-            except Exception:
-                db.execute("DELETE FROM pending_email_verifications WHERE email = ?", (email,))
-                raise
+            send_verification_email(email, display_name, code)
             return {"verification_required": True, "email": email}, HTTPStatus.ACCEPTED, []
 
         if method == "POST" and path == "/api/verify-email":
