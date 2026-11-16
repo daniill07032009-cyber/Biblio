@@ -4,6 +4,7 @@ import sqlite3
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import HTTPCookieProcessor, Request, build_opener
@@ -894,6 +895,141 @@ class BiblioServerTests(unittest.TestCase):
         status, result = self.request("GET", "/api/me")
         self.assertEqual(status, 200)
         self.assertEqual(result["user"]["email"], "new@example.com")
+
+    def test_verification_email_is_sent_through_google_apps_script(self):
+        original_url = server.GMAIL_SCRIPT_URL
+        original_secret = server.GMAIL_SCRIPT_SECRET
+        server.GMAIL_SCRIPT_URL = "https://script.google.com/macros/s/test/exec"
+        server.GMAIL_SCRIPT_SECRET = "test-shared-secret"
+        try:
+            response = type("Response", (), {
+                "__enter__": lambda self: self,
+                "__exit__": lambda self, *args: None,
+                "read": lambda self: b'{"accepted":true}',
+            })()
+            with patch("server.urllib.request.urlopen", return_value=response) as urlopen:
+                result = server.send_verification_email(
+                    "reader@example.com", "Тестовый читатель", "123456"
+                )
+                self.assertEqual(result, {"accepted": True})
+                urlopen.assert_called_once()
+                request = urlopen.call_args.args[0]
+                self.assertEqual(request.full_url, server.GMAIL_SCRIPT_URL)
+                self.assertEqual(request.get_method(), "POST")
+                self.assertEqual(request.get_header("Content-type"), "application/json")
+                payload = json.loads(request.data.decode("utf-8"))
+                self.assertEqual(payload["secret"], "test-shared-secret")
+                self.assertEqual(payload["to"], "reader@example.com")
+                self.assertEqual(payload["name"], "Тестовый читатель")
+                self.assertIn("123456", payload["text"])
+                self.assertIn("123456", payload["html"])
+                self.assertEqual(urlopen.call_args.kwargs["timeout"], 20)
+        finally:
+            server.GMAIL_SCRIPT_URL = original_url
+            server.GMAIL_SCRIPT_SECRET = original_secret
+
+    def test_registration_requires_six_digit_email_verification(self):
+        original_script_url = server.GMAIL_SCRIPT_URL
+        original_script_secret = server.GMAIL_SCRIPT_SECRET
+        original_sender = server.send_verification_email
+        sent = {}
+        server.GMAIL_SCRIPT_URL = "https://script.google.com/macros/s/test/exec"
+        server.GMAIL_SCRIPT_SECRET = "test-shared-secret"
+        server.send_verification_email = lambda email, name, code: sent.update(
+            {"email": email, "name": name, "code": code}
+        )
+        try:
+            status, result = self.request(
+                "POST",
+                "/api/register",
+                {
+                    "email": "verified-reader@example.com",
+                    "display_name": "Проверенный читатель",
+                    "password": "secure-pass-123",
+                },
+            )
+            self.assertEqual(status, 202)
+            self.assertTrue(result["verification_required"])
+            self.assertEqual(result["email"], "verified-reader@example.com")
+            self.assertEqual(sent["email"], "verified-reader@example.com")
+            self.assertEqual(len(sent["code"]), 6)
+            self.assertTrue(sent["code"].isdigit())
+
+            status, result = self.request("GET", "/api/me")
+            self.assertEqual(status, 200)
+            self.assertIsNone(result["user"])
+
+            status, result = self.request(
+                "POST",
+                "/api/verify-email",
+                {"email": "verified-reader@example.com", "code": "000000" if sent["code"] != "000000" else "000001"},
+            )
+            self.assertEqual(status, 401)
+
+            status, result = self.request(
+                "POST",
+                "/api/verify-email",
+                {"email": "verified-reader@example.com", "code": sent["code"]},
+            )
+            self.assertEqual(status, 201)
+            self.assertEqual(result["user"]["email"], "verified-reader@example.com")
+            status, result = self.request("GET", "/api/me")
+            self.assertEqual(status, 200)
+            self.assertEqual(result["user"]["email"], "verified-reader@example.com")
+        finally:
+            server.GMAIL_SCRIPT_URL = original_script_url
+            server.GMAIL_SCRIPT_SECRET = original_script_secret
+            server.send_verification_email = original_sender
+
+    def test_mongodb_registration_requires_six_digit_email_verification(self):
+        uri = "mongodb://biblio-email-verification-test/"
+        client = mongomock.MongoClient()
+        original_uri = server.MONGODB_URI
+        original_script_url = server.GMAIL_SCRIPT_URL
+        original_script_secret = server.GMAIL_SCRIPT_SECRET
+        original_sender = server.send_verification_email
+        sent = {}
+        server.MONGODB_URI = uri
+        server._MONGO_CLIENTS[uri] = client
+        server.GMAIL_SCRIPT_URL = "https://script.google.com/macros/s/test/exec"
+        server.GMAIL_SCRIPT_SECRET = "test-shared-secret"
+        server.send_verification_email = lambda email, name, code: sent.update(
+            {"email": email, "name": name, "code": code}
+        )
+        try:
+            server.initialize_db()
+            status, result = self.request(
+                "POST",
+                "/api/register",
+                {
+                    "email": "mongo-verified-reader@example.com",
+                    "display_name": "Mongo читатель",
+                    "password": "secure-pass-123",
+                },
+            )
+            self.assertEqual(status, 202)
+            self.assertTrue(result["verification_required"])
+            self.assertEqual(sent["email"], "mongo-verified-reader@example.com")
+            self.assertEqual(len(sent["code"]), 6)
+            self.assertTrue(sent["code"].isdigit())
+
+            status, result = self.request(
+                "POST",
+                "/api/verify-email",
+                {"email": "mongo-verified-reader@example.com", "code": sent["code"]},
+            )
+            self.assertEqual(status, 201)
+            self.assertEqual(result["user"]["email"], "mongo-verified-reader@example.com")
+            status, result = self.request("GET", "/api/me")
+            self.assertEqual(status, 200)
+            self.assertEqual(result["user"]["email"], "mongo-verified-reader@example.com")
+        finally:
+            server.MONGODB_URI = original_uri
+            server.GMAIL_SCRIPT_URL = original_script_url
+            server.GMAIL_SCRIPT_SECRET = original_script_secret
+            server.send_verification_email = original_sender
+            server._MONGO_CLIENTS.pop(uri, None)
+            client.close()
 
     def test_static_site_is_served_by_the_application_server(self):
         request = Request(self.base_url + "/", method="GET")

@@ -34,8 +34,8 @@ SESSION_SECONDS = 60 * 60 * 24 * 14
 PASSWORD_ITERATIONS = 310_000
 MAX_REQUEST_BYTES = 2_000_000
 EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s.]+(?:\.[^@\s.]+)+$")
-RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
-RESEND_FROM = os.environ.get("RESEND_FROM", "Biblio <onboarding@resend.dev>")
+GMAIL_SCRIPT_URL = os.environ.get("GMAIL_SCRIPT_URL", "").strip()
+GMAIL_SCRIPT_SECRET = os.environ.get("GMAIL_SCRIPT_SECRET", "").strip()
 EMAIL_CODE_TTL = 600
 EMAIL_CODE_MAX_ATTEMPTS = 5
 GAME_CATALOG_SEED = (
@@ -117,6 +117,8 @@ def initialize_db():
         db.books.create_index([("owner_id", ASCENDING), ("updated_at", DESCENDING), ("id", DESCENDING)])
         db.sessions.create_index([("token_hash", ASCENDING)], unique=True)
         db.sessions.create_index([("expires_at", ASCENDING)])
+        db.pending_email_verifications.create_index([("email", ASCENDING)], unique=True)
+        db.pending_email_verifications.create_index([("expires_at", ASCENDING)], expireAfterSeconds=0)
         db.newsletter_subscribers.create_index([("email", ASCENDING)], unique=True)
         db.games.create_index([("id", ASCENDING)], unique=True)
         db.games.create_index([("access", ASCENDING), ("updated_at", DESCENDING), ("id", DESCENDING)])
@@ -402,62 +404,77 @@ def verify_password(password, encoded):
 
 
 def email_code_hash(email, code):
-    return hashlib.sha256((email.lower() + ":" + code).encode("utf-8")).hexdigest()
+    secret = (
+        os.environ.get("EMAIL_CODE_SECRET")
+        or GMAIL_SCRIPT_SECRET
+        or "biblio-email-verification-local-only"
+    )
+    message = (email.lower() + ":" + code).encode("utf-8")
+    return hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
 
 
 def email_verification_enabled():
     value = os.environ.get("BIBLIO_EMAIL_VERIFICATION", "").strip().lower()
-    return bool(RESEND_API_KEY) or value in {"1", "true", "yes", "on"}
+    return bool(GMAIL_SCRIPT_URL and GMAIL_SCRIPT_SECRET) or value in {"1", "true", "yes", "on"}
 
 
 def send_verification_email(email, display_name, code):
     if not email_verification_enabled():
         return None
-    if not RESEND_API_KEY:
-        raise APIError(HTTPStatus.SERVICE_UNAVAILABLE, "Отправка писем ещё не настроена: добавь RESEND_API_KEY в Render.")
-    safe_name = display_name.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    if not GMAIL_SCRIPT_URL or not GMAIL_SCRIPT_SECRET:
+        raise APIError(
+            HTTPStatus.SERVICE_UNAVAILABLE,
+            "Отправка писем не настроена: добавь GMAIL_SCRIPT_URL и GMAIL_SCRIPT_SECRET в Render.",
+        )
+
+    safe_name = (
+        display_name.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+    text_body = (
+        f"Привет, {display_name}!\n\n"
+        "Спасибо за регистрацию в Biblio. "
+        f"Твой код подтверждения: {code}\n\n"
+        "Код действует 10 минут. Если ты не регистрировался(-ась), "
+        "проигнорируй это письмо.\n\nС теплом, команда Biblio"
+    )
+    html_body = (
+        '<div style="max-width:520px;margin:24px auto;padding:36px;background:#fff;border:1px solid #e5e1d7;color:#29352c;font-family:Arial,sans-serif">'
+        '<div style="font-size:13px;letter-spacing:4px;color:#6b806d;font-weight:bold">BIBLIO</div>'
+        '<h1 style="font-family:Georgia,serif;font-weight:normal">Добро пожаловать!</h1>'
+        f'<p>Привет, {safe_name}! Спасибо, что присоединился(-ась) к Biblio.</p>'
+        '<p>Чтобы подтвердить адрес электронной почты, введи этот код:</p>'
+        f'<div style="margin:26px 0;padding:20px;background:#f1f3ed;text-align:center;font-size:34px;letter-spacing:9px;font-weight:bold">{code}</div>'
+        '<p>Код действует <b>10 минут</b>. Если ты не создавал(-а) аккаунт, проигнорируй письмо.</p>'
+        '<p style="color:#788078;font-size:12px">С теплом, команда Biblio</p></div>'
+    )
     payload = {
-        "from": RESEND_FROM, "to": [email],
+        "secret": GMAIL_SCRIPT_SECRET,
+        "to": email,
+        "name": display_name,
         "subject": "Подтверждение регистрации в Biblio",
-        "text": f"Привет, {display_name}!\\n\\nСпасибо за регистрацию в Biblio. Твой код подтверждения: {code}\\n\\nКод действует 10 минут. Если ты не регистрировался(-ась), проигнорируй это письмо.\\n\\nС теплом, команда Biblio",
-        "html": (
-            '<div style="max-width:520px;margin:24px auto;padding:36px;background:#fff;border:1px solid #e5e1d7;color:#29352c;font-family:Arial,sans-serif">'
-            '<div style="font-size:13px;letter-spacing:4px;color:#6b806d;font-weight:bold">BIBLIO</div>'
-            '<h1 style="font-family:Georgia,serif;font-weight:normal">Добро пожаловать!</h1>'
-            f'<p>Привет, {safe_name}! Спасибо, что присоединился(-ась) к Biblio.</p>'
-            '<p>Чтобы подтвердить адрес электронной почты, введи этот код:</p>'
-            f'<div style="margin:26px 0;padding:20px;background:#f1f3ed;text-align:center;font-size:34px;letter-spacing:9px;font-weight:bold">{code}</div>'
-            '<p>Код действует <b>10 минут</b>. Если ты не создавал(-а) аккаунт, проигнорируй письмо.</p>'
-            '<p style="color:#788078;font-size:12px">С теплом, команда Biblio</p></div>'
-        ),
+        "text": text_body,
+        "html": html_body,
     }
     request = urllib.request.Request(
-        "https://api.resend.com/emails", data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {RESEND_API_KEY}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "User-Agent": "Biblio/1.0 (https://biblio-eqwo.onrender.com; mailer)",
-        },
+        GMAIL_SCRIPT_URL,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=15) as response:
+        with urllib.request.urlopen(request, timeout=20) as response:
             result = json.loads(response.read().decode("utf-8"))
-            if response.status >= 300:
-                raise APIError(HTTPStatus.SERVICE_UNAVAILABLE, "Почта временно не отправляется. Проверь настройки отправителя Resend и попробуй зарегистрироваться позже.")
-            return result
-    except urllib.error.HTTPError as error:
-        detail = error.read().decode("utf-8", "replace")[:500]
-        print(f"Resend API error {error.code}: {detail}", flush=True)
-        if error.code == 403 and ("verify a domain" in detail or "testing emails" in detail):
-            message = "Resend пока не может отправлять письма другим пользователям: подтверди домен отправителя в Resend и укажи адрес с этим доменом в RESEND_FROM."
-        else:
-            message = "Почтовый сервис отклонил письмо. Проверь настройки Resend и попробуй позже."
-        raise APIError(HTTPStatus.SERVICE_UNAVAILABLE, message)
-    except (urllib.error.URLError, TimeoutError):
-        raise APIError(HTTPStatus.SERVICE_UNAVAILABLE, "Почтовый сервис временно недоступен. Попробуй ещё раз.")
-
+        if not isinstance(result, dict) or not result.get("accepted"):
+            raise ValueError("Mail relay did not confirm acceptance")
+        return {"accepted": True}
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError, ValueError) as error:
+        print(f"Google Apps Script mail relay error: {type(error).__name__}", flush=True)
+        raise APIError(
+            HTTPStatus.SERVICE_UNAVAILABLE,
+            "Не удалось отправить письмо через Gmail. Проверь настройки почтового сервиса и попробуй позже.",
+        )
 
 def public_user(row):
     return {
@@ -1075,12 +1092,17 @@ class BiblioHandler(BaseHTTPRequestHandler):
             if pending and int(time.time()) - pending.get("created_at", 0) < 60:
                 raise APIError(HTTPStatus.TOO_MANY_REQUESTS, "Подожди минуту перед повторной отправкой кода.")
             code = f"{secrets.randbelow(1_000_000):06d}"
+            code_hash = email_code_hash(email, code)
             db.pending_email_verifications.replace_one({"email": email}, {
                 "email": email, "display_name": display_name, "password_hash": password_digest(password),
-                "code_hash": email_code_hash(email, code), "expires_at": int(time.time()) + EMAIL_CODE_TTL,
+                "code_hash": code_hash, "expires_at": int(time.time()) + EMAIL_CODE_TTL,
                 "attempts": 0, "created_at": int(time.time()),
             }, upsert=True)
-            send_verification_email(email, display_name, code)
+            try:
+                send_verification_email(email, display_name, code)
+            except Exception:
+                db.pending_email_verifications.delete_one({"email": email, "code_hash": code_hash})
+                raise
             return {"verification_required": True, "email": email}, HTTPStatus.ACCEPTED, []
 
         if method == "POST" and path == "/api/verify-email":
