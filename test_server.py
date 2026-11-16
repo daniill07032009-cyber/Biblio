@@ -895,6 +895,109 @@ class BiblioServerTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(result["user"]["email"], "new@example.com")
 
+    def test_registration_requires_six_digit_email_verification(self):
+        original_emailit_key = server.EMAILIT_API_KEY
+        original_resend_key = server.RESEND_API_KEY
+        original_sender = server.send_verification_email
+        sent = {}
+        server.EMAILIT_API_KEY = "test-emailit-key"
+        server.RESEND_API_KEY = ""
+        server.send_verification_email = lambda email, name, code: sent.update(
+            {"email": email, "name": name, "code": code}
+        )
+        try:
+            status, result = self.request(
+                "POST",
+                "/api/register",
+                {
+                    "email": "verified-reader@example.com",
+                    "display_name": "Проверенный читатель",
+                    "password": "secure-pass-123",
+                },
+            )
+            self.assertEqual(status, 202)
+            self.assertTrue(result["verification_required"])
+            self.assertEqual(result["email"], "verified-reader@example.com")
+            self.assertEqual(sent["email"], "verified-reader@example.com")
+            self.assertEqual(len(sent["code"]), 6)
+            self.assertTrue(sent["code"].isdigit())
+
+            status, result = self.request("GET", "/api/me")
+            self.assertEqual(status, 200)
+            self.assertIsNone(result["user"])
+
+            status, result = self.request(
+                "POST",
+                "/api/verify-email",
+                {"email": "verified-reader@example.com", "code": "000000" if sent["code"] != "000000" else "000001"},
+            )
+            self.assertEqual(status, 401)
+
+            status, result = self.request(
+                "POST",
+                "/api/verify-email",
+                {"email": "verified-reader@example.com", "code": sent["code"]},
+            )
+            self.assertEqual(status, 201)
+            self.assertEqual(result["user"]["email"], "verified-reader@example.com")
+            status, result = self.request("GET", "/api/me")
+            self.assertEqual(status, 200)
+            self.assertEqual(result["user"]["email"], "verified-reader@example.com")
+        finally:
+            server.EMAILIT_API_KEY = original_emailit_key
+            server.RESEND_API_KEY = original_resend_key
+            server.send_verification_email = original_sender
+
+    def test_mongodb_registration_requires_six_digit_email_verification(self):
+        uri = "mongodb://biblio-email-verification-test/"
+        client = mongomock.MongoClient()
+        original_uri = server.MONGODB_URI
+        original_emailit_key = server.EMAILIT_API_KEY
+        original_resend_key = server.RESEND_API_KEY
+        original_sender = server.send_verification_email
+        sent = {}
+        server.MONGODB_URI = uri
+        server._MONGO_CLIENTS[uri] = client
+        server.EMAILIT_API_KEY = "test-emailit-key"
+        server.RESEND_API_KEY = ""
+        server.send_verification_email = lambda email, name, code: sent.update(
+            {"email": email, "name": name, "code": code}
+        )
+        try:
+            server.initialize_db()
+            status, result = self.request(
+                "POST",
+                "/api/register",
+                {
+                    "email": "mongo-verified-reader@example.com",
+                    "display_name": "Mongo читатель",
+                    "password": "secure-pass-123",
+                },
+            )
+            self.assertEqual(status, 202)
+            self.assertTrue(result["verification_required"])
+            self.assertEqual(sent["email"], "mongo-verified-reader@example.com")
+            self.assertEqual(len(sent["code"]), 6)
+            self.assertTrue(sent["code"].isdigit())
+
+            status, result = self.request(
+                "POST",
+                "/api/verify-email",
+                {"email": "mongo-verified-reader@example.com", "code": sent["code"]},
+            )
+            self.assertEqual(status, 201)
+            self.assertEqual(result["user"]["email"], "mongo-verified-reader@example.com")
+            status, result = self.request("GET", "/api/me")
+            self.assertEqual(status, 200)
+            self.assertEqual(result["user"]["email"], "mongo-verified-reader@example.com")
+        finally:
+            server.MONGODB_URI = original_uri
+            server.EMAILIT_API_KEY = original_emailit_key
+            server.RESEND_API_KEY = original_resend_key
+            server.send_verification_email = original_sender
+            server._MONGO_CLIENTS.pop(uri, None)
+            client.close()
+
     def test_static_site_is_served_by_the_application_server(self):
         request = Request(self.base_url + "/", method="GET")
         with self.client.open(request) as response:
