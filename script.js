@@ -37,6 +37,17 @@ const DEFAULT_READING_SETTINGS = {
   width: "standard",
 };
 const DEFAULT_SITE_SETTINGS = { theme: "light", language: "ru" };
+const GAME_STAT_FIELDS = [
+  { key: "strength", label: "Сила", min: 1, max: 30, value: 10 },
+  { key: "dexterity", label: "Ловкость", min: 1, max: 30, value: 10 },
+  { key: "constitution", label: "Телосложение", min: 1, max: 30, value: 10 },
+  { key: "intelligence", label: "Интеллект", min: 1, max: 30, value: 10 },
+  { key: "wisdom", label: "Мудрость", min: 1, max: 30, value: 10 },
+  { key: "charisma", label: "Харизма", min: 1, max: 30, value: 10 },
+  { key: "hp", label: "HP", min: 0, max: 999, value: 10 },
+  { key: "max_hp", label: "Макс. HP", min: 1, max: 999, value: 10 },
+  { key: "armor_class", label: "КД", min: 0, max: 99, value: 10 },
+];
 
 function readStoredArray(key) {
   try {
@@ -1395,7 +1406,11 @@ async function refreshGameCatalog() {
 async function openCatalogGame(slug) {
   try {
     const result = await api(`/api/catalog/games/${encodeURIComponent(slug)}`);
-    const game = { ...result.game, rooms: result.rooms || [] };
+    const game = {
+      ...result.game,
+      rooms: result.rooms || [],
+      private_rooms: result.private_rooms || [],
+    };
     if (/\/play\/?$/.test(location.pathname)) renderGameRoomsPage(game);
     else renderCatalogGameDetail(game);
   } catch (error) {
@@ -1498,8 +1513,8 @@ function renderGameRoomsPage(game) {
   const roomsSection = createElement("section", "game-catalog-rooms");
   const roomsHeading = createElement("div", "game-catalog-rooms__heading");
   roomsHeading.append(
-    createElement("h4", "", "Игровые комнаты"),
-    createElement("span", "", "Комнаты и прогресс сохраняются, пока создатель их не удалит."),
+    createElement("h4", "", "Публичные комнаты"),
+    createElement("span", "", "Закрытые комнаты не отображаются здесь. Чтобы войти, понадобятся код и ник владельца."),
   );
   const roomsList = createElement("div", "game-catalog-rooms__list");
   if (game.rooms.length) {
@@ -1509,9 +1524,20 @@ function renderGameRoomsPage(game) {
   }
   roomsSection.append(roomsHeading, roomsList);
   if (currentUser) {
+    roomsSection.append(createPrivateGameJoinForm());
+    if (game.private_rooms?.length) {
+      const privateHeading = createElement("div", "game-catalog-rooms__heading");
+      privateHeading.append(
+        createElement("h4", "", "Мои закрытые комнаты"),
+        createElement("span", "", "Этот список виден только тебе как владельцу."),
+      );
+      const privateList = createElement("div", "game-catalog-rooms__list");
+      game.private_rooms.forEach((room) => privateList.append(createCatalogRoomCard(room)));
+      roomsSection.append(privateHeading, privateList);
+    }
     roomsSection.append(createGameRoomForm());
   } else {
-    const loginButton = createElement("button", "button button--primary", "Войти, чтобы создать комнату");
+    const loginButton = createElement("button", "button button--primary", "Войти, чтобы создать комнату или вступить по коду");
     loginButton.type = "button";
     loginButton.addEventListener("click", () => openDialog("auth-dialog"));
     roomsSection.append(loginButton);
@@ -1566,6 +1592,35 @@ function createGameRoomForm() {
   const submit = createElement("button", "button button--primary", "Создать комнату");
   submit.type = "submit";
   form.append(descriptionLabel, accessLabel, codeLabel, submit);
+  return form;
+}
+
+function createPrivateGameJoinForm() {
+  const form = createElement("form", "games-form");
+  form.id = "game-private-join-form";
+  form.addEventListener("submit", joinPrivateGame);
+  form.append(
+    createElement("h4", "", "Войти в закрытую комнату"),
+  );
+  const codeLabel = createElement("label", "", "Код комнаты");
+  const codeInput = createElement("input");
+  codeInput.name = "code";
+  codeInput.maxLength = 32;
+  codeInput.autocomplete = "off";
+  codeInput.required = true;
+  codeInput.placeholder = "Например, A1B2C3D4";
+  codeLabel.append(codeInput);
+  const ownerLabel = createElement("label", "", "Ник владельца");
+  const ownerInput = createElement("input");
+  ownerInput.name = "owner_name";
+  ownerInput.maxLength = 60;
+  ownerInput.autocomplete = "off";
+  ownerInput.required = true;
+  ownerInput.placeholder = "Имя, указанное в профиле владельца";
+  ownerLabel.append(ownerInput);
+  const submit = createElement("button", "button button--primary", "Найти и войти");
+  submit.type = "submit";
+  form.append(codeLabel, ownerLabel, submit);
   return form;
 }
 
@@ -1738,6 +1793,7 @@ function renderGameDetail(game) {
   const members = Array.isArray(game.participants) ? game.participants : [];
   const heroes = Array.isArray(game.heroes) ? game.heroes : [];
   const sessions = Array.isArray(game.sessions) ? game.sessions : [];
+  const isGameMaster = !!currentUser && Number(game.owner_id) === Number(currentUser.id);
   const currentHero = currentUser && Array.isArray(heroes)
     ? heroes.find((hero) => Number(hero.user_id) === Number(currentUser.id)) || null
     : null;
@@ -1757,10 +1813,18 @@ function renderGameDetail(game) {
         })
         .join("")
     : "<option value=\"\">Нет участников</option>";
+  const statInputs = (hero = {}) => GAME_STAT_FIELDS.map((field) => `
+    <label>${field.label}
+      <input type="number" name="${field.key}" min="${field.min}" max="${field.max}" value="${Number(hero[field.key] ?? field.value)}" required />
+    </label>
+  `).join("");
+  const heroStats = (hero) => GAME_STAT_FIELDS.map((field) =>
+    `<span>${field.label}: ${Number(hero[field.key] ?? field.value)}</span>`
+  ).join("");
 
   panel.innerHTML = `
     <div class="game-detail__header">
-      <div><span class="eyebrow">Игровая комната</span><h3>${escapeHtml(title)}</h3></div>
+      <div><span class="eyebrow">${isGameMaster ? "Ведущий" : "Игрок"} · Игровая комната</span><h3>${escapeHtml(title)}</h3></div>
       <button class="button button--secondary" type="button" data-game-action="back">${/\/play\/?$/.test(location.pathname) ? "← К комнатам" : "← К игре"}</button>
     </div>
     <p>${escapeHtml(game.description || "Без описания.")}</p>
@@ -1776,7 +1840,38 @@ function renderGameDetail(game) {
     </div>
     <div class="game-detail__section">
       <strong>Герои</strong>
-      ${heroes.length ? `<ul>${heroes.map((hero) => `<li>${escapeHtml(hero.name)} · ${hero.level} ур. · ${hero.xp} XP</li>`).join("")}</ul>` : "<p>Пока нет героев.</p>"}
+      ${heroes.length ? `<div class="game-heroes">${heroes.map((hero) => `
+        <article class="game-hero-card">
+          <div class="game-hero-card__heading">
+            <strong>${escapeHtml(hero.name)} · ${hero.level} ур. · ${hero.xp} XP</strong>
+            <span>${escapeHtml([hero.class_name, hero.race].filter(Boolean).join(" · ") || "Класс и раса не указаны")}</span>
+          </div>
+          <div class="game-hero-card__stats">${heroStats(hero)}</div>
+          ${isGameMaster ? `
+            <form class="games-form game-hero-card__form" data-hero-user-id="${Number(hero.user_id)}">
+              <strong>Изменить параметры</strong>
+              <div class="game-stat-grid">${statInputs(hero)}</div>
+              <button class="button button--secondary" type="submit">Сохранить параметры</button>
+            </form>
+          ` : ""}
+        </article>
+      `).join("")}</div>` : isGameMaster ? "<p>Пока никто не создал персонажа. Игроки могут вступить в комнату и создать героя.</p>" : "<p>Пока нет героев. Создай персонажа, чтобы начать игру.</p>"}
+      ${isGameMaster ? "<p class=\"game-host-note\">Ты ведущий: управляй ходом игры и параметрами героев. Ведущий не создаёт персонажа.</p>" : ""}
+    </div>
+    <div class="game-detail__section">
+      <strong>Бросок кубика</strong>
+      <div class="game-dice" aria-label="Бросок игрового кубика">
+        <div class="game-dice__controls" role="group" aria-label="Выбери кубик">
+          ${[4, 6, 8, 10, 12, 20, 100].map((sides) => `
+            <button type="button" class="game-dice__type${sides === 20 ? " is-selected" : ""}" data-die-sides="${sides}" aria-pressed="${sides === 20}">d${sides}</button>
+          `).join("")}
+        </div>
+        <div class="game-dice__roll">
+          <div class="game-dice__face" aria-live="polite" aria-atomic="true">—</div>
+          <div class="game-dice__result" role="status">Выбери кубик и брось его</div>
+          <button type="button" class="button button--primary" data-dice-roll>Бросить d20</button>
+        </div>
+      </div>
     </div>
     <div class="game-detail__section">
       <strong>Недавние сессии</strong>
@@ -1789,15 +1884,17 @@ function renderGameDetail(game) {
           <code>${escapeHtml(game.join_code || "Не назначен")}</code>
           ${game.is_owner ? `<button class="button button--secondary" type="button" data-game-action="regenerate-code">Сгенерировать новый</button>` : ""}
         </div>
+        ${game.is_owner ? `<p>Чтобы участники нашли комнату, сообщи им также свой ник: ${escapeHtml(currentUser.display_name)}.</p>` : ""}
       </div>
     ` : ""}
-    ${currentUser && (game.is_member || game.is_owner) ? `
+    ${currentUser && game.is_member && !isGameMaster ? `
       <div class="game-detail__section">
-        <strong>Мой герой</strong>
+        <strong>${currentHero ? "Мой персонаж" : "Создать персонажа"}</strong>
         <form id="game-hero-form" class="games-form">
           <label>Имя героя<input name="hero_name" maxlength="80" value="${escapeHtml(heroName)}" required /></label>
           <label>Класс<input name="hero_class" maxlength="60" value="${escapeHtml(heroClass)}" /></label>
           <label>Раса<input name="race" maxlength="60" value="${escapeHtml(heroRace)}" /></label>
+          ${currentHero ? "" : `<div class="game-stat-grid">${statInputs()}</div>`}
           <button class="button button--primary" type="submit">Сохранить героя</button>
         </form>
       </div>
@@ -1807,6 +1904,7 @@ function renderGameDetail(game) {
         <strong>Вступить в комнату</strong>
         <form id="game-join-form" class="games-form">
           <label>Код доступа<input name="join_code" maxlength="32" placeholder="Введите код" required /></label>
+          <label>Ник владельца<input name="owner_name" maxlength="60" placeholder="Имя из профиля владельца" required /></label>
           <button class="button button--primary" type="submit">Подтвердить вход</button>
         </form>
       </div>
@@ -1826,7 +1924,7 @@ function renderGameDetail(game) {
       </div>
     ` : ""}
     <div class="game-detail__section game-detail__actions">
-      ${canJoin ? `<button class="button button--primary" type="button" data-game-action="join">Вступить</button>` : ""}
+      ${canJoin && game.access === "public" ? `<button class="button button--primary" type="button" data-game-action="join">Вступить</button>` : ""}
       ${canLeave ? `<button class="button button--secondary" type="button" data-game-action="leave">Покинуть</button>` : ""}
       ${currentUser && Number(game.owner_id) === Number(currentUser.id) ? `<button class="button button--secondary" type="button" data-game-action="refresh">Обновить</button>` : ""}
     </div>
@@ -1863,7 +1961,13 @@ function renderGameDetail(game) {
       event.preventDefault();
       try {
         const formData = new FormData(joinForm);
-        await api(`/api/games/${game.id}/join`, { method: "POST", body: JSON.stringify({ join_code: formData.get("join_code") || "" }) });
+        await api(`/api/games/${game.id}/join`, {
+          method: "POST",
+          body: JSON.stringify({
+            join_code: formData.get("join_code") || "",
+            owner_name: formData.get("owner_name") || "",
+          }),
+        });
         const refreshedGame = await api(`/api/games/${game.id}`);
         renderGameDetail(refreshedGame.game);
         showToast("Ты вступил в комнату");
@@ -1923,6 +2027,11 @@ function renderGameDetail(game) {
           class_name: formData.get("hero_class") || "",
           race: formData.get("race") || "",
         };
+        if (!currentHero) {
+          GAME_STAT_FIELDS.forEach((field) => {
+            payload[field.key] = Number(formData.get(field.key));
+          });
+        }
         const result = await api(`/api/games/${game.id}/characters`, { method: "POST", body: JSON.stringify(payload) });
         if (result.character) {
           const refreshedGame = await api(`/api/games/${game.id}`);
@@ -1932,6 +2041,75 @@ function renderGameDetail(game) {
       } catch (error) {
         showToast(error.message);
       }
+    });
+  }
+
+  panel.querySelectorAll(".game-hero-card__form").forEach((form) => {
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const formData = new FormData(form);
+      const payload = Object.fromEntries(GAME_STAT_FIELDS.map((field) => [
+        field.key,
+        Number(formData.get(field.key)),
+      ]));
+      try {
+        await api(`/api/games/${game.id}/characters/${form.dataset.heroUserId}`, {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        });
+        const refreshedGame = await api(`/api/games/${game.id}`);
+        renderGameDetail(refreshedGame.game);
+        showToast("Параметры персонажа обновлены");
+      } catch (error) {
+        showToast(error.message);
+      }
+    });
+  });
+
+  const dicePanel = panel.querySelector(".game-dice");
+  if (dicePanel) {
+    let selectedSides = 20;
+    let rolling = false;
+    const face = dicePanel.querySelector(".game-dice__face");
+    const result = dicePanel.querySelector(".game-dice__result");
+    const rollButton = dicePanel.querySelector("[data-dice-roll]");
+    dicePanel.querySelectorAll("[data-die-sides]").forEach((button) => {
+      button.addEventListener("click", () => {
+        selectedSides = Number(button.dataset.dieSides);
+        dicePanel.querySelectorAll("[data-die-sides]").forEach((option) => {
+          const selected = option === button;
+          option.classList.toggle("is-selected", selected);
+          option.setAttribute("aria-pressed", String(selected));
+        });
+        rollButton.textContent = `Бросить d${selectedSides}`;
+      });
+    });
+    rollButton.addEventListener("click", () => {
+      if (rolling) return;
+      rolling = true;
+      rollButton.disabled = true;
+      result.textContent = "Кубик катится…";
+      face.classList.remove("is-rolling");
+      void face.offsetWidth;
+      face.classList.add("is-rolling");
+      let value;
+      if (globalThis.crypto?.getRandomValues) {
+        const limit = Math.floor(0x100000000 / selectedSides) * selectedSides;
+        const randomValue = new Uint32Array(1);
+        do {
+          globalThis.crypto.getRandomValues(randomValue);
+        } while (randomValue[0] >= limit);
+        value = (randomValue[0] % selectedSides) + 1;
+      } else {
+        value = Math.floor(Math.random() * selectedSides) + 1;
+      }
+      window.setTimeout(() => {
+        face.classList.remove("is-rolling");
+        face.textContent = String(value);
+        result.textContent = `Результат броска d${selectedSides}: ${value}`;
+        rolling = false;
+        rollButton.disabled = false;
+      }, 850);
     });
   }
 
@@ -1982,6 +2160,34 @@ async function createGameRoom(event) {
     await api("/api/games", { method: "POST", body: JSON.stringify(payload) });
     await openCatalogGame(activeCatalogGameSlug);
     showToast("Комната создана");
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    submit.disabled = false;
+  }
+}
+
+async function joinPrivateGame(event) {
+  event.preventDefault();
+  if (!currentUser) {
+    openDialog("auth-dialog");
+    return;
+  }
+  const form = event.currentTarget;
+  const formData = new FormData(form);
+  const submit = form.querySelector('button[type="submit"]');
+  submit.disabled = true;
+  try {
+    const result = await api("/api/games/enter", {
+      method: "POST",
+      body: JSON.stringify({
+        code: formData.get("code") || "",
+        owner_name: formData.get("owner_name") || "",
+      }),
+    });
+    const gameResult = await api(`/api/games/${result.game_id}`);
+    renderGameDetail(gameResult.game);
+    showToast("Ты вступил в закрытую комнату");
   } catch (error) {
     showToast(error.message);
   } finally {

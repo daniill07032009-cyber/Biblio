@@ -389,10 +389,18 @@ class BiblioServerTests(unittest.TestCase):
                 "description": "Мрачная экспедиция по заброшенному городу.",
                 "access": "private",
                 "join_code": "RAID-42",
+                "catalog_game_slug": "dnd",
             },
         )
         self.assertEqual(status, 201)
         game_id = result["game"]["id"]
+        status, result = self.request("GET", "/api/games")
+        self.assertEqual(status, 200)
+        self.assertNotIn(game_id, [game["id"] for game in result["games"]])
+        status, result = self.request("GET", "/api/catalog/games/dnd")
+        self.assertEqual(status, 200)
+        self.assertEqual(result["rooms"], [])
+        self.assertEqual([room["id"] for room in result["private_rooms"]], [game_id])
 
         status, result = self.request("POST", f"/api/games/{game_id}/join-code", {})
         self.assertEqual(status, 200)
@@ -404,18 +412,57 @@ class BiblioServerTests(unittest.TestCase):
         status, result = self.request("GET", "/api/games")
         self.assertEqual(status, 200)
         self.assertNotIn(game_id, [game["id"] for game in result["games"]])
-        status, result = self.request("POST", f"/api/games/{game_id}/join", {"join_code": "wrong"})
-        self.assertEqual(status, 403)
-        status, result = self.request("POST", f"/api/games/{game_id}/join", {"join_code": wrong_code})
+        status, result = self.request("GET", "/api/catalog/games/dnd")
         self.assertEqual(status, 200)
+        self.assertEqual(result["rooms"], [])
+        self.assertEqual(result["private_rooms"], [])
+        status, result = self.request(
+            "POST",
+            f"/api/games/{game_id}/join",
+            {"join_code": "wrong", "owner_name": owner["display_name"]},
+        )
+        self.assertEqual(status, 403)
+        status, result = self.request(
+            "POST",
+            "/api/games/enter",
+            {"code": wrong_code, "owner_name": "Someone else"},
+        )
+        self.assertEqual(status, 404)
+        status, result = self.request(
+            "POST",
+            "/api/games/enter",
+            {"code": wrong_code, "owner_name": owner["display_name"].lower()},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(result["game_id"], game_id)
 
         status, result = self.request(
             "POST",
             f"/api/games/{game_id}/characters",
-            {"name": "Элин", "class_name": "Воин", "race": "Человек"},
+            {
+                "name": "Элин",
+                "class_name": "Воин",
+                "race": "Человек",
+                "strength": 16,
+                "hp": 18,
+                "max_hp": 22,
+                "armor_class": 15,
+            },
         )
         self.assertEqual(status, 201)
         self.assertEqual(result["character"]["name"], "Элин")
+        self.assertEqual(result["character"]["strength"], 16)
+        self.assertEqual(result["character"]["hp"], 18)
+        status, result = self.request("GET", f"/api/games/{game_id}")
+        self.assertEqual(status, 200)
+        self.assertTrue(result["game"]["is_member"])
+        self.assertFalse(result["game"]["is_owner"])
+        status, _ = self.request(
+            "PATCH",
+            f"/api/games/{game_id}/characters/{guest['id']}",
+            {"strength": 20},
+        )
+        self.assertEqual(status, 403)
 
         self.request("POST", "/api/logout", {})
         status, result = self.request(
@@ -424,6 +471,30 @@ class BiblioServerTests(unittest.TestCase):
             {"email": owner["email"], "password": "secure-pass-123"},
         )
         self.assertEqual(status, 200)
+        status, result = self.request("GET", f"/api/games/{game_id}")
+        self.assertTrue(result["game"]["is_member"])
+        self.assertTrue(result["game"]["is_owner"])
+
+        status, _ = self.request(
+            "POST",
+            f"/api/games/{game_id}/characters",
+            {"name": "Персонаж ведущего"},
+        )
+        self.assertEqual(status, 403)
+        status, result = self.request(
+            "PATCH",
+            f"/api/games/{game_id}/characters/{guest['id']}",
+            {"strength": 18, "hp": 12, "max_hp": 24, "armor_class": 17},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(result["character"]["strength"], 18)
+        self.assertEqual(result["character"]["hp"], 12)
+        status, _ = self.request(
+            "PATCH",
+            f"/api/games/{game_id}/characters/{guest['id']}",
+            {"hp": 25, "max_hp": 24},
+        )
+        self.assertEqual(status, 400)
 
         status, result = self.request(
             "POST",
@@ -664,7 +735,12 @@ class BiblioServerTests(unittest.TestCase):
             status, result = self.request(
                 "POST",
                 "/api/games",
-                {"name": "Mongo room", "access": "private", "join_code": "MONGO-1"},
+                {
+                    "name": "Mongo room",
+                    "access": "private",
+                    "join_code": "MONGO-1",
+                    "catalog_game_slug": "dnd",
+                },
             )
             self.assertEqual(status, 201)
             game_id = result["game"]["id"]
@@ -672,17 +748,38 @@ class BiblioServerTests(unittest.TestCase):
             status, result = self.request("POST", f"/api/games/{game_id}/join-code", {})
             self.assertEqual(status, 200)
             join_code = result["game"]["join_code"]
+            status, result = self.request("GET", "/api/catalog/games/dnd")
+            self.assertEqual(status, 200)
+            self.assertEqual(result["rooms"], [])
+            self.assertEqual([room["id"] for room in result["private_rooms"]], [game_id])
 
             self.request("POST", "/api/logout", {})
             guest = self.register("mongo-guest@example.com")
-            status, result = self.request("POST", f"/api/games/{game_id}/join", {"join_code": join_code})
+            status, result = self.request("GET", "/api/games")
+            self.assertNotIn(game_id, [game["id"] for game in result["games"]])
+            status, result = self.request("GET", "/api/catalog/games/dnd")
+            self.assertEqual(result["rooms"], [])
+            self.assertEqual(result["private_rooms"], [])
+            status, result = self.request(
+                "POST",
+                "/api/games/enter",
+                {"code": join_code, "owner_name": "Someone else"},
+            )
+            self.assertEqual(status, 404)
+            status, result = self.request(
+                "POST",
+                "/api/games/enter",
+                {"code": join_code, "owner_name": owner["display_name"]},
+            )
             self.assertEqual(status, 200)
+            self.assertEqual(result["game_id"], game_id)
             status, result = self.request(
                 "POST",
                 f"/api/games/{game_id}/characters",
-                {"name": "Свет", "class_name": "Маг", "race": "Эльф"},
+                {"name": "Свет", "class_name": "Маг", "race": "Эльф", "wisdom": 14},
             )
             self.assertEqual(status, 201)
+            self.assertEqual(result["character"]["wisdom"], 14)
 
             self.request("POST", "/api/logout", {})
             status, result = self.request(
@@ -691,6 +788,13 @@ class BiblioServerTests(unittest.TestCase):
                 {"email": owner["email"], "password": "secure-pass-123"},
             )
             self.assertEqual(status, 200)
+            status, result = self.request(
+                "PATCH",
+                f"/api/games/{game_id}/characters/{guest['id']}",
+                {"dexterity": 17, "hp": 16, "max_hp": 20},
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(result["character"]["dexterity"], 17)
             status, result = self.request(
                 "POST",
                 f"/api/games/{game_id}/sessions",

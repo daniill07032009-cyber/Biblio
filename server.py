@@ -271,6 +271,15 @@ def initialize_db():
                 race TEXT NOT NULL DEFAULT '',
                 level INTEGER NOT NULL DEFAULT 1,
                 xp INTEGER NOT NULL DEFAULT 0,
+                strength INTEGER NOT NULL DEFAULT 10,
+                dexterity INTEGER NOT NULL DEFAULT 10,
+                constitution INTEGER NOT NULL DEFAULT 10,
+                intelligence INTEGER NOT NULL DEFAULT 10,
+                wisdom INTEGER NOT NULL DEFAULT 10,
+                charisma INTEGER NOT NULL DEFAULT 10,
+                hp INTEGER NOT NULL DEFAULT 10,
+                max_hp INTEGER NOT NULL DEFAULT 10,
+                armor_class INTEGER NOT NULL DEFAULT 10,
                 created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
                 updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
                 UNIQUE(game_id, user_id),
@@ -342,6 +351,15 @@ def initialize_db():
         game_columns = {row["name"] for row in db.execute("PRAGMA table_info(games)")}
         if "catalog_game_slug" not in game_columns:
             db.execute("ALTER TABLE games ADD COLUMN catalog_game_slug TEXT REFERENCES game_catalog(slug)")
+        character_columns = {row["name"] for row in db.execute("PRAGMA table_info(game_characters)")}
+        for name in (
+            "strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma",
+        ):
+            if name not in character_columns:
+                db.execute(f"ALTER TABLE game_characters ADD COLUMN {name} INTEGER NOT NULL DEFAULT 10")
+        for name in ("hp", "max_hp", "armor_class"):
+            if name not in character_columns:
+                db.execute(f"ALTER TABLE game_characters ADD COLUMN {name} INTEGER NOT NULL DEFAULT 10")
         db.execute(
             "UPDATE games SET catalog_game_slug = 'dnd' WHERE catalog_game_slug IS NULL"
         )
@@ -453,9 +471,45 @@ def normalize_game_access(value):
     return "public"
 
 
+def normalize_game_owner_name(value):
+    return " ".join(str(value or "").split()).casefold()
+
+
 def calculate_character_level(xp):
     xp_total = max(0, int(xp or 0))
     return max(1, 1 + (xp_total // 100))
+
+
+CHARACTER_STAT_RANGES = {
+    "strength": (1, 30, 10),
+    "dexterity": (1, 30, 10),
+    "constitution": (1, 30, 10),
+    "intelligence": (1, 30, 10),
+    "wisdom": (1, 30, 10),
+    "charisma": (1, 30, 10),
+    "hp": (0, 999, 10),
+    "max_hp": (1, 999, 10),
+    "armor_class": (0, 99, 10),
+}
+
+
+def game_character_stats(payload, existing=None):
+    stats = {}
+    existing = existing or {}
+    for field, (minimum, maximum, default) in CHARACTER_STAT_RANGES.items():
+        value = payload.get(field, existing.get(field, default))
+        if isinstance(value, bool):
+            raise APIError(HTTPStatus.BAD_REQUEST, f"Параметр {field} должен быть целым числом.")
+        try:
+            value = int(value)
+        except (TypeError, ValueError):
+            raise APIError(HTTPStatus.BAD_REQUEST, f"Параметр {field} должен быть целым числом.")
+        if not minimum <= value <= maximum:
+            raise APIError(HTTPStatus.BAD_REQUEST, f"Параметр {field} должен быть от {minimum} до {maximum}.")
+        stats[field] = value
+    if stats["hp"] > stats["max_hp"]:
+        raise APIError(HTTPStatus.BAD_REQUEST, "Текущее здоровье не может быть выше максимального.")
+    return stats
 
 
 def game_record_row(game, user_id=None):
@@ -512,6 +566,7 @@ def game_character_record(row):
         "race": row.get("race", ""),
         "level": int(row.get("level", calculate_character_level(xp)) or calculate_character_level(xp)),
         "xp": xp,
+        **game_character_stats({}, row),
         "created_at": row.get("created_at", utc_timestamp()),
         "updated_at": row.get("updated_at", utc_timestamp()),
     }
@@ -1252,22 +1307,9 @@ class BiblioHandler(BaseHTTPRequestHandler):
             own_rating = db.game_catalog_ratings.find_one(
                 {"game_slug": slug, "user_id": user["id"]}, {"rating": 1}
             ) if user else None
-            member_ids = [
-                entry["game_id"]
-                for entry in db.game_participants.find(
-                    {"user_id": user["id"]}, {"game_id": 1}
-                )
-            ] if user else []
-            room_filter = {"catalog_game_slug": slug}
-            room_visibility = [{"access": "public"}]
-            if user:
-                room_visibility.extend([
-                    {"owner_id": user["id"]},
-                    {"id": {"$in": member_ids}},
-                ])
             rooms = []
             for room in db.games.find(
-                {"$and": [room_filter, {"$or": room_visibility}]}
+                {"catalog_game_slug": slug, "access": "public"}
             ).sort([("updated_at", DESCENDING), ("id", DESCENDING)]):
                 rooms.append(game_record_row({
                     **room,
@@ -1278,6 +1320,20 @@ class BiblioHandler(BaseHTTPRequestHandler):
                     )),
                     "is_owner": bool(user and room["owner_id"] == user["id"]),
                 }, user_id=user["id"] if user else None))
+            private_rooms = []
+            if user:
+                for room in db.games.find({
+                    "catalog_game_slug": slug,
+                    "access": {"$in": ["private", "invite_only"]},
+                    "owner_id": user["id"],
+                }).sort([("updated_at", DESCENDING), ("id", DESCENDING)]):
+                    private_rooms.append(game_record_row({
+                        **room,
+                        "member_count": db.game_participants.count_documents({"game_id": room["id"]}),
+                        "hero_count": db.game_characters.count_documents({"game_id": room["id"]}),
+                        "is_member": True,
+                        "is_owner": True,
+                    }, user_id=user["id"]))
             return {
                 "game": game_catalog_record(
                     game,
@@ -1289,6 +1345,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
                     user_rating=(own_rating or {}).get("rating", 0),
                 ),
                 "rooms": rooms,
+                "private_rooms": private_rooms,
             }, HTTPStatus.OK, []
 
         if catalog_match and method == "POST" and catalog_match.group(1):
@@ -1354,24 +1411,42 @@ class BiblioHandler(BaseHTTPRequestHandler):
                     )
                 }, HTTPStatus.OK, []
 
+        if method == "POST" and path == "/api/games/enter":
+            user = self.current_user_mongo(db, required=True)
+            payload = self.read_json()
+            code = str(payload.get("code") or "").strip().upper()
+            owner_name = self.valid_text(payload.get("owner_name"), "Ник владельца", 1, 60)
+            owner_name_key = normalize_game_owner_name(owner_name)
+            matches = []
+            candidates = db.games.find({
+                "access": {"$in": ["private", "invite_only"]},
+                "join_code": code,
+            })
+            for candidate in candidates:
+                owner = db.users.find_one({"id": candidate["owner_id"]}, {"display_name": 1})
+                if owner and normalize_game_owner_name(owner.get("display_name")) == owner_name_key:
+                    matches.append(candidate)
+            if len(matches) != 1:
+                raise APIError(HTTPStatus.NOT_FOUND, "Комната с таким кодом и ником владельца не найдена.")
+            game = matches[0]
+            if not db.game_participants.find_one({"game_id": game["id"], "user_id": user["id"]}):
+                db.game_participants.insert_one({
+                    "id": next_mongo_id(db, "game_participants"),
+                    "game_id": game["id"],
+                    "user_id": user["id"],
+                    "role": "player",
+                    "status": "active",
+                    "joined_at": utc_timestamp(),
+                })
+            return {
+                "game_id": game["id"],
+                "catalog_game_slug": game.get("catalog_game_slug", ""),
+            }, HTTPStatus.OK, []
+
         if method == "GET" and path == "/api/games":
             user = self.current_user_mongo(db)
-            visible_games = []
-            visible_ids = set()
-            if user is not None:
-                member_ids = [entry["game_id"] for entry in db.game_participants.find({"user_id": user["id"]}, {"game_id": 1})]
-                visible_ids.update(member_ids)
-                visible_ids.add(user["id"])
-            for game in db.games.find({"access": "public"}).sort([("updated_at", DESCENDING), ("id", DESCENDING)]):
-                visible_games.append(game)
-                visible_ids.add(game["id"])
-            if user is not None:
-                for game in db.games.find({"$or": [{"owner_id": user["id"]}, {"id": {"$in": list(member_ids)}}]}).sort([("updated_at", DESCENDING), ("id", DESCENDING)]):
-                    if game["id"] not in visible_ids:
-                        visible_games.append(game)
-                        visible_ids.add(game["id"])
             result = []
-            for game in visible_games:
+            for game in db.games.find({"access": "public"}).sort([("updated_at", DESCENDING), ("id", DESCENDING)]):
                 member_count = db.game_participants.count_documents({"game_id": game["id"]})
                 hero_count = db.game_characters.count_documents({"game_id": game["id"]})
                 is_owner = user is not None and game["owner_id"] == user["id"]
@@ -1414,7 +1489,11 @@ class BiblioHandler(BaseHTTPRequestHandler):
             if game is None:
                 raise APIError(HTTPStatus.NOT_FOUND, "Комната не найдена.")
             user = self.current_user_mongo(db)
-            if game["access"] != "public" and (user is None or game["owner_id"] != user["id"] and not db.game_participants.find_one({"game_id": game_id, "user_id": user["id"]} if user else None)):
+            is_owner = user is not None and game["owner_id"] == user["id"]
+            is_member = user is not None and bool(
+                db.game_participants.find_one({"game_id": game_id, "user_id": user["id"]})
+            )
+            if game["access"] != "public" and (user is None or not is_owner and not is_member):
                 raise APIError(HTTPStatus.FORBIDDEN, "У тебя нет доступа к этой комнате.")
             members = list(db.game_participants.find({"game_id": game_id}).sort([("joined_at", DESCENDING), ("id", DESCENDING)]))
             characters = list(db.game_characters.find({"game_id": game_id}).sort([("level", DESCENDING), ("xp", DESCENDING), ("name", ASCENDING)]))
@@ -1434,6 +1513,8 @@ class BiblioHandler(BaseHTTPRequestHandler):
                     "updated_at": game.get("updated_at", utc_timestamp()),
                     "member_count": len(members),
                     "hero_count": len(characters),
+                    "is_member": is_member,
+                    "is_owner": is_owner,
                     "participants": [{
                         "id": member.get("id"),
                         "game_id": member.get("game_id"),
@@ -1511,7 +1592,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 ) is None:
                     raise APIError(HTTPStatus.BAD_REQUEST, "Игра не найдена в каталоге.")
             if access in {"private", "invite_only"} and not join_code:
-                join_code = f"{secrets.token_hex(2).upper()}"
+                join_code = f"{secrets.token_hex(4).upper()}"
             game_id = next_mongo_id(db, "games")
             game = {
                 "id": game_id,
@@ -1537,6 +1618,28 @@ class BiblioHandler(BaseHTTPRequestHandler):
             })
             return {"game": game_record_row(game, user_id=user["id"])}, HTTPStatus.CREATED, []
 
+        character_match = re.fullmatch(r"/api/games/(\d+)/characters/(\d+)", path)
+        if method == "PATCH" and character_match:
+            user = self.current_user_mongo(db, required=True)
+            game_id, target_user_id = map(int, character_match.groups())
+            game = db.games.find_one({"id": game_id})
+            if game is None:
+                raise APIError(HTTPStatus.NOT_FOUND, "Комната не найдена.")
+            if game["owner_id"] != user["id"]:
+                raise APIError(HTTPStatus.FORBIDDEN, "Параметры персонажей может менять только ведущий.")
+            if target_user_id == game["owner_id"]:
+                raise APIError(HTTPStatus.FORBIDDEN, "Ведущий не управляет персонажем в своей комнате.")
+            character = db.game_characters.find_one({"game_id": game_id, "user_id": target_user_id})
+            if character is None:
+                raise APIError(HTTPStatus.NOT_FOUND, "Герой участника не найден.")
+            stats = game_character_stats(self.read_json(), character)
+            db.game_characters.update_one(
+                {"game_id": game_id, "user_id": target_user_id},
+                {"$set": {**stats, "updated_at": utc_timestamp()}},
+            )
+            updated_character = db.game_characters.find_one({"game_id": game_id, "user_id": target_user_id})
+            return {"character": game_character_record(updated_character)}, HTTPStatus.OK, []
+
         game_action_match = re.fullmatch(r"/api/games/(\d+)/(join|leave|characters|heroes|sessions|xp|join-code)", path)
         if method in {"POST", "DELETE"} and game_action_match:
             user = self.current_user_mongo(db, required=True)
@@ -1557,7 +1660,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
                         raise APIError(HTTPStatus.BAD_REQUEST, "Код доступа должен содержать 4–32 символа из латиницы, цифр и тире.")
                     new_code = requested
                 else:
-                    new_code = f"{secrets.token_hex(2).upper()}-{game_id}"
+                    new_code = f"{secrets.token_hex(4).upper()}-{game_id}"
                 db.games.update_one({"id": game_id}, {"$set": {"join_code": new_code, "updated_at": utc_timestamp()}})
                 refreshed = db.games.find_one({"id": game_id})
                 return {"game": game_record_row(refreshed, user_id=user["id"])}, HTTPStatus.OK, []
@@ -1567,7 +1670,14 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 if game["access"] in {"private", "invite_only"}:
                     payload = self.read_json()
                     code = str(payload.get("join_code") or "").strip().upper()
-                    if code != str(game.get("join_code", "")).strip().upper():
+                    owner_name = self.valid_text(payload.get("owner_name"), "Ник владельца", 1, 60)
+                    owner = db.users.find_one({"id": game["owner_id"]}, {"display_name": 1})
+                    if (
+                        code != str(game.get("join_code", "")).strip().upper()
+                        or owner is None
+                        or normalize_game_owner_name(owner.get("display_name"))
+                        != normalize_game_owner_name(owner_name)
+                    ):
                         raise APIError(HTTPStatus.FORBIDDEN, "Код приглашения не подходит.")
                 db.game_participants.insert_one({
                     "id": next_mongo_id(db, "game_participants"),
@@ -1582,14 +1692,17 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 db.game_participants.delete_one({"game_id": game_id, "user_id": user["id"]})
                 return {"ok": True}, HTTPStatus.OK, []
             if game_action_match.group(2) in {"characters", "heroes"}:
+                if game["owner_id"] == user["id"]:
+                    raise APIError(HTTPStatus.FORBIDDEN, "Ведущий не создаёт персонажа в своей комнате.")
                 participant = db.game_participants.find_one({"game_id": game_id, "user_id": user["id"]})
-                if participant is None and game["owner_id"] != user["id"]:
+                if participant is None:
                     raise APIError(HTTPStatus.FORBIDDEN, "Сначала вступи в комнату.")
                 payload = self.read_json()
                 name = self.valid_text(payload.get("name") or payload.get("hero_name"), "Имя героя", 1, 80)
                 class_name = self.valid_text(payload.get("class_name") or payload.get("archetype") or payload.get("hero_class") or "", "Класс героя", 0, 60)
                 archetype = self.valid_text(payload.get("archetype") or class_name or "", "Архетип", 0, 60)
                 race = self.valid_text(payload.get("race") or "", "Раса", 0, 60)
+                stats = game_character_stats(payload)
                 character_id = next_mongo_id(db, "game_characters")
                 character = {
                     "id": character_id,
@@ -1601,6 +1714,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
                     "race": race,
                     "level": 1,
                     "xp": 0,
+                    **stats,
                     "created_at": utc_timestamp(),
                     "updated_at": utc_timestamp(),
                 }
@@ -2086,22 +2200,30 @@ class BiblioHandler(BaseHTTPRequestHandler):
                     (games.owner_id = ?) AS is_owner
                 FROM games
                 WHERE games.catalog_game_slug = ?
-                    AND (
-                        games.access = 'public'
-                        OR games.owner_id = ?
-                        OR EXISTS(SELECT 1 FROM game_participants
-                                  WHERE game_id = games.id AND user_id = ?)
-                    )
+                    AND games.access = 'public'
                 ORDER BY games.updated_at DESC, games.id DESC
                 """,
                 (
                     user["id"] if user else -1,
                     user["id"] if user else -1,
                     slug,
-                    user["id"] if user else -1,
-                    user["id"] if user else -1,
                 ),
             ).fetchall()
+            private_rooms = db.execute(
+                """
+                SELECT games.*,
+                    (SELECT COUNT(*) FROM game_participants WHERE game_id = games.id) AS member_count,
+                    (SELECT COUNT(*) FROM game_characters WHERE game_id = games.id) AS hero_count,
+                    1 AS is_member,
+                    1 AS is_owner
+                FROM games
+                WHERE games.catalog_game_slug = ?
+                    AND games.access IN ('private', 'invite_only')
+                    AND games.owner_id = ?
+                ORDER BY games.updated_at DESC, games.id DESC
+                """,
+                (slug, user["id"] if user else -1),
+            ).fetchall() if user else []
             return {
                 "game": game_catalog_record(
                     dict(game),
@@ -2113,6 +2235,10 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 "rooms": [
                     game_record_row(dict(room), user_id=user["id"] if user else None)
                     for room in rooms
+                ],
+                "private_rooms": [
+                    game_record_row(dict(room), user_id=user["id"])
+                    for room in private_rooms
                 ],
             }, HTTPStatus.OK, []
 
@@ -2172,32 +2298,47 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 ).fetchone()["total"]
                 return {"active_viewers": count}, HTTPStatus.OK, []
 
+        if method == "POST" and path == "/api/games/enter":
+            user = self.current_user(db, required=True)
+            payload = self.read_json()
+            code = str(payload.get("code") or "").strip().upper()
+            owner_name = self.valid_text(payload.get("owner_name"), "Ник владельца", 1, 60)
+            owner_name_key = normalize_game_owner_name(owner_name)
+            matches = db.execute(
+                """
+                SELECT games.*, users.display_name AS owner_name
+                FROM games
+                JOIN users ON users.id = games.owner_id
+                WHERE games.access IN ('private', 'invite_only')
+                    AND games.join_code = ?
+                """,
+                (code,),
+            ).fetchall()
+            matches = [
+                game for game in matches
+                if normalize_game_owner_name(game["owner_name"]) == owner_name_key
+            ]
+            if len(matches) != 1:
+                raise APIError(HTTPStatus.NOT_FOUND, "Комната с таким кодом и ником владельца не найдена.")
+            game = matches[0]
+            db.execute(
+                """
+                INSERT INTO game_participants (game_id, user_id, role, status, joined_at)
+                VALUES (?, ?, 'player', 'active', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+                ON CONFLICT(game_id, user_id) DO NOTHING
+                """,
+                (game["id"], user["id"]),
+            )
+            return {
+                "game_id": game["id"],
+                "catalog_game_slug": game["catalog_game_slug"] or "",
+            }, HTTPStatus.OK, []
+
         if method == "GET" and path == "/api/games":
             user = self.current_user(db)
-            visible_games = []
-            allowed_ids = set()
-            if user is not None:
-                rows = db.execute(
-                    "SELECT game_id FROM game_participants WHERE user_id = ?",
-                    (user["id"],),
-                ).fetchall()
-                allowed_ids = {row["game_id"] for row in rows}
-            public_games = db.execute(
+            visible_games = db.execute(
                 "SELECT * FROM games WHERE access = 'public' ORDER BY updated_at DESC, id DESC"
             ).fetchall()
-            visible_games.extend(public_games)
-            for game in public_games:
-                allowed_ids.add(game["id"])
-            if user is not None:
-                owned_or_joined = db.execute(
-                    "SELECT * FROM games WHERE owner_id = ? OR id IN ({placeholders}) ORDER BY updated_at DESC, id DESC".format(
-                        placeholders=", ".join("?" for _ in allowed_ids) if allowed_ids else "-1"
-                    ),
-                    (user["id"], *sorted(allowed_ids)) if allowed_ids else (user["id"],),
-                ).fetchall()
-                for game in owned_or_joined:
-                    if game["id"] not in {item["id"] for item in visible_games}:
-                        visible_games.append(game)
             result = []
             for game in visible_games:
                 member_count = db.execute(
@@ -2252,12 +2393,14 @@ class BiblioHandler(BaseHTTPRequestHandler):
             game = db.execute("SELECT * FROM games WHERE id = ?", (game_id,)).fetchone()
             if game is None:
                 raise APIError(HTTPStatus.NOT_FOUND, "Комната не найдена.")
+            is_owner = user is not None and game["owner_id"] == user["id"]
+            is_member = user is not None and bool(db.execute(
+                "SELECT 1 FROM game_participants WHERE game_id = ? AND user_id = ?",
+                (game_id, user["id"]),
+            ).fetchone())
             if game["access"] != "public" and (
                 user is None
-                or (game["owner_id"] != user["id"] and not db.execute(
-                    "SELECT 1 FROM game_participants WHERE game_id = ? AND user_id = ?",
-                    (game_id, user["id"]),
-                ).fetchone())
+                or (not is_owner and not is_member)
             ):
                 raise APIError(HTTPStatus.FORBIDDEN, "У тебя нет доступа к этой комнате.")
             members = db.execute(
@@ -2286,6 +2429,8 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 "updated_at": game["updated_at"],
                 "member_count": len(members),
                 "hero_count": len(characters),
+                "is_member": is_member,
+                "is_owner": is_owner,
                 "participants": [{
                     "id": member["id"],
                     "game_id": member["game_id"],
@@ -2365,7 +2510,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 ).fetchone() is None:
                     raise APIError(HTTPStatus.BAD_REQUEST, "Игра не найдена в каталоге.")
             if access in {"private", "invite_only"} and not join_code:
-                join_code = secrets.token_hex(2).upper()
+                join_code = secrets.token_hex(4).upper()
             cursor = db.execute(
                 "INSERT INTO games (owner_id, name, title, room_name, description, access, join_code, catalog_game_slug) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (user["id"], name, name, name, description, access, join_code, catalog_game_slug),
@@ -2394,6 +2539,40 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 "is_owner": True,
             }, user_id=user["id"])}, HTTPStatus.CREATED, []
 
+        character_match = re.fullmatch(r"/api/games/(\d+)/characters/(\d+)", path)
+        if method == "PATCH" and character_match:
+            user = self.current_user(db, required=True)
+            game_id, target_user_id = map(int, character_match.groups())
+            game = db.execute("SELECT owner_id FROM games WHERE id = ?", (game_id,)).fetchone()
+            if game is None:
+                raise APIError(HTTPStatus.NOT_FOUND, "Комната не найдена.")
+            if game["owner_id"] != user["id"]:
+                raise APIError(HTTPStatus.FORBIDDEN, "Параметры персонажей может менять только ведущий.")
+            if target_user_id == game["owner_id"]:
+                raise APIError(HTTPStatus.FORBIDDEN, "Ведущий не управляет персонажем в своей комнате.")
+            character = db.execute(
+                "SELECT * FROM game_characters WHERE game_id = ? AND user_id = ?",
+                (game_id, target_user_id),
+            ).fetchone()
+            if character is None:
+                raise APIError(HTTPStatus.NOT_FOUND, "Герой участника не найден.")
+            stats = game_character_stats(self.read_json(), dict(character))
+            db.execute(
+                """
+                UPDATE game_characters
+                SET strength = ?, dexterity = ?, constitution = ?, intelligence = ?,
+                    wisdom = ?, charisma = ?, hp = ?, max_hp = ?, armor_class = ?,
+                    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                WHERE game_id = ? AND user_id = ?
+                """,
+                (*stats.values(), game_id, target_user_id),
+            )
+            updated_character = db.execute(
+                "SELECT * FROM game_characters WHERE game_id = ? AND user_id = ?",
+                (game_id, target_user_id),
+            ).fetchone()
+            return {"character": game_character_record(dict(updated_character))}, HTTPStatus.OK, []
+
         game_action_match = re.fullmatch(r"/api/games/(\d+)/(join|leave|characters|heroes|sessions|xp|join-code)", path)
         if method in {"POST", "DELETE"} and game_action_match:
             user = self.current_user(db, required=True)
@@ -2415,7 +2594,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
                         raise APIError(HTTPStatus.BAD_REQUEST, "Код доступа должен содержать 4–32 символа из латиницы, цифр и тире.")
                     new_code = requested
                 else:
-                    new_code = f"{secrets.token_hex(2).upper()}-{game_id}"
+                    new_code = f"{secrets.token_hex(4).upper()}-{game_id}"
                 db.execute(
                     "UPDATE games SET join_code = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?",
                     (new_code, game_id),
@@ -2448,7 +2627,18 @@ class BiblioHandler(BaseHTTPRequestHandler):
                     payload = self.read_json()
                     supplied = str(payload.get("code") or payload.get("join_code") or "").strip().upper()
                     required = str(game["join_code"] or "").strip().upper()
-                    if not required or supplied != required:
+                    owner_name = self.valid_text(payload.get("owner_name"), "Ник владельца", 1, 60)
+                    owner = db.execute(
+                        "SELECT display_name FROM users WHERE id = ?",
+                        (game["owner_id"],),
+                    ).fetchone()
+                    if (
+                        not required
+                        or supplied != required
+                        or owner is None
+                        or normalize_game_owner_name(owner["display_name"])
+                        != normalize_game_owner_name(owner_name)
+                    ):
                         raise APIError(HTTPStatus.FORBIDDEN, "Неверный код доступа к комнате.")
                 db.execute(
                     "INSERT INTO game_participants (game_id, user_id, role, status, joined_at) VALUES (?, ?, 'player', 'active', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
@@ -2465,25 +2655,36 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 db.execute("DELETE FROM game_characters WHERE game_id = ? AND user_id = ?", (game_id, user["id"]))
                 return {"ok": True}, HTTPStatus.OK, []
             if action in {"characters", "heroes"}:
+                if game["owner_id"] == user["id"]:
+                    raise APIError(HTTPStatus.FORBIDDEN, "Ведущий не создаёт персонажа в своей комнате.")
                 participant = db.execute(
                     "SELECT 1 FROM game_participants WHERE game_id = ? AND user_id = ?",
                     (game_id, user["id"]),
                 ).fetchone()
-                if participant is None and game["owner_id"] != user["id"]:
+                if participant is None:
                     raise APIError(HTTPStatus.FORBIDDEN, "Сначала вступи в комнату.")
                 payload = self.read_json()
                 name = self.valid_text(payload.get("name") or payload.get("hero_name"), "Имя героя", 1, 80)
                 class_name = self.valid_text(payload.get("class_name") or payload.get("archetype") or payload.get("hero_class") or "", "Класс героя", 0, 60)
                 archetype = self.valid_text(payload.get("archetype") or class_name or "", "Архетип", 0, 60)
                 race = self.valid_text(payload.get("race") or "", "Раса", 0, 60)
+                stats = game_character_stats(payload)
                 existing = db.execute(
                     "SELECT * FROM game_characters WHERE game_id = ? AND user_id = ?",
                     (game_id, user["id"]),
                 ).fetchone()
                 if existing is None:
                     cursor = db.execute(
-                        "INSERT INTO game_characters (game_id, user_id, name, class_name, archetype, race, level, xp, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 1, 0, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
-                        (game_id, user["id"], name, class_name, archetype, race),
+                        """
+                        INSERT INTO game_characters (
+                            game_id, user_id, name, class_name, archetype, race, level, xp,
+                            strength, dexterity, constitution, intelligence, wisdom, charisma,
+                            hp, max_hp, armor_class, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                            strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+                            strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+                        """,
+                        (game_id, user["id"], name, class_name, archetype, race, *stats.values()),
                     )
                     character = db.execute("SELECT * FROM game_characters WHERE id = ?", (cursor.lastrowid,)).fetchone()
                 else:
