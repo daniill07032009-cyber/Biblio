@@ -1453,7 +1453,7 @@ function renderCatalogGameDetail(game) {
   const profile = createElement("div", "critical-dnd__profile");
   profile.append(
     createElement("span", "critical-dnd__avatar", "✦"),
-    createElement("span", "", currentUser ? (currentUser.username || currentUser.name || "Искатель приключений") : "Гость Biblio"),
+    createElement("span", "", currentUser ? (currentUser.username || currentUser.name || "Искатель приключений") : "Гость"),
   );
   const navLabel = createElement("span", "critical-dnd__nav-label", "ИГРОВОЙ МИР");
   const nav = createElement("nav", "critical-dnd__nav");
@@ -1477,7 +1477,7 @@ function renderCatalogGameDetail(game) {
   const crumb = createElement("div", "critical-dnd__crumb");
   crumb.append(createElement("a", "", "Игры"), createElement("span", "", "／"), createElement("strong", "", title));
   crumb.querySelector("a").href = "/games";
-  const topStatus = createElement("span", "critical-dnd__status", "✦ МИР BIBLIO");
+  const topStatus = createElement("span", "critical-dnd__status", "✦ ИГРОВОЙ МИР");
   top.append(crumb, topStatus);
 
   const content = createElement("div", "critical-dnd__content");
@@ -1592,7 +1592,7 @@ function renderCatalogGameDetail(game) {
   roomsPage.append(
     createElement("span", "critical-dnd__eyebrow", "СОБЕРИ СВОЮ ПАРТИЮ"),
     createElement("h1", "critical-dnd__page-title", "Игровые комнаты"),
-    createElement("p", "critical-dnd__lead", "Создавай публичные или закрытые комнаты, приглашай друзей по коду и продолжай кампанию вместе. Все действия выполняются через Biblio, а не в локальной демо-копии."),
+    createElement("p", "critical-dnd__lead", "Создавай публичные или закрытые комнаты, приглашай друзей по коду и продолжай кампанию вместе. Твоя партия и прогресс сохраняются на сервере."),
   );
   const roomLink = createElement("a", "button button--primary critical-dnd__button", currentUser ? "Открыть комнаты и создать свою ↗" : "Войти и открыть игровые комнаты ↗");
   roomLink.href = "/games/dnd/play";
@@ -1601,6 +1601,9 @@ function renderCatalogGameDetail(game) {
   content.append(overviewPage, adventuresPage, roomsPage);
   main.append(top, content);
   shell.append(side, main);
+  const exitLink = createElement("a", "critical-dnd__exit", "← Вернуться в Biblio");
+  exitLink.href = "/games";
+  main.querySelector(".critical-dnd__top").append(exitLink);
   panel.append(shell);
   panel.hidden = false;
   panel.focus();
@@ -1655,7 +1658,9 @@ function renderGameRoomsPage(game) {
   );
   const backButton = createElement("a", "button button--secondary", "← К игре");
   backButton.href = `/games/${encodeURIComponent(game.slug)}`;
-  header.append(heading, backButton);
+  const exitLink = createElement("a", "button button--secondary", "В Biblio");
+  exitLink.href = "/games";
+  header.append(heading, backButton, exitLink);
 
   const roomsSection = createElement("section", "game-catalog-rooms");
   const roomsHeading = createElement("div", "game-catalog-rooms__heading");
@@ -2603,6 +2608,7 @@ function applyPageLayout() {
   const currentUserIsLoggedIn = Boolean(currentUser);
 
   document.body.dataset.page = page;
+  document.body.dataset.gameSite = /^\\/games\\/dnd(?:\\/play)?\\/?$/.test(path) ? "true" : "false";
   if (page !== "games" && activeCatalogGameSlug) {
     stopCatalogPresence();
     activeCatalogGameSlug = "";
