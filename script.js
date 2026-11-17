@@ -1529,6 +1529,24 @@ function renderCatalogGameDetail(game) {
     item.append(number, createElement("small", "", label));
     stats.append(item);
   });
+  const ratingPanel = createElement("div", "critical-dnd__rating");
+  ratingPanel.append(createElement("strong", "", "Оцени игровую зону"));
+  const ratingStars = createElement("div", "game-catalog-rating-stars");
+  ratingStars.setAttribute("role", "group");
+  ratingStars.setAttribute("aria-label", "Оценка игры");
+  for (let value = 1; value <= 5; value += 1) {
+    const star = createElement("button", "", "★");
+    star.type = "button";
+    star.dataset.rating = String(value);
+    star.setAttribute("aria-label", `${value} из 5`);
+    star.classList.toggle("is-selected", value <= Number(game.user_rating || 0));
+    star.addEventListener("click", () => rateCatalogGame(game.slug, value));
+    ratingStars.append(star);
+  }
+  ratingPanel.append(ratingStars);
+  const ratingMessage = createElement("small", "game-catalog-detail__rating-message",
+    currentUser ? "Оценку можно изменить в любое время." : "Войди в Biblio, чтобы оставить оценку.");
+  ratingPanel.append(ratingMessage);
   const section = createElement("section", "critical-dnd__campaign-preview");
   const sectionHead = createElement("div", "critical-dnd__section-head");
   sectionHead.append(
@@ -1549,7 +1567,7 @@ function renderCatalogGameDetail(game) {
   allStories.type = "button";
   allStories.dataset.dndTab = "adventures";
   section.append(sectionHead, storyList, allStories);
-  overviewPage.append(hero, modeHeading, modes, stats, section);
+  overviewPage.append(hero, modeHeading, modes, stats, ratingPanel, section);
 
   const adventuresPage = createElement("section", "critical-dnd__page");
   adventuresPage.dataset.dndPage = "adventures";
