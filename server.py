@@ -611,12 +611,13 @@ def game_combat_transition(action, payload, heroes, existing=None):
                 "kind": "hero", "user_id": hero["user_id"],
                 "initiative": secrets.randbelow(20) + 1 + (dexterity - 10) // 2,
                 "hp": int(hero.get("hp", 10) or 0), "max_hp": int(hero.get("max_hp", 10) or 10),
+                "armor_class": int(hero.get("armor_class", 10) or 10),
             })
         for index, raw in enumerate(monsters):
             if not isinstance(raw, str) or not raw.strip() or len(raw.strip()) > 100:
                 raise APIError(HTTPStatus.BAD_REQUEST, "Строка противника должна содержать от 1 до 100 символов.")
             parts = [part.strip() for part in raw.split("|")]
-            if len(parts) > 3 or not parts[0]:
+            if len(parts) > 4 or not parts[0]:
                 raise APIError(HTTPStatus.BAD_REQUEST, "Формат противника: Имя | инициатива | HP.")
             name = parts[0]
             initiative = None
@@ -636,10 +637,18 @@ def game_combat_transition(action, payload, heroes, existing=None):
                 max_hp = int(hp_match.group(2) or hp)
                 if not 1 <= hp <= max_hp <= 10000:
                     raise APIError(HTTPStatus.BAD_REQUEST, "Здоровье должно быть от 1 до 10000, текущее HP не выше максимального.")
+            armor_class = 10
+            if len(parts) > 3 and parts[3]:
+                try:
+                    armor_class = int(parts[3])
+                except ValueError:
+                    raise APIError(HTTPStatus.BAD_REQUEST, "Класс брони противника должен быть целым числом.")
+                if not 1 <= armor_class <= 30:
+                    raise APIError(HTTPStatus.BAD_REQUEST, "Класс брони должен быть от 1 до 30.")
             combatants.append({
                 "id": f"monster-{index}-{secrets.token_hex(3)}", "name": name,
                 "kind": "monster", "initiative": initiative if initiative is not None else secrets.randbelow(20) + 1,
-                "hp": hp, "max_hp": max_hp,
+                "hp": hp, "max_hp": max_hp, "armor_class": armor_class,
             })
         if not combatants:
             raise APIError(HTTPStatus.BAD_REQUEST, "Нужен хотя бы один герой или противник для начала боя.")
@@ -681,6 +690,38 @@ def game_combat_transition(action, payload, heroes, existing=None):
         verb = "получил урон" if action == "damage" else "восстановил здоровье"
         suffix = " · без сознания" if target["kind"] == "hero" and after == 0 else ""
         return record_event(state, f"{target['name']} {verb}: {delta} HP ({after}/{target['max_hp']}){suffix}.")
+    if action == "attack":
+        if not existing.get("active"):
+            raise APIError(HTTPStatus.CONFLICT, "Сейчас нет активного боя.")
+        fighters = [dict(item) for item in existing.get("combatants", [])]
+        attacker_id = str(payload.get("attacker_id") or "")
+        target_id = str(payload.get("target_id") or "")
+        attacker = next((item for item in fighters if item.get("id") == attacker_id), None)
+        target = next((item for item in fighters if item.get("id") == target_id), None)
+        if attacker is None or target is None or attacker_id == target_id:
+            raise APIError(HTTPStatus.BAD_REQUEST, "Выбери разных участников для атаки.")
+        try:
+            bonus = int(payload.get("attack_bonus", 0))
+            damage = int(payload.get("damage", 0))
+        except (TypeError, ValueError):
+            raise APIError(HTTPStatus.BAD_REQUEST, "Бонус атаки и урон должны быть целыми числами.")
+        if not -20 <= bonus <= 30 or not 1 <= damage <= 1000:
+            raise APIError(HTTPStatus.BAD_REQUEST, "Бонус атаки должен быть от -20 до 30, урон — от 1 до 1000.")
+        roll = secrets.randbelow(20) + 1
+        total = roll + bonus
+        armor_class = int(target.get("armor_class", 10) or 10)
+        hit = roll == 20 or (roll != 1 and total >= armor_class)
+        if hit and target.get("hp") is not None:
+            applied_damage = damage * (2 if roll == 20 else 1)
+            before = int(target["hp"])
+            target["hp"] = max(0, before - applied_damage)
+            actual_damage = before - target["hp"]
+        else:
+            actual_damage = 0
+        state = {**existing, "combatants": fighters}
+        result = "критическое попадание" if roll == 20 else ("попадание" if hit else "промах")
+        suffix = f", урон {actual_damage} HP ({target['hp']}/{target['max_hp']})" if hit and target.get("hp") is not None else ""
+        return record_event(state, f"{attacker['name']} атакует {target['name']}: d20={roll} + {bonus} = {total} против КБ {armor_class} — {result}{suffix}.")
     if action == "end":
         return None
     raise APIError(HTTPStatus.BAD_REQUEST, "Неизвестное действие боя.")
