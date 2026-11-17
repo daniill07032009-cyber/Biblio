@@ -2579,3 +2579,26 @@ body[data-game-site="true"] .game-room-create__field textarea {border-color:#4b5
     scroll-margin-top: 86px;
   }
 }
+
+
+/* D&D: keep only the primary room actions in one compact header group. */
+.dnd-workspace-panel .game-detail__header-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.dnd-workspace-panel .game-detail__header-actions .button {
+  white-space: nowrap;
+}
+@media (max-width: 620px) {
+  .dnd-workspace-panel .game-detail__header-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .dnd-workspace-panel .game-detail__header-actions .button {
+    flex: 0 1 auto;
+  }
+}
