@@ -1889,12 +1889,62 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 raise APIError(HTTPStatus.FORBIDDEN, "Игрок может менять только свой инвентарь и список заклинаний.")
             stats = game_character_stats(payload, character)
             loadout = game_character_loadout(payload, character)
+            spell_slots = game_character_spell_slots(payload, character)
             db.game_characters.update_one(
                 {"game_id": game_id, "user_id": target_user_id},
-                {"$set": {**stats, **loadout, "updated_at": utc_timestamp()}},
+                {"$set": {**stats, **loadout, **spell_slots, "updated_at": utc_timestamp()}},
             )
             updated_character = db.game_characters.find_one({"game_id": game_id, "user_id": target_user_id})
             return {"character": game_character_record(updated_character)}, HTTPStatus.OK, []
+
+        spell_action_match = re.fullmatch(r"/api/games/(\\d+)/characters/(\\d+)/(cast|rest)", path)
+        if method == "POST" and spell_action_match:
+            user = self.current_user_mongo(db, required=True)
+            game_id, target_user_id = map(int, spell_action_match.groups()[:2])
+            action = spell_action_match.group(3)
+            game = db.games.find_one({"id": game_id})
+            character = db.game_characters.find_one({"game_id": game_id, "user_id": target_user_id})
+            if game is None or character is None:
+                raise APIError(HTTPStatus.NOT_FOUND, "Комната или персонаж не найдены.")
+            if action == "cast":
+                if game["owner_id"] != user["id"] and target_user_id != user["id"]:
+                    raise APIError(HTTPStatus.FORBIDDEN, "Использовать заклинания может сам игрок или ведущий.")
+                result = game_character_cast(self.read_json(), character)
+                db.game_characters.update_one({"game_id": game_id, "user_id": target_user_id}, {"$set": {"spell_slots": result["spell_slots"], "updated_at": utc_timestamp()}})
+                updated = db.game_characters.find_one({"game_id": game_id, "user_id": target_user_id})
+                return {"character": game_character_record(updated), "cast": {"spell": result["spell"], "level": result["level"]}}, HTTPStatus.OK, []
+            if game["owner_id"] != user["id"]:
+                raise APIError(HTTPStatus.FORBIDDEN, "Восстановить ячейки после продолжительного отдыха может только ведущий.")
+            slots = game_character_spell_slots({}, character)
+            slots["spell_slots"] = list(slots["spell_slots_max"])
+            db.game_characters.update_one({"game_id": game_id, "user_id": target_user_id}, {"$set": {**slots, "updated_at": utc_timestamp()}})
+            updated = db.game_characters.find_one({"game_id": game_id, "user_id": target_user_id})
+            return {"character": game_character_record(updated), "restored": True}, HTTPStatus.OK, []
+
+        spell_action_match = re.fullmatch(r"/api/games/(\\d+)/characters/(\\d+)/(cast|rest)", path)
+        if method == "POST" and spell_action_match:
+            user = self.current_user(db, required=True)
+            game_id, target_user_id = map(int, spell_action_match.groups()[:2])
+            action = spell_action_match.group(3)
+            game = db.execute("SELECT owner_id FROM games WHERE id = ?", (game_id,)).fetchone()
+            character = db.execute("SELECT * FROM game_characters WHERE game_id = ? AND user_id = ?", (game_id, target_user_id)).fetchone()
+            if game is None or character is None:
+                raise APIError(HTTPStatus.NOT_FOUND, "Комната или персонаж не найдены.")
+            character = dict(character)
+            if action == "cast":
+                if game["owner_id"] != user["id"] and target_user_id != user["id"]:
+                    raise APIError(HTTPStatus.FORBIDDEN, "Использовать заклинания может сам игрок или ведущий.")
+                result = game_character_cast(self.read_json(), character)
+                db.execute("UPDATE game_characters SET spell_slots = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE game_id = ? AND user_id = ?", (json.dumps(result["spell_slots"]), game_id, target_user_id))
+                updated = db.execute("SELECT * FROM game_characters WHERE game_id = ? AND user_id = ?", (game_id, target_user_id)).fetchone()
+                return {"character": game_character_record(dict(updated)), "cast": {"spell": result["spell"], "level": result["level"]}}, HTTPStatus.OK, []
+            if game["owner_id"] != user["id"]:
+                raise APIError(HTTPStatus.FORBIDDEN, "Восстановить ячейки после продолжительного отдыха может только ведущий.")
+            slots = game_character_spell_slots({}, character)
+            slots["spell_slots"] = list(slots["spell_slots_max"])
+            db.execute("UPDATE game_characters SET spell_slots_max = ?, spell_slots = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE game_id = ? AND user_id = ?", (json.dumps(slots["spell_slots_max"]), json.dumps(slots["spell_slots"]), game_id, target_user_id))
+            updated = db.execute("SELECT * FROM game_characters WHERE game_id = ? AND user_id = ?", (game_id, target_user_id)).fetchone()
+            return {"character": game_character_record(dict(updated)), "restored": True}, HTTPStatus.OK, []
 
         game_action_match = re.fullmatch(r"/api/games/(\d+)/(join|leave|characters|heroes|sessions|xp|join-code|combat)", path)
         if method in {"POST", "DELETE"} and game_action_match:
@@ -2826,17 +2876,19 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 raise APIError(HTTPStatus.FORBIDDEN, "Игрок может менять только свой инвентарь и список заклинаний.")
             stats = game_character_stats(payload, dict(character))
             loadout = game_character_loadout(payload, dict(character))
+            spell_slots = game_character_spell_slots(payload, dict(character))
             db.execute(
                 """
                 UPDATE game_characters
                 SET strength = ?, dexterity = ?, constitution = ?, intelligence = ?,
                     wisdom = ?, charisma = ?, hp = ?, max_hp = ?, armor_class = ?,
-                    inventory = ?, spells = ?,
+                    inventory = ?, spells = ?, spell_slots_max = ?, spell_slots = ?,
                     updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
                 WHERE game_id = ? AND user_id = ?
                 """,
                 (*stats.values(), json.dumps(loadout["inventory"], ensure_ascii=False),
-                 json.dumps(loadout["spells"], ensure_ascii=False), game_id, target_user_id),
+                 json.dumps(loadout["spells"], ensure_ascii=False),
+                 json.dumps(spell_slots["spell_slots_max"]), json.dumps(spell_slots["spell_slots"]), game_id, target_user_id),
             )
             updated_character = db.execute(
                 "SELECT * FROM game_characters WHERE game_id = ? AND user_id = ?",
