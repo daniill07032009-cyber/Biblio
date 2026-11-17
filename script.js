@@ -2004,7 +2004,7 @@ window.setInterval(async () => {
       const activeHash = panel.querySelector(".dnd-play-nav a.is-active")?.getAttribute("href");
       renderGameDetail(result.game);
       if (activeHash) panel.querySelector('.dnd-play-nav a[href="' + activeHash + '"]')?.click();
-      window.scrollTo({ top: scrollPosition, behavior: "instant" });
+      window.scrollTo(0, scrollPosition);
     }
   } catch {
     // A temporary network interruption must not interrupt the game.
