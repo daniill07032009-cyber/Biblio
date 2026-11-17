@@ -368,6 +368,9 @@ def initialize_db():
         for name in ("inventory", "spells"):
             if name not in character_columns:
                 db.execute(f"ALTER TABLE game_characters ADD COLUMN {name} TEXT NOT NULL DEFAULT '[]'")
+        for name in ("spell_slots_max", "spell_slots"):
+            if name not in character_columns:
+                db.execute(f"ALTER TABLE game_characters ADD COLUMN {name} TEXT NOT NULL DEFAULT '[0,0,0,0,0,0,0,0,0]'")
         game_columns = {row["name"] for row in db.execute("PRAGMA table_info(games)").fetchall()}
         if "combat_state" not in game_columns:
             db.execute("ALTER TABLE games ADD COLUMN combat_state TEXT NOT NULL DEFAULT '{}'")
@@ -751,9 +754,58 @@ def game_character_loadout(payload, existing=None):
     return result
 
 
+
+def game_character_spell_slots(payload, existing=None):
+    existing = existing or {}
+    result = {}
+    for field in ("spell_slots_max", "spell_slots"):
+        value = payload.get(field, existing.get(field, [0] * 9))
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except (TypeError, ValueError):
+                value = [part.strip() for part in value.split(",")]
+        if not isinstance(value, list) or len(value) != 9:
+            raise APIError(HTTPStatus.BAD_REQUEST, "Для ячеек заклинаний нужны 9 значений — уровни с 1-го по 9-й.")
+        cleaned = []
+        for item in value:
+            try:
+                number = int(item)
+            except (TypeError, ValueError):
+                raise APIError(HTTPStatus.BAD_REQUEST, "Количество ячеек должно быть целым числом.")
+            if not 0 <= number <= 20:
+                raise APIError(HTTPStatus.BAD_REQUEST, "Количество ячеек каждого уровня должно быть от 0 до 20.")
+            cleaned.append(number)
+        result[field] = cleaned
+    if any(result["spell_slots"][i] > result["spell_slots_max"][i] for i in range(9)):
+        raise APIError(HTTPStatus.BAD_REQUEST, "Оставшихся ячеек не может быть больше максимума.")
+    return result
+
+
+def game_character_cast(payload, character):
+    spell_name = " ".join(str(payload.get("spell") or "").split())
+    try:
+        level = int(payload.get("level", 0))
+    except (TypeError, ValueError):
+        level = -1
+    if not spell_name or len(spell_name) > 100 or not 0 <= level <= 9:
+        raise APIError(HTTPStatus.BAD_REQUEST, "Укажи заклинание и его уровень от 0 до 9.")
+    known_spells = game_character_loadout({}, character)["spells"]
+    if spell_name.casefold() not in {spell.casefold() for spell in known_spells}:
+        raise APIError(HTTPStatus.FORBIDDEN, "Это заклинание не записано в листе персонажа.")
+    slots = game_character_spell_slots({}, character)
+    if level > 0:
+        index = level - 1
+        if slots["spell_slots"][index] < 1:
+            raise APIError(HTTPStatus.CONFLICT, f"Нет свободных ячеек {level}-го уровня.")
+        slots["spell_slots"][index] -= 1
+    return {"spell": spell_name, "level": level, **slots}
+
+
 def game_character_record(row):
     xp = int(row.get("xp", 0) or 0)
     loadout = game_character_loadout({}, row)
+    spell_slots = game_character_spell_slots({}, row)
     return {
         "id": row["id"],
         "game_id": row["game_id"],
@@ -766,6 +818,7 @@ def game_character_record(row):
         "xp": xp,
         **game_character_stats({}, row),
         **loadout,
+        **spell_slots,
         "created_at": row.get("created_at", utc_timestamp()),
         "updated_at": row.get("updated_at", utc_timestamp()),
     }
