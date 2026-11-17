@@ -1585,3 +1585,13 @@ html[data-reader-theme="dark"] .reader-dialog { --surface: #20231f; }
 .game-leaderboard li em { margin-left:auto; color:var(--muted); font-size:11px; font-style:normal; }
 .game-dice__result { min-height:22px; font-variant-numeric:tabular-nums; }
 .game-hero-card__hp-form button:focus-visible { outline:3px solid rgba(94,126,91,.25); outline-offset:2px; }
+
+
+.game-hero-card__loadout { display:grid; gap:12px; margin-top:14px; padding:14px; border:1px solid var(--line); border-radius:13px; background:var(--surface); }
+.game-hero-card__loadout label { display:grid; gap:6px; color:var(--ink); font-size:11px; font-weight:700; }
+.game-hero-card__loadout label small { color:var(--muted); font-size:10px; font-weight:400; }
+.game-hero-card__loadout textarea { width:100%; min-height:74px; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:var(--surface-raised,var(--surface)); color:var(--ink); font:inherit; font-size:12px; line-height:1.6; resize:vertical; }
+.game-hero-card__loadout textarea:focus-visible { outline:3px solid rgba(94,126,91,.2); border-color:var(--green); }
+.game-hero-card__loadout-preview { display:grid; gap:5px; margin-top:12px; padding:12px; border-radius:11px; background:var(--surface); }
+.game-hero-card__loadout-preview strong { margin-top:5px; color:var(--ink); font-size:11px; }
+.game-hero-card__loadout-preview p { margin:0; color:var(--muted); font-size:11px; line-height:1.65; }
