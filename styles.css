@@ -2523,3 +2523,59 @@ body[data-game-site="true"] .game-room-create__field textarea {border-color:#4b5
     grid-row: auto;
   }
 }
+
+
+/* D&D table polish: summary card, compact section index and reliable mobile scrolling. */
+.dnd-workspace-panel .dnd-play-summary {
+  display: grid;
+  gap: 14px;
+  margin: 0 0 18px;
+  padding: clamp(17px, 2vw, 24px);
+  border: 1px solid rgba(202, 169, 105, .2);
+  border-radius: 18px;
+  background: radial-gradient(ellipse at 100% 0, rgba(190, 145, 72, .12), transparent 42%), linear-gradient(145deg, rgba(25, 36, 49, .96), rgba(16, 25, 36, .98));
+}
+.dnd-workspace-panel .dnd-play-summary > p {
+  max-width: 78ch;
+  margin: 0;
+  color: #c0c7d0;
+  line-height: 1.7;
+}
+.dnd-workspace-panel .dnd-play-summary .game-detail-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dnd-workspace-panel .dnd-play-summary .game-detail-list li {
+  padding: 8px 11px;
+  border: 1px solid rgba(202, 169, 105, .18);
+  border-radius: 999px;
+  background: rgba(7, 13, 21, .38);
+  color: #e1d2b7;
+  font-size: .82rem;
+}
+.dnd-workspace-panel .dnd-play-nav a:focus-visible {
+  outline: 2px solid #e5c17e;
+  outline-offset: 2px;
+}
+.dnd-workspace-panel .dnd-play-card[id] {
+  scroll-margin-top: 112px;
+}
+@media (max-width: 560px) {
+  .dnd-workspace-panel .dnd-play-summary {
+    gap: 11px;
+    margin-bottom: 12px;
+    padding: 15px;
+    border-radius: 15px;
+  }
+  .dnd-workspace-panel .dnd-play-summary .game-detail-list li {
+    padding: 7px 9px;
+    font-size: .74rem;
+  }
+  .dnd-workspace-panel .dnd-play-card[id] {
+    scroll-margin-top: 86px;
+  }
+}
