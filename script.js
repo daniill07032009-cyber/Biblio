@@ -1902,14 +1902,21 @@ function renderGameDetail(game) {
               <span class="game-combat__initiative">${Number(fighter.initiative)}</span>
               <span class="game-combat__fighter"><strong>${escapeHtml(fighter.name)}</strong><small>${fighter.kind === "hero" ? "Герой" : "Противник"}${fighter.hp !== null && fighter.hp !== undefined ? ` · ${Number(fighter.hp)}/${Number(fighter.max_hp)} HP` : ""}</small></span>
               ${index === Number(game.combat.current_index || 0) ? "<em>Ход сейчас</em>" : ""}
+              ${isGameMaster && fighter.hp !== null && fighter.hp !== undefined ? '
+                <span class="game-combat__hp-controls">
+                  <input type="number" min="1" max="1000" value="1" aria-label="Количество HP" data-combat-amount="${escapeHtml(fighter.id)}">
+                  <button type="button" class="button button--secondary" data-combat-adjust="damage" data-combat-target="${escapeHtml(fighter.id)}">− Урон</button>
+                  <button type="button" class="button button--secondary" data-combat-adjust="heal" data-combat-target="${escapeHtml(fighter.id)}">+ Лечение</button>
+                </span>' : ""}
             </li>
           `).join("")}
         </ol>
+        ${(game.combat.events || []).length ? `<div class="game-combat__log"><strong>Журнал боя</strong><ol>${game.combat.events.slice().reverse().map((entry) => `<li><span>${escapeHtml(entry.message)}</span><time>${new Date(entry.created_at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</time></li>`).join("")}</ol></div>` : ""}
         ${isGameMaster ? `<div class="game-combat__actions"><button class="button button--primary" type="button" data-combat-action="next">Следующий ход →</button><button class="button button--secondary" type="button" data-combat-action="end">Завершить бой</button></div>` : ""}
       ` : isGameMaster ? `
         <form class="games-form game-combat__start" id="game-combat-form">
-          <label>Противники <small>Каждый с новой строки. Можно указать инициативу: «Гоблин: 14»; без числа бросок будет автоматическим.</small>
-            <textarea name="monsters" rows="3" maxlength="1400" placeholder="Гоблин&#10;Орк: 13&#10;Скелет"></textarea>
+          <label>Противники <small>Каждый с новой строки: «Гоблин | 14 | 7» (имя | инициатива | HP). Инициативу можно пропустить; HP необязательно.</small>
+            <textarea name="monsters" rows="3" maxlength="1400" placeholder="Гоблин | 14 | 7&#10;Орк | | 15/18&#10;Скелет"></textarea>
           </label>
           <button class="button button--primary" type="submit">Начать бой и бросить инициативу</button>
         </form>
@@ -2006,6 +2013,27 @@ function renderGameDetail(game) {
         const refreshedGame = await api(`/api/games/${game.id}`);
         renderGameDetail(refreshedGame.game);
         showToast(button.dataset.combatAction === "next" ? "Ход передан следующему участнику" : "Бой завершён");
+      } catch (error) {
+        showToast(error.message);
+      }
+    });
+  });
+  panel.querySelectorAll("[data-combat-adjust]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const amountInput = panel.querySelector('[data-combat-amount="' + button.dataset.combatTarget + '"]');
+      const amount = Number(amountInput?.value || 0);
+      if (!Number.isInteger(amount) || amount < 1 || amount > 1000) {
+        showToast("Укажи значение от 1 до 1000");
+        return;
+      }
+      try {
+        await api("/api/games/" + game.id + "/combat", {
+          method: "POST",
+          body: JSON.stringify({ action: button.dataset.combatAdjust, target_id: button.dataset.combatTarget, amount }),
+        });
+        const refreshedGame = await api("/api/games/" + game.id);
+        renderGameDetail(refreshedGame.game);
+        showToast(button.dataset.combatAdjust === "damage" ? "Урон применён" : "Здоровье восстановлено");
       } catch (error) {
         showToast(error.message);
       }
