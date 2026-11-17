@@ -1670,7 +1670,7 @@ function wrapDndWorkspace(panel, title, active = "rooms") {
   back.href = "/games";
   rail.append(brand, railLabel, nav, railBottom, back);
 
-  const main = createElement("main", "dnd-workspace__main");
+  const main = createElement("div", "dnd-workspace__main");
   const topbar = createElement("header", "dnd-workspace__topbar");
   const crumbs = createElement("div", "dnd-workspace__crumbs");
   const home = createElement("a", "", "D&D");
