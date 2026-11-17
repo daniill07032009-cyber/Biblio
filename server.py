@@ -1814,6 +1814,13 @@ class BiblioHandler(BaseHTTPRequestHandler):
                     raise APIError(HTTPStatus.FORBIDDEN, "Управлять боем может только ведущий.")
                 payload = self.read_json()
                 combat = game_combat_transition(str(payload.get("action") or ""), payload, list(db.game_characters.find({"game_id": game_id})), game.get("combat_state"))
+                if combat and payload.get("action") in ("damage", "heal"):
+                    for fighter in combat.get("combatants", []):
+                        if fighter.get("kind") == "hero" and fighter.get("hp") is not None:
+                            db.game_characters.update_one(
+                                {"game_id": game_id, "user_id": fighter["user_id"]},
+                                {"$set": {"hp": fighter["hp"], "updated_at": utc_timestamp()}},
+                            )
                 db.games.update_one({"id": game_id}, {"$set": {"combat_state": combat or {}, "updated_at": utc_timestamp()}})
                 return {"combat": combat}, HTTPStatus.OK, []
             if game_action_match.group(2) == "join-code":
@@ -2758,6 +2765,13 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 heroes = [dict(row) for row in db.execute("SELECT * FROM game_characters WHERE game_id = ?", (game_id,)).fetchall()]
                 existing_combat = json.loads(game["combat_state"] or "{}")
                 combat = game_combat_transition(str(payload.get("action") or ""), payload, heroes, existing_combat)
+                if combat and payload.get("action") in ("damage", "heal"):
+                    for fighter in combat.get("combatants", []):
+                        if fighter.get("kind") == "hero" and fighter.get("hp") is not None:
+                            db.execute(
+                                "UPDATE game_characters SET hp = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE game_id = ? AND user_id = ?",
+                                (fighter["hp"], game_id, fighter["user_id"]),
+                            )
                 db.execute(
                     "UPDATE games SET combat_state = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?",
                     (json.dumps(combat or {}, ensure_ascii=False), game_id),
