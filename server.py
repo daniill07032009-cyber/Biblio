@@ -817,9 +817,8 @@ def game_character_cast(payload, character):
             current_hp, max_hp = 0, 0
         if max_hp < 1 or current_hp < 0 or current_hp > max_hp:
             raise APIError(HTTPStatus.CONFLICT, "У персонажа некорректно настроено здоровье.")
-        dice_count = 2 if level > 1 else 1
+        dice_count = level
         healing = sum(secrets.randbelow(die) + 1 for _ in range(dice_count))
-        healing += max(0, level - 1)
         actual = min(max_hp, current_hp + healing) - current_hp
         result.update({"effect": "healing", "healing": actual, "hp": current_hp + actual, "max_hp": max_hp})
     return result
