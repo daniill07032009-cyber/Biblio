@@ -591,6 +591,14 @@ def game_catalog_record(game, rating=0, rating_count=0, active_viewers=0, user_r
 
 def game_combat_transition(action, payload, heroes, existing=None):
     existing = existing or {}
+
+    def record_event(state, message):
+        events = list(state.get("events") or [])
+        events.append({"message": message, "created_at": utc_timestamp()})
+        state["events"] = events[-50:]
+        state["updated_at"] = utc_timestamp()
+        return state
+
     if action == "start":
         monsters = payload.get("monsters", [])
         if not isinstance(monsters, list) or len(monsters) > 12:
@@ -606,17 +614,38 @@ def game_combat_transition(action, payload, heroes, existing=None):
             })
         for index, raw in enumerate(monsters):
             if not isinstance(raw, str) or not raw.strip() or len(raw.strip()) > 100:
-                raise APIError(HTTPStatus.BAD_REQUEST, "Название противника должно содержать от 1 до 100 символов.")
-            match = re.fullmatch(r"(.+?)(?::\s*(-?\d+))?", raw.strip())
+                raise APIError(HTTPStatus.BAD_REQUEST, "Строка противника должна содержать от 1 до 100 символов.")
+            parts = [part.strip() for part in raw.split("|")]
+            if len(parts) > 3 or not parts[0]:
+                raise APIError(HTTPStatus.BAD_REQUEST, "Формат противника: Имя | инициатива | HP.")
+            name = parts[0]
+            initiative = None
+            if len(parts) > 1 and parts[1]:
+                try:
+                    initiative = int(parts[1])
+                except ValueError:
+                    raise APIError(HTTPStatus.BAD_REQUEST, "Инициатива противника должна быть целым числом.")
+                if not -20 <= initiative <= 40:
+                    raise APIError(HTTPStatus.BAD_REQUEST, "Инициатива должна быть от -20 до 40.")
+            hp = max_hp = None
+            if len(parts) > 2 and parts[2]:
+                hp_match = re.fullmatch(r"(\d{1,5})(?:\s*/\s*(\d{1,5}))?", parts[2])
+                if not hp_match:
+                    raise APIError(HTTPStatus.BAD_REQUEST, "Здоровье укажи числом или в формате 7/10.")
+                hp = int(hp_match.group(1))
+                max_hp = int(hp_match.group(2) or hp)
+                if not 1 <= hp <= max_hp <= 10000:
+                    raise APIError(HTTPStatus.BAD_REQUEST, "Здоровье должно быть от 1 до 10000, текущее HP не выше максимального.")
             combatants.append({
-                "id": f"monster-{index}-{secrets.token_hex(3)}", "name": match.group(1).strip(),
-                "kind": "monster", "initiative": int(match.group(2)) if match.group(2) is not None else secrets.randbelow(20) + 1,
-                "hp": None, "max_hp": None,
+                "id": f"monster-{index}-{secrets.token_hex(3)}", "name": name,
+                "kind": "monster", "initiative": initiative if initiative is not None else secrets.randbelow(20) + 1,
+                "hp": hp, "max_hp": max_hp,
             })
         if not combatants:
             raise APIError(HTTPStatus.BAD_REQUEST, "Нужен хотя бы один герой или противник для начала боя.")
         combatants.sort(key=lambda item: (-item["initiative"], item["name"].casefold()))
-        return {"active": True, "round": 1, "current_index": 0, "combatants": combatants, "updated_at": utc_timestamp()}
+        state = {"active": True, "round": 1, "current_index": 0, "combatants": combatants, "events": []}
+        return record_event(state, "Бой начался. Инициатива определена.")
     if action == "next":
         if not existing.get("active") or not existing.get("combatants"):
             raise APIError(HTTPStatus.CONFLICT, "Сейчас нет активного боя.")
@@ -626,11 +655,35 @@ def game_combat_transition(action, payload, heroes, existing=None):
         if index >= len(combatants):
             index = 0
             round_number += 1
-        return {**existing, "round": round_number, "current_index": index, "updated_at": utc_timestamp()}
+        state = {**existing, "round": round_number, "current_index": index}
+        return record_event(state, f"Раунд {round_number}: ходит {combatants[index]['name']}.")
+    if action in ("damage", "heal"):
+        if not existing.get("active"):
+            raise APIError(HTTPStatus.CONFLICT, "Сейчас нет активного боя.")
+        target_id = str(payload.get("target_id") or "")
+        try:
+            amount = int(payload.get("amount", 0))
+        except (TypeError, ValueError):
+            amount = 0
+        if not 1 <= amount <= 1000:
+            raise APIError(HTTPStatus.BAD_REQUEST, "Значение должно быть от 1 до 1000.")
+        combatants = [dict(item) for item in existing.get("combatants", [])]
+        target = next((item for item in combatants if item.get("id") == target_id), None)
+        if target is None:
+            raise APIError(HTTPStatus.NOT_FOUND, "Участник боя не найден.")
+        if target.get("hp") is None or target.get("max_hp") is None:
+            raise APIError(HTTPStatus.CONFLICT, "Для этого участника не задано здоровье.")
+        before = int(target["hp"])
+        after = max(0, before - amount) if action == "damage" else min(int(target["max_hp"]), before + amount)
+        target["hp"] = after
+        state = {**existing, "combatants": combatants}
+        delta = abs(after - before)
+        verb = "получил урон" if action == "damage" else "восстановил здоровье"
+        suffix = " · без сознания" if target["kind"] == "hero" and after == 0 else ""
+        return record_event(state, f"{target['name']} {verb}: {delta} HP ({after}/{target['max_hp']}){suffix}.")
     if action == "end":
         return None
     raise APIError(HTTPStatus.BAD_REQUEST, "Неизвестное действие боя.")
-
 
 def game_character_loadout(payload, existing=None):
     existing = existing or {}
