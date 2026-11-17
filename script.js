@@ -1982,6 +1982,7 @@ function renderGameDetail(game) {
     <div class="game-detail__header">
       <div><span class="eyebrow">${isGameMaster ? "Ведущий" : "Игрок"} · Игровая комната</span><h3>${escapeHtml(title)}</h3></div>
       <button class="button button--secondary" type="button" data-game-action="back">${/\/play\/?$/.test(location.pathname) ? "← К комнатам" : "← К игре"}</button>
+      <a class="button button--secondary" href="/games">Вернуться в Biblio</a>
     </div>
     <p>${escapeHtml(game.description || "Без описания.")}</p>
     <ul class="game-detail-list">
