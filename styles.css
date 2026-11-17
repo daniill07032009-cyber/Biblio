@@ -1926,3 +1926,57 @@ body[data-game-site="true"] .game-detail__header > a {
     font-size: 10px;
   }
 }
+
+
+/* Keep the actual room, character and campaign screens inside the D&D visual world. */
+body[data-game-site="true"] .game-detail-panel {
+  color: #f4ecdf;
+}
+body[data-game-site="true"] .game-detail__header {
+  padding: 22px clamp(18px, 4vw, 42px);
+  border-bottom: 1px solid #3a2e40;
+  background: #19141e;
+}
+body[data-game-site="true"] .game-detail__header h3 {
+  margin: 7px 0 0;
+  color: #f4ecdf;
+  font: 600 clamp(22px, 3vw, 32px)/1.2 Georgia, serif;
+}
+body[data-game-site="true"] .game-detail-panel > p,
+body[data-game-site="true"] .game-detail-list,
+body[data-game-site="true"] .game-detail__section,
+body[data-game-site="true"] .game-catalog-rooms {
+  margin-right: clamp(18px, 4vw, 42px);
+  margin-left: clamp(18px, 4vw, 42px);
+}
+body[data-game-site="true"] .game-detail-panel > p,
+body[data-game-site="true"] .game-detail-list,
+body[data-game-site="true"] .game-detail__section,
+body[data-game-site="true"] .game-catalog-rooms__heading span {
+  color: #c0b5c4;
+}
+body[data-game-site="true"] .game-detail__section,
+body[data-game-site="true"] .game-catalog-rooms__list > *,
+body[data-game-site="true"] .game-hero-card {
+  border-color: #3a2e40;
+  border-radius: 12px;
+  background: #19141e;
+  color: #f4ecdf;
+}
+body[data-game-site="true"] .game-detail__section > strong,
+body[data-game-site="true"] .game-catalog-rooms__heading h4 {
+  color: #d7ad69;
+}
+body[data-game-site="true"] .game-detail-panel input,
+body[data-game-site="true"] .game-detail-panel select,
+body[data-game-site="true"] .game-detail-panel textarea {
+  border-color: #514258;
+  background: #100d14;
+  color: #f4ecdf;
+}
+body[data-game-site="true"] .game-detail-panel label {
+  color: #d0c5d0;
+}
+body[data-game-site="true"] .game-detail-panel .empty-state {
+  color: #b0a4b4;
+}
