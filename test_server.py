@@ -1046,9 +1046,11 @@ class BiblioServerTests(unittest.TestCase):
         self.assertIsNone(skeleton["hp"])
 
         state = server.game_combat_transition("damage", {"target_id": goblin["id"], "amount": 9}, [], state)
+        goblin = next(item for item in state["combatants"] if item["id"] == goblin["id"])
         self.assertEqual(goblin["hp"], 0)
         self.assertIn("без сознания", state["events"][-1]["message"])
         state = server.game_combat_transition("heal", {"target_id": goblin["id"], "amount": 3}, [], state)
+        goblin = next(item for item in state["combatants"] if item["id"] == goblin["id"])
         self.assertEqual(goblin["hp"], 3)
         self.assertIn("восстановил здоровье", state["events"][-1]["message"])
         with self.assertRaises(server.APIError):
