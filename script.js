@@ -1891,6 +1891,30 @@ function renderGameDetail(game) {
         </div>
       </div>
     </div>
+    <div class="game-detail__section game-combat">
+      <div class="game-combat__heading"><div><strong>Боевая сцена</strong><p>Инициатива и очерёдность ходов в текущем бою</p></div>
+        ${game.combat?.active ? `<span class="game-combat__round">Раунд ${Number(game.combat.round || 1)}</span>` : ""}
+      </div>
+      ${game.combat?.active ? `
+        <ol class="game-combat__order">
+          ${(game.combat.combatants || []).map((fighter, index) => `
+            <li class="${index === Number(game.combat.current_index || 0) ? "is-current" : ""}">
+              <span class="game-combat__initiative">${Number(fighter.initiative)}</span>
+              <span class="game-combat__fighter"><strong>${escapeHtml(fighter.name)}</strong><small>${fighter.kind === "hero" ? "Герой" : "Противник"}${fighter.hp !== null && fighter.hp !== undefined ? ` · ${Number(fighter.hp)}/${Number(fighter.max_hp)} HP` : ""}</small></span>
+              ${index === Number(game.combat.current_index || 0) ? "<em>Ход сейчас</em>" : ""}
+            </li>
+          `).join("")}
+        </ol>
+        ${isGameMaster ? `<div class="game-combat__actions"><button class="button button--primary" type="button" data-combat-action="next">Следующий ход →</button><button class="button button--secondary" type="button" data-combat-action="end">Завершить бой</button></div>` : ""}
+      ` : isGameMaster ? `
+        <form class="games-form game-combat__start" id="game-combat-form">
+          <label>Противники <small>Каждый с новой строки. Можно указать инициативу: «Гоблин: 14»; без числа бросок будет автоматическим.</small>
+            <textarea name="monsters" rows="3" maxlength="1400" placeholder="Гоблин&#10;Орк: 13&#10;Скелет"></textarea>
+          </label>
+          <button class="button button--primary" type="submit">Начать бой и бросить инициативу</button>
+        </form>
+      ` : "<p>Ведущий ещё не начал бой.</p>"}
+    </div>
     <div class="game-detail__section">
       <strong>Недавние сессии</strong>
       ${sessions.length ? `<ul>${sessions.map((session) => `<li>${escapeHtml(session.title || "Сессия")} · ${session.xp_awarded || 0} XP${session.notes ? ` · ${escapeHtml(session.notes)}` : ""}</li>`).join("")}</ul>` : "<p>Сессий ещё не было.</p>"}
@@ -1956,6 +1980,36 @@ function renderGameDetail(game) {
       ? `${gamePath}/play`
       : gamePath;
     window.location.assign(destination);
+  });
+
+  const combatForm = panel.querySelector("#game-combat-form");
+  combatForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const monsters = String(new FormData(combatForm).get("monsters") || "").split(/\\r?\\n/).map((line) => line.trim()).filter(Boolean);
+    if (monsters.length > 12 || monsters.some((line) => line.length > 100)) {
+      showToast("Добавь не более 12 противников, до 100 символов каждый");
+      return;
+    }
+    try {
+      await api(`/api/games/${game.id}/combat`, { method: "POST", body: JSON.stringify({ action: "start", monsters }) });
+      const refreshedGame = await api(`/api/games/${game.id}`);
+      renderGameDetail(refreshedGame.game);
+      showToast("Бой начался — инициатива определена");
+    } catch (error) {
+      showToast(error.message);
+    }
+  });
+  panel.querySelectorAll("[data-combat-action]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      try {
+        await api(`/api/games/${game.id}/combat`, { method: "POST", body: JSON.stringify({ action: button.dataset.combatAction }) });
+        const refreshedGame = await api(`/api/games/${game.id}`);
+        renderGameDetail(refreshedGame.game);
+        showToast(button.dataset.combatAction === "next" ? "Ход передан следующему участнику" : "Бой завершён");
+      } catch (error) {
+        showToast(error.message);
+      }
+    });
   });
 
   const joinButton = panel.querySelector('[data-game-action="join"]');
