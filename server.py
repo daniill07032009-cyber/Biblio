@@ -518,6 +518,8 @@ def calculate_character_level(xp):
     return max(1, 1 + (xp_total // 100))
 
 
+DND_CHARACTER_RACES = ["Человек","Эльф","Высший эльф","Лесной эльф","Дроу","Полуэльф","Дварф","Холмовой дварф","Горный дварф","Дуэргар","Халфлинг","Легконогий халфлинг","Коренастый халфлинг","Гном","Лесной гном","Скальный гном","Глубинный гном","Полуорк","Орк","Тифлинг","Аасимар","Драконорождённый","Гитъянки","Гитцерай","Табакси","Кенку","Ааракокра","Генази воздуха","Генази воды","Генази земли","Генази огня","Голиаф","Фирболг","Сатир","Кентавр","Минотавр","Леонин","Тритон","Локсодон","Ведалкен","Симик-гибрид","Калаштар","Перевёртыш","Шифтер","Варфорджед","Черепаха-тортл","Грунг","Харенгон","Аулин","Фея","Плазмоид","Автогном","Возрождённый","Дампир","Хексблад","Астральный эльф","Арлинг","Хобгоблин","Багбир","Кобольд","Гоблин","Юань-ти","Ящеролюд","Тэнгу","Огненный генази","Морской эльф","Эладрин","Морской полуэльф","Крылатый тифлинг","Сумеречный эльф"]
+
 CHARACTER_STAT_RANGES = {
     "strength": (1, 30, 10),
     "dexterity": (1, 30, 10),
@@ -529,6 +531,24 @@ CHARACTER_STAT_RANGES = {
     "max_hp": (1, 999, 10),
     "armor_class": (0, 99, 10),
 }
+
+
+def generate_random_character_stats():
+    """Generate six D&D-style ability scores (4d6, drop the lowest) once per hero."""
+    abilities = {}
+    for field in ("strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"):
+        dice = sorted((secrets.randbelow(6) + 1 for _ in range(4)), reverse=True)
+        abilities[field] = sum(dice[:3])
+    constitution_modifier = (abilities["constitution"] - 10) // 2
+    hit_points = max(1, 10 + constitution_modifier)
+    return {**abilities, "hp": hit_points, "max_hp": hit_points, "armor_class": 10}
+
+
+def validate_dnd_race(value):
+    race = " ".join(str(value or "").split())
+    if race not in DND_CHARACTER_RACES:
+        raise APIError(HTTPStatus.BAD_REQUEST, "Выбери одну из 70 доступных рас.")
+    return race
 
 
 def game_character_stats(payload, existing=None):
@@ -2045,26 +2065,30 @@ class BiblioHandler(BaseHTTPRequestHandler):
                     raise APIError(HTTPStatus.FORBIDDEN, "Ведущий не создаёт персонажа в своей комнате.")
                 payload = self.read_json()
                 name = self.valid_text(payload.get("name") or payload.get("hero_name"), "Имя героя", 1, 80)
-                class_name = self.valid_text(payload.get("class_name") or payload.get("archetype") or payload.get("hero_class") or "", "Класс героя", 0, 60)
-                archetype = self.valid_text(payload.get("archetype") or class_name or "", "Архетип", 0, 60)
-                race = self.valid_text(payload.get("race") or "", "Раса", 0, 60)
-                stats = game_character_stats(payload)
-                character_id = next_mongo_id(db, "game_characters")
-                character = {
-                    "id": character_id,
-                    "game_id": game_id,
-                    "user_id": user["id"],
-                    "name": name,
-                    "class_name": class_name,
-                    "archetype": archetype,
-                    "race": race,
-                    "level": 1,
-                    "xp": 0,
-                    **stats,
-                    "created_at": utc_timestamp(),
-                    "updated_at": utc_timestamp(),
-                }
-                db.game_characters.update_one({"game_id": game_id, "user_id": user["id"]}, {"$set": character}, upsert=True)
+                race = validate_dnd_race(payload.get("race"))
+                existing = db.game_characters.find_one({"game_id": game_id, "user_id": user["id"]})
+                if existing:
+                    db.game_characters.update_one(
+                        {"game_id": game_id, "user_id": user["id"]},
+                        {"$set": {"name": name, "race": race, "updated_at": utc_timestamp()}},
+                    )
+                    character = db.game_characters.find_one({"game_id": game_id, "user_id": user["id"]})
+                else:
+                    character = {
+                        "id": next_mongo_id(db, "game_characters"),
+                        "game_id": game_id,
+                        "user_id": user["id"],
+                        "name": name,
+                        "class_name": "",
+                        "archetype": "",
+                        "race": race,
+                        "level": 1,
+                        "xp": 0,
+                        **generate_random_character_stats(),
+                        "created_at": utc_timestamp(),
+                        "updated_at": utc_timestamp(),
+                    }
+                    db.game_characters.insert_one(character)
                 return {"character": game_character_record(character)}, HTTPStatus.CREATED, []
             if game_action_match.group(2) == "sessions":
                 if game["owner_id"] != user["id"]:
@@ -3032,32 +3056,30 @@ class BiblioHandler(BaseHTTPRequestHandler):
                     raise APIError(HTTPStatus.FORBIDDEN, "Ведущий не создаёт персонажа в своей комнате.")
                 payload = self.read_json()
                 name = self.valid_text(payload.get("name") or payload.get("hero_name"), "Имя героя", 1, 80)
-                class_name = self.valid_text(payload.get("class_name") or payload.get("archetype") or payload.get("hero_class") or "", "Класс героя", 0, 60)
-                archetype = self.valid_text(payload.get("archetype") or class_name or "", "Архетип", 0, 60)
-                race = self.valid_text(payload.get("race") or "", "Раса", 0, 60)
-                stats = game_character_stats(payload)
+                race = validate_dnd_race(payload.get("race"))
                 existing = db.execute(
                     "SELECT * FROM game_characters WHERE game_id = ? AND user_id = ?",
                     (game_id, user["id"]),
                 ).fetchone()
                 if existing is None:
+                    stats = generate_random_character_stats()
                     cursor = db.execute(
                         """
                         INSERT INTO game_characters (
                             game_id, user_id, name, class_name, archetype, race, level, xp,
                             strength, dexterity, constitution, intelligence, wisdom, charisma,
                             hp, max_hp, armor_class, created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                        ) VALUES (?, ?, ?, '', '', ?, 1, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                             strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
                             strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
                         """,
-                        (game_id, user["id"], name, class_name, archetype, race, *stats.values()),
+                        (game_id, user["id"], name, race, *stats.values()),
                     )
                     character = db.execute("SELECT * FROM game_characters WHERE id = ?", (cursor.lastrowid,)).fetchone()
                 else:
                     db.execute(
-                        "UPDATE game_characters SET name = ?, class_name = ?, archetype = ?, race = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?",
-                        (name, class_name, archetype, race, existing["id"]),
+                        "UPDATE game_characters SET name = ?, race = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?",
+                        (name, race, existing["id"]),
                     )
                     character = db.execute("SELECT * FROM game_characters WHERE id = ?", (existing["id"],)).fetchone()
                 return {"character": game_character_record(dict(character))}, HTTPStatus.CREATED, []
