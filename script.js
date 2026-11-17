@@ -2088,6 +2088,7 @@ function renderGameDetail(game) {
         ${hero ? `<span class="dnd-gm-roster__vitals">${Number(hero.hp || 0)}/${Number(hero.max_hp || 10)} HP · ур. ${Number(hero.level || 1)}</span>` : "<span class=\"dnd-gm-roster__vitals\">Ожидает героя</span>"}
       </li>`;
     }).join("");
+  const gmRewardOptions = heroes.map((hero) => `<option value="${Number(hero.user_id)}">${escapeHtml(hero.name || ("Герой #" + hero.user_id))} · ${Number(hero.level || 1)} ур.</option>`).join("");
   const gmCombatants = game.combat?.active ? (game.combat.combatants || []) : [];
   const gmCurrentFighter = gmCombatants[Number(game.combat?.current_index || 0)];
   const gmNotesKey = "biblio-dnd-gm-notes-" + game.id;
@@ -2136,8 +2137,8 @@ function renderGameDetail(game) {
       <section class="dnd-gm-box dnd-gm-reward">
         <div class="dnd-gm-box__heading"><strong>Быстрая награда</strong><a href="#dnd-area-session">Журнал сессий →</a></div>
         <form class="games-form dnd-gm-reward__form" id="game-gm-xp-form">
-          <label>Кому<select name="user_id">${ownerOptions}</select></label>
-          <label>Количество XP<input type="number" name="amount" min="0" max="5000" value="25" required></label>
+          <label>Кому<select name="user_id">${gmRewardOptions}</select></label>
+          <label>Количество XP<input type="number" name="amount" min="1" max="5000" value="25" required></label>
           <label>За что<input type="text" name="reason" maxlength="200" value="Награда за приключение" required></label>
           <button class="button button--primary" type="submit" ${heroes.length ? "" : "disabled"}>Выдать опыт</button>
         </form>
@@ -2365,7 +2366,7 @@ function renderGameDetail(game) {
   const detailSections = [...panel.querySelectorAll(":scope > .game-detail__section")];
   const usedKeys = new Set();
   const sectionEntries = detailSections.map((section, index) => {
-    const heading = section.querySelector(":scope > strong, :scope > .game-combat__heading strong");
+    const heading = section.querySelector(":scope > strong, :scope > .game-combat__heading strong, :scope > .dnd-gm-dashboard__heading strong");
     const headingText = (heading?.textContent || "").trim();
     let spec = dndAreaSpecs.find((item) => item.match.test(headingText));
     if (!spec) spec = { key: "extra-" + index, label: headingText || "Дополнительно", icon: "·" };
@@ -2441,7 +2442,7 @@ function renderGameDetail(game) {
       event.preventDefault();
       const data = new FormData(xpForm);
       const amount = Number(data.get("amount"));
-      if (!Number.isInteger(amount) || amount < 0 || amount > 5000) {
+      if (!Number.isInteger(amount) || amount < 1 || amount > 5000) {
         showToast("Количество XP должно быть от 0 до 5000");
         return;
       }
