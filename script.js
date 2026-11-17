@@ -1908,10 +1908,20 @@ function renderGameDetail(game) {
         </ol>
         ${(game.combat.events || []).length ? `<div class="game-combat__log"><strong>Журнал боя</strong><ol>${game.combat.events.slice().reverse().map((entry) => `<li><span>${escapeHtml(entry.message)}</span><time>${new Date(entry.created_at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</time></li>`).join("")}</ol></div>` : ""}
         ${isGameMaster ? `<div class="game-combat__actions"><button class="button button--primary" type="button" data-combat-action="next">Следующий ход →</button><button class="button button--secondary" type="button" data-combat-action="end">Завершить бой</button></div>` : ""}
+        ${isGameMaster ? `<form class="games-form game-combat__attack" id="game-combat-attack-form">
+          <strong>Атака</strong>
+          <div class="game-combat__attack-fields">
+            <label>Атакующий<select name="attacker_id">${game.combat.combatants.map((fighter) => `<option value="${escapeHtml(fighter.id)}">${escapeHtml(fighter.name)}</option>`).join("")}</select></label>
+            <label>Цель<select name="target_id">${game.combat.combatants.map((fighter) => `<option value="${escapeHtml(fighter.id)}">${escapeHtml(fighter.name)}</option>`).join("")}</select></label>
+            <label>Бонус атаки<input type="number" name="attack_bonus" min="-20" max="30" value="0" required></label>
+            <label>Урон при попадании<input type="number" name="damage" min="1" max="1000" value="1" required></label>
+          </div>
+          <button class="button button--primary" type="submit">Бросить атаку d20</button>
+        </form>` : ""}
       ` : isGameMaster ? `
         <form class="games-form game-combat__start" id="game-combat-form">
-          <label>Противники <small>Каждый с новой строки: «Гоблин | 14 | 7» (имя | инициатива | HP). Инициативу можно пропустить; HP необязательно.</small>
-            <textarea name="monsters" rows="3" maxlength="1400" placeholder="Гоблин | 14 | 7&#10;Орк | | 15/18&#10;Скелет"></textarea>
+          <label>Противники <small>Каждый с новой строки: «Гоблин | 14 | 7 | 15» (имя | инициатива | HP | КБ). Инициативу можно пропустить; HP и КБ необязательны.</small>
+            <textarea name="monsters" rows="3" maxlength="1400" placeholder="Гоблин | 14 | 7 | 15&#10;Орк | | 15/18 | 13&#10;Скелет"></textarea>
           </label>
           <button class="button button--primary" type="submit">Начать бой и бросить инициативу</button>
         </form>
@@ -2033,6 +2043,27 @@ function renderGameDetail(game) {
         showToast(error.message);
       }
     });
+  });
+
+  const combatAttackForm = panel.querySelector("#game-combat-attack-form");
+  combatAttackForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const formData = new FormData(combatAttackForm);
+    const payload = {
+      action: "attack",
+      attacker_id: formData.get("attacker_id"),
+      target_id: formData.get("target_id"),
+      attack_bonus: Number(formData.get("attack_bonus")),
+      damage: Number(formData.get("damage")),
+    };
+    try {
+      await api("/api/games/" + game.id + "/combat", { method: "POST", body: JSON.stringify(payload) });
+      const refreshedGame = await api("/api/games/" + game.id);
+      renderGameDetail(refreshedGame.game);
+      showToast("Результат атаки добавлен в журнал боя");
+    } catch (error) {
+      showToast(error.message);
+    }
   });
 
   const joinButton = panel.querySelector('[data-game-action="join"]');
