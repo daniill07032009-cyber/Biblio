@@ -1890,8 +1890,8 @@ async function rateCatalogGame(slug, rating) {
       const ratingValue = document.querySelector(".critical-dnd__stat strong");
       if (ratingValue) ratingValue.textContent = Number(result.rating).toFixed(1);
       const ratingCaption = [...document.querySelectorAll(".critical-dnd__stat small")]
-        .find((item) => item.textContent === "РЕЙТИНГ ИГРЫ");
-      if (ratingCaption) ratingCaption.textContent = `${result.rating_count} ОЦЕНОК`;
+        .find((item) => item.textContent.startsWith("РЕЙТИНГ"));
+      if (ratingCaption) ratingCaption.textContent = `РЕЙТИНГ · ${result.rating_count} ОЦЕНОК`;
       document.querySelectorAll(".game-catalog-rating-stars [data-rating]").forEach((button) => {
         button.classList.toggle("is-selected", Number(button.dataset.rating) <= rating);
       });
