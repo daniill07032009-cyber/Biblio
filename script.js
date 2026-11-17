@@ -1861,6 +1861,28 @@ function renderGameDetail(game) {
             <strong>Инвентарь</strong><p>${(hero.inventory || []).length ? (hero.inventory || []).map(escapeHtml).join(" · ") : "Пока пусто"}</p>
             <strong>Заклинания</strong><p>${(hero.spells || []).length ? (hero.spells || []).map(escapeHtml).join(" · ") : "Нет записанных заклинаний"}</p>
           </div>`}
+          <section class="game-spellbook">
+            <div class="game-spellbook__heading"><strong>Магия и ячейки</strong><span>Уровни заклинаний: 1–9</span></div>
+            <div class="game-spellbook__slots">
+              ${Array.from({ length: 9 }, (_, index) => `<div class="game-spellbook__slot"><span>${index + 1} ур.</span><strong>${Number((hero.spell_slots || [])[index] || 0)} / ${Number((hero.spell_slots_max || [])[index] || 0)}</strong></div>`).join("")}
+            </div>
+            ${(isGameMaster || Number(hero.user_id) === Number(currentUser?.id)) && (hero.spells || []).length ? `
+              <form class="games-form game-spellbook__cast" data-hero-user-id="${Number(hero.user_id)}">
+                <label>Заклинание<select name="spell">${(hero.spells || []).map((spell) => `<option value="${escapeHtml(spell)}">${escapeHtml(spell)}</option>`).join("")}</select></label>
+                <label>Уровень ячейки<select name="level"><option value="0">Заговор — без ячейки</option>${Array.from({length:9},(_,i)=>`<option value="${i+1}">${i+1}-й уровень</option>`).join("")}</select></label>
+                <button class="button button--primary" type="submit">Использовать заклинание</button>
+              </form>` : ""}
+            ${isGameMaster ? `
+              <form class="games-form game-spellbook__configure" data-hero-user-id="${Number(hero.user_id)}">
+                <strong>Максимум и остаток ячеек</strong>
+                <div class="game-spellbook__config-grid">
+                  ${Array.from({length:9},(_,i)=>`<label>${i+1} ур.<input type="number" min="0" max="20" name="max_${i+1}" value="${Number((hero.spell_slots_max || [])[i] || 0)}"><input type="number" min="0" max="20" name="left_${i+1}" value="${Number((hero.spell_slots || [])[i] || 0)}" aria-label="Остаток ячеек ${i+1}-го уровня"></label>`).join("")}
+                </div>
+                <button class="button button--secondary" type="submit">Сохранить ячейки</button>
+              </form>
+              <button class="button button--secondary game-spellbook__rest" type="button" data-spell-rest-user-id="${Number(hero.user_id)}">Продолжительный отдых · восстановить ячейки</button>
+            ` : ""}
+          </section>
           ${isGameMaster ? `
             <form class="games-form game-hero-card__hp-form" data-hero-user-id="${Number(hero.user_id)}">
               <label>Текущее HP<input type="number" name="hp" min="0" max="${Number(hero.max_hp || 10)}" value="${Number(hero.hp || 0)}" required /></label>
@@ -2169,6 +2191,43 @@ function renderGameDetail(game) {
       }
     });
   }
+
+  panel.querySelectorAll(".game-spellbook__configure").forEach((form) => {
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const data = new FormData(form);
+      const spell_slots_max = Array.from({length:9},(_,i)=>Number(data.get("max_"+(i+1))));
+      const spell_slots = Array.from({length:9},(_,i)=>Number(data.get("left_"+(i+1))));
+      if ([...spell_slots_max, ...spell_slots].some((value) => !Number.isInteger(value) || value < 0 || value > 20) || spell_slots.some((value,index)=>value>spell_slots_max[index])) {
+        showToast("Проверь ячейки: остаток не может превышать максимум"); return;
+      }
+      try {
+        await api("/api/games/"+game.id+"/characters/"+form.dataset.heroUserId, {method:"PATCH",body:JSON.stringify({spell_slots_max,spell_slots})});
+        const refreshedGame = await api("/api/games/"+game.id); renderGameDetail(refreshedGame.game); showToast("Ячейки заклинаний сохранены");
+      } catch (error) { showToast(error.message); }
+    });
+  });
+
+  panel.querySelectorAll(".game-spellbook__cast").forEach((form) => {
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault(); const data = new FormData(form);
+      try {
+        const result = await api("/api/games/"+game.id+"/characters/"+form.dataset.heroUserId+"/cast", {method:"POST",body:JSON.stringify({spell:data.get("spell"),level:Number(data.get("level"))})});
+        const refreshedGame = await api("/api/games/"+game.id); renderGameDetail(refreshedGame.game);
+        showToast(result.cast.level === 0 ? "Заговор использован" : "Заклинание использовано · ячейка списана");
+      } catch (error) { showToast(error.message); }
+    });
+  });
+
+  panel.querySelectorAll("[data-spell-rest-user-id]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      if (!window.confirm("Восстановить все ячейки заклинаний этого персонажа?")) return;
+      try {
+        await api("/api/games/"+game.id+"/characters/"+button.dataset.spellRestUserId+"/rest", {method:"POST",body:JSON.stringify({type:"long"})});
+        const refreshedGame = await api("/api/games/"+game.id); renderGameDetail(refreshedGame.game); showToast("Ячейки восстановлены после продолжительного отдыха");
+      } catch (error) { showToast(error.message); }
+    });
+  });
 
   panel.querySelectorAll(".game-hero-card__loadout").forEach((form) => {
     form.addEventListener("submit", async (event) => {
