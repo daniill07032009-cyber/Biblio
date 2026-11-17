@@ -2066,7 +2066,7 @@ function renderGameDetail(game) {
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       const formData = new FormData(form);
-      const toList = (value) => String(value || "").split(/\\r?\\n/).map((item) => item.trim()).filter(Boolean);
+      const toList = (value) => String(value || "").split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
       const inventory = toList(formData.get("inventory"));
       const spells = toList(formData.get("spells"));
       if (inventory.length > 40 || spells.length > 40 || [...inventory, ...spells].some((item) => item.length > 100)) {
