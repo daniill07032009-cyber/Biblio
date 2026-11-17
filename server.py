@@ -282,6 +282,8 @@ def initialize_db():
                 hp INTEGER NOT NULL DEFAULT 10,
                 max_hp INTEGER NOT NULL DEFAULT 10,
                 armor_class INTEGER NOT NULL DEFAULT 10,
+                inventory TEXT NOT NULL DEFAULT '[]',
+                spells TEXT NOT NULL DEFAULT '[]',
                 created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
                 updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
                 UNIQUE(game_id, user_id),
@@ -362,6 +364,9 @@ def initialize_db():
         for name in ("hp", "max_hp", "armor_class"):
             if name not in character_columns:
                 db.execute(f"ALTER TABLE game_characters ADD COLUMN {name} INTEGER NOT NULL DEFAULT 10")
+        for name in ("inventory", "spells"):
+            if name not in character_columns:
+                db.execute(f"ALTER TABLE game_characters ADD COLUMN {name} TEXT NOT NULL DEFAULT '[]'")
         db.execute(
             "UPDATE games SET catalog_game_slug = 'dnd' WHERE catalog_game_slug IS NULL"
         )
@@ -580,8 +585,34 @@ def game_catalog_record(game, rating=0, rating_count=0, active_viewers=0, user_r
     }
 
 
+def game_character_loadout(payload, existing=None):
+    existing = existing or {}
+    result = {}
+    for field in ("inventory", "spells"):
+        value = payload.get(field, existing.get(field, []))
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except (TypeError, ValueError):
+                value = [line.strip() for line in value.splitlines() if line.strip()]
+        if not isinstance(value, list) or len(value) > 40:
+            raise APIError(HTTPStatus.BAD_REQUEST, "Список предметов и заклинаний должен содержать не более 40 записей.")
+        cleaned = []
+        for item in value:
+            if not isinstance(item, str):
+                raise APIError(HTTPStatus.BAD_REQUEST, "Каждая запись должна быть текстом.")
+            item = item.strip()
+            if not item or len(item) > 100:
+                raise APIError(HTTPStatus.BAD_REQUEST, "Название записи должно содержать от 1 до 100 символов.")
+            if item not in cleaned:
+                cleaned.append(item)
+        result[field] = cleaned
+    return result
+
+
 def game_character_record(row):
     xp = int(row.get("xp", 0) or 0)
+    loadout = game_character_loadout({}, row)
     return {
         "id": row["id"],
         "game_id": row["game_id"],
@@ -593,6 +624,7 @@ def game_character_record(row):
         "level": int(row.get("level", calculate_character_level(xp)) or calculate_character_level(xp)),
         "xp": xp,
         **game_character_stats({}, row),
+        **loadout,
         "created_at": row.get("created_at", utc_timestamp()),
         "updated_at": row.get("updated_at", utc_timestamp()),
     }
@@ -1652,17 +1684,17 @@ class BiblioHandler(BaseHTTPRequestHandler):
             game = db.games.find_one({"id": game_id})
             if game is None:
                 raise APIError(HTTPStatus.NOT_FOUND, "Комната не найдена.")
-            if game["owner_id"] != user["id"]:
-                raise APIError(HTTPStatus.FORBIDDEN, "Параметры персонажей может менять только ведущий.")
-            if target_user_id == game["owner_id"]:
-                raise APIError(HTTPStatus.FORBIDDEN, "Ведущий не управляет персонажем в своей комнате.")
+            if game["owner_id"] != user["id"] and target_user_id != user["id"]:
+                raise APIError(HTTPStatus.FORBIDDEN, "Изменять лист героя может сам игрок или ведущий.")
             character = db.game_characters.find_one({"game_id": game_id, "user_id": target_user_id})
             if character is None:
                 raise APIError(HTTPStatus.NOT_FOUND, "Герой участника не найден.")
-            stats = game_character_stats(self.read_json(), character)
+            payload = self.read_json()
+            stats = game_character_stats(payload, character)
+            loadout = game_character_loadout(payload, character)
             db.game_characters.update_one(
                 {"game_id": game_id, "user_id": target_user_id},
-                {"$set": {**stats, "updated_at": utc_timestamp()}},
+                {"$set": {**stats, **loadout, "updated_at": utc_timestamp()}},
             )
             updated_character = db.game_characters.find_one({"game_id": game_id, "user_id": target_user_id})
             return {"character": game_character_record(updated_character)}, HTTPStatus.OK, []
@@ -2569,26 +2601,28 @@ class BiblioHandler(BaseHTTPRequestHandler):
             game = db.execute("SELECT owner_id FROM games WHERE id = ?", (game_id,)).fetchone()
             if game is None:
                 raise APIError(HTTPStatus.NOT_FOUND, "Комната не найдена.")
-            if game["owner_id"] != user["id"]:
-                raise APIError(HTTPStatus.FORBIDDEN, "Параметры персонажей может менять только ведущий.")
-            if target_user_id == game["owner_id"]:
-                raise APIError(HTTPStatus.FORBIDDEN, "Ведущий не управляет персонажем в своей комнате.")
+            if game["owner_id"] != user["id"] and target_user_id != user["id"]:
+                raise APIError(HTTPStatus.FORBIDDEN, "Изменять лист героя может сам игрок или ведущий.")
             character = db.execute(
                 "SELECT * FROM game_characters WHERE game_id = ? AND user_id = ?",
                 (game_id, target_user_id),
             ).fetchone()
             if character is None:
                 raise APIError(HTTPStatus.NOT_FOUND, "Герой участника не найден.")
-            stats = game_character_stats(self.read_json(), dict(character))
+            payload = self.read_json()
+            stats = game_character_stats(payload, dict(character))
+            loadout = game_character_loadout(payload, dict(character))
             db.execute(
                 """
                 UPDATE game_characters
                 SET strength = ?, dexterity = ?, constitution = ?, intelligence = ?,
                     wisdom = ?, charisma = ?, hp = ?, max_hp = ?, armor_class = ?,
+                    inventory = ?, spells = ?,
                     updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
                 WHERE game_id = ? AND user_id = ?
                 """,
-                (*stats.values(), game_id, target_user_id),
+                (*stats.values(), json.dumps(loadout["inventory"], ensure_ascii=False),
+                 json.dumps(loadout["spells"], ensure_ascii=False), game_id, target_user_id),
             )
             updated_character = db.execute(
                 "SELECT * FROM game_characters WHERE game_id = ? AND user_id = ?",
