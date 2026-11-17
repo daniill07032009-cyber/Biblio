@@ -1080,6 +1080,20 @@ class BiblioServerTests(unittest.TestCase):
         self.assertIn("критическое попадание", state["events"][-1]["message"])
         self.assertIn("6 HP", state["events"][-1]["message"])
 
+    def test_dnd_character_creation_races_and_random_stats(self):
+        self.assertEqual(len(server.DND_CHARACTER_RACES), 70)
+        self.assertEqual(len(set(server.DND_CHARACTER_RACES)), 70)
+        self.assertEqual(server.validate_dnd_race("Эльф"), "Эльф")
+        with self.assertRaises(server.APIError):
+            server.validate_dnd_race("Несуществующая раса")
+        with patch("server.secrets.randbelow", return_value=5):
+            stats = server.generate_random_character_stats()
+        for ability in ("strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"):
+            self.assertEqual(stats[ability], 18)
+        self.assertEqual(stats["hp"], 14)
+        self.assertEqual(stats["max_hp"], 14)
+        self.assertEqual(stats["armor_class"], 10)
+
     def test_dnd_combat_attack_misses_when_roll_is_one(self):
         state = server.game_combat_transition("start", {"monsters": ["Орк | 10 | 10 | 18"]}, [])
         orc = state["combatants"][0]
