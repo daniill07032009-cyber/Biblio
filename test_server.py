@@ -437,23 +437,26 @@ class BiblioServerTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(result["game_id"], game_id)
 
-        status, result = self.request(
-            "POST",
-            f"/api/games/{game_id}/characters",
-            {
-                "name": "Элин",
-                "class_name": "Воин",
-                "race": "Человек",
-                "strength": 16,
-                "hp": 18,
-                "max_hp": 22,
-                "armor_class": 15,
-            },
-        )
+        with patch("server.secrets.randbelow", return_value=5):
+            status, result = self.request(
+                "POST",
+                f"/api/games/{game_id}/characters",
+                {"name": "Элин", "race": "Человек"},
+            )
         self.assertEqual(status, 201)
         self.assertEqual(result["character"]["name"], "Элин")
-        self.assertEqual(result["character"]["strength"], 16)
-        self.assertEqual(result["character"]["hp"], 18)
+        self.assertEqual(result["character"]["class_name"], "")
+        self.assertEqual(result["character"]["strength"], 18)
+        self.assertEqual(result["character"]["hp"], 14)
+        original_stats = result["character"]["strength"]
+        status, updated = self.request(
+            "POST",
+            f"/api/games/{game_id}/characters",
+            {"name": "Элин Новая", "race": "Эльф"},
+        )
+        self.assertEqual(status, 201)
+        self.assertEqual(updated["character"]["strength"], original_stats)
+        self.assertEqual(updated["character"]["name"], "Элин Новая")
         status, result = self.request("GET", f"/api/games/{game_id}")
         self.assertEqual(status, 200)
         self.assertTrue(result["game"]["is_member"])
@@ -774,13 +777,15 @@ class BiblioServerTests(unittest.TestCase):
             )
             self.assertEqual(status, 200)
             self.assertEqual(result["game_id"], game_id)
-            status, result = self.request(
-                "POST",
-                f"/api/games/{game_id}/characters",
-                {"name": "Свет", "class_name": "Маг", "race": "Эльф", "wisdom": 14},
-            )
+            with patch("server.secrets.randbelow", return_value=5):
+                status, result = self.request(
+                    "POST",
+                    f"/api/games/{game_id}/characters",
+                    {"name": "Свет", "race": "Эльф"},
+                )
             self.assertEqual(status, 201)
-            self.assertEqual(result["character"]["wisdom"], 14)
+            self.assertEqual(result["character"]["wisdom"], 18)
+            self.assertEqual(result["character"]["hp"], 14)
 
             self.request("POST", "/api/logout", {})
             status, result = self.request(
@@ -1079,6 +1084,20 @@ class BiblioServerTests(unittest.TestCase):
         self.assertEqual(goblin["hp"], 2)
         self.assertIn("критическое попадание", state["events"][-1]["message"])
         self.assertIn("6 HP", state["events"][-1]["message"])
+
+    def test_dnd_character_creation_races_and_random_stats(self):
+        self.assertEqual(len(server.DND_CHARACTER_RACES), 70)
+        self.assertEqual(len(set(server.DND_CHARACTER_RACES)), 70)
+        self.assertEqual(server.validate_dnd_race("Эльф"), "Эльф")
+        with self.assertRaises(server.APIError):
+            server.validate_dnd_race("Несуществующая раса")
+        with patch("server.secrets.randbelow", return_value=5):
+            stats = server.generate_random_character_stats()
+        for ability in ("strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"):
+            self.assertEqual(stats[ability], 18)
+        self.assertEqual(stats["hp"], 14)
+        self.assertEqual(stats["max_hp"], 14)
+        self.assertEqual(stats["armor_class"], 10)
 
     def test_dnd_combat_attack_misses_when_roll_is_one(self):
         state = server.game_combat_transition("start", {"monsters": ["Орк | 10 | 10 | 18"]}, [])
