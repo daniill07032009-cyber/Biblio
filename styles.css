@@ -2053,3 +2053,80 @@ body[data-game-site="true"] .game-room-create__submit:focus-visible { outline:2p
   .game-room-create__footer { align-items:stretch; flex-direction:column; }
   body[data-game-site="true"] .game-room-create__submit { width:100%; }
 }
+
+
+/* D&D UI sizing: consistent, readable controls and navigation tabs. */
+body[data-game-site="true"] .game-detail-panel button,
+body[data-game-site="true"] .game-detail-panel a.button,
+body[data-game-site="true"] .critical-dnd__main .button,
+body[data-game-site="true"] .critical-dnd__button {
+  min-height: 40px;
+  padding: 9px 15px;
+  border-radius: 9px;
+  font-size: 12px;
+  line-height: 1.2;
+  font-weight: 700;
+}
+body[data-game-site="true"] .game-detail__actions,
+body[data-game-site="true"] .critical-dnd__actions {
+  align-items: center;
+  gap: 9px;
+}
+body[data-game-site="true"] .critical-dnd__nav {
+  gap: 5px;
+}
+body[data-game-site="true"] .critical-dnd__nav button {
+  min-height: 42px;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.25;
+}
+body[data-game-site="true"] .critical-dnd__nav-icon {
+  flex: 0 0 20px;
+  font-size: 17px;
+}
+body[data-game-site="true"] .game-detail-panel [role="tablist"],
+body[data-game-site="true"] .game-detail-panel .game-tabs,
+body[data-game-site="true"] .game-detail-panel .game-room-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+body[data-game-site="true"] .game-detail-panel [role="tablist"] > button,
+body[data-game-site="true"] .game-detail-panel .game-tabs > button,
+body[data-game-site="true"] .game-detail-panel .game-room-tabs > button {
+  min-height: 40px;
+  padding: 8px 14px;
+  border-radius: 9px;
+  font-size: 12px;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+@media (max-width: 620px) {
+  body[data-game-site="true"] .critical-dnd__nav {
+    gap: 4px;
+    padding: 7px;
+  }
+  body[data-game-site="true"] .critical-dnd__nav button {
+    min-width: 0;
+    min-height: 52px;
+    justify-content: center;
+    gap: 5px;
+    padding: 7px 4px;
+    font-size: 10px;
+    line-height: 1.15;
+  }
+  body[data-game-site="true"] .critical-dnd__nav-icon {
+    flex: 0 0 auto;
+    font-size: 17px;
+  }
+  body[data-game-site="true"] .game-detail-panel button,
+  body[data-game-site="true"] .game-detail-panel a.button,
+  body[data-game-site="true"] .critical-dnd__main .button,
+  body[data-game-site="true"] .critical-dnd__button {
+    min-height: 42px;
+    padding: 10px 13px;
+    font-size: 12px;
+  }
+}
