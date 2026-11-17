@@ -2214,7 +2214,7 @@ function renderGameDetail(game) {
       try {
         const result = await api("/api/games/"+game.id+"/characters/"+form.dataset.heroUserId+"/cast", {method:"POST",body:JSON.stringify({spell:data.get("spell"),level:Number(data.get("level"))})});
         const refreshedGame = await api("/api/games/"+game.id); renderGameDetail(refreshedGame.game);
-        showToast(result.cast.level === 0 ? "Заговор использован" : "Заклинание использовано · ячейка списана");
+        showToast(result.cast.effect === "healing" ? "Заклинание восстановило " + result.cast.healing + " HP" : (result.cast.level === 0 ? "Заговор использован" : "Заклинание использовано · ячейка списана"));
       } catch (error) { showToast(error.message); }
     });
   });
