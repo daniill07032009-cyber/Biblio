@@ -1431,147 +1431,187 @@ function renderCatalogGameDetail(game) {
   panel.replaceChildren();
 
   const isDnd = game.slug === "dnd";
-  const title = game.title || "Игра сообщества";
-  const breadcrumb = createElement("nav", "game-page__breadcrumb");
-  breadcrumb.setAttribute("aria-label", "Навигация");
-  const backLink = createElement("a", "", "Игры");
-  backLink.href = "/games";
-  breadcrumb.append(backLink, createElement("span", "", "／"), createElement("span", "game-page__breadcrumb-current", title));
+  if (!isDnd) {
+    renderCommunityGameDetail(game, panel);
+    return;
+  }
 
+  const title = game.title || "Dungeons & Dragons";
+  const stories = [
+    ["01", "Пепел у ворот", "В пограничном селении гаснут защитные огни. Следы ведут к старому дозорному посту.", "Уровень 1", "Исследование · Первая опасность"],
+    ["02", "Шёпот затонувшего храма", "Из высохшего колодца доносится колокольный звон. Под землёй скрыт храм, которого нет ни на одной карте.", "Уровень 2", "Тайны · Древние загадки"],
+    ["03", "Бал масок в Серебряном городе", "На королевском балу кто-то продаёт имена живых. У каждого гостя есть маска, но не у каждого — лицо.", "Уровень 3", "Интриги · Социальные сцены"],
+    ["04", "Кровь ледяного дракона", "Горный перевал замерзает посреди лета. Дракон просит о помощи, но его кровь уже ищут охотники.", "Уровень 4", "Путешествие · Дилемма"],
+    ["05", "Корона из пепла", "Пять следов ведут к трону забытого короля. В последней битве отряд узнает, кто направлял события.", "Уровень 5", "Финал · Судьба королевства"],
+  ];
+
+  const shell = createElement("div", "critical-dnd");
+  const side = createElement("aside", "critical-dnd__side");
+  const brand = createElement("a", "critical-dnd__brand", "КРИТИЧЕСКИЙ УСПЕХ");
+  brand.href = "/games/dnd";
+  brand.append(createElement("small", "", "REALMS · ADVENTURES · LEGENDS"));
+  const profile = createElement("div", "critical-dnd__profile");
+  profile.append(
+    createElement("span", "critical-dnd__avatar", "✦"),
+    createElement("span", "", currentUser ? (currentUser.username || currentUser.name || "Искатель приключений") : "Гость Biblio"),
+  );
+  const navLabel = createElement("span", "critical-dnd__nav-label", "ИГРОВОЙ МИР");
+  const nav = createElement("nav", "critical-dnd__nav");
+  const navItems = [
+    ["overview", "⌂", "Обзор"],
+    ["adventures", "▤", "Приключения"],
+    ["rooms", "⚔", "Игровые комнаты"],
+  ];
+  navItems.forEach(([key, icon, label], index) => {
+    const button = createElement("button", index === 0 ? "is-active" : "", "");
+    button.type = "button";
+    button.dataset.dndTab = key;
+    button.append(createElement("span", "critical-dnd__nav-icon", icon), createElement("span", "", label));
+    nav.append(button);
+  });
+  const sideNote = createElement("p", "critical-dnd__side-note", "ТВОЯ ИСТОРИЯ. ТВОИ РЕШЕНИЯ. ТВОЯ ЛЕГЕНДА.");
+  side.append(brand, profile, navLabel, nav, sideNote);
+
+  const main = createElement("div", "critical-dnd__main");
+  const top = createElement("div", "critical-dnd__top");
+  const crumb = createElement("div", "critical-dnd__crumb");
+  crumb.append(createElement("a", "", "Игры"), createElement("span", "", "／"), createElement("strong", "", title));
+  crumb.querySelector("a").href = "/games";
+  const topStatus = createElement("span", "critical-dnd__status", "✦ МИР BIBLIO");
+  top.append(crumb, topStatus);
+
+  const content = createElement("div", "critical-dnd__content");
+  const overviewPage = createElement("section", "critical-dnd__page is-active");
+  overviewPage.dataset.dndPage = "overview";
+  const hero = createElement("section", "critical-dnd__hero");
+  hero.append(
+    createElement("span", "critical-dnd__eyebrow", "ТВОЯ СЛЕДУЮЩАЯ ЛЕГЕНДА НАЧИНАЕТСЯ ЗДЕСЬ"),
+    createElement("h1", "", "МИР ЖДЁТ. БРОСАЙ КУБИК."),
+    createElement("p", "", "Создай героя, собери отряд и отправляйся навстречу историям, в которых каждое решение оставляет след. Выбирай формат игры — остальное станет легендой."),
+  );
+  const heroActions = createElement("div", "critical-dnd__actions");
+  const startLink = createElement("a", "button button--primary critical-dnd__button", "Начать приключение ↗");
+  startLink.href = "/games/dnd/play";
+  const createLink = createElement("a", "button button--secondary critical-dnd__button", "Создать персонажа");
+  createLink.href = "/games/dnd/play";
+  heroActions.append(startLink, createLink);
+  hero.append(heroActions);
+
+  const modeHeading = createElement("div", "critical-dnd__section-head");
+  modeHeading.append(
+    createElement("div", "critical-dnd__eyebrow", "ВЫБЕРИ СВОЙ ПУТЬ"),
+    createElement("h2", "", "Как будем играть?"),
+    createElement("p", "", "Три формата — одна большая история."),
+  );
+  const modes = createElement("div", "critical-dnd__mode-grid");
+  [
+    ["🗡", "Один герой", "Проходи приключения самостоятельно и принимай решения от лица своего персонажа.", "Открыть игру"],
+    ["⚔", "Отряд искателей", "Собери команду, создай комнату и проходи кампанию вместе с друзьями.", "Собрать отряд"],
+    ["♛", "Игра с ведущим", "Создай комнату для партии, управляй историей и веди игроков через испытания.", "Стать ведущим"],
+  ].forEach(([icon, heading, description, action]) => {
+    const card = createElement("article", "critical-dnd__mode");
+    card.append(createElement("span", "critical-dnd__mode-icon", icon), createElement("h3", "", heading), createElement("p", "", description));
+    const link = createElement("a", "critical-dnd__text-link", action + " →");
+    link.href = "/games/dnd/play";
+    card.append(link);
+    modes.append(card);
+  });
+
+  const stats = createElement("div", "critical-dnd__stats");
+  const statItems = [
+    [game.rating_count ? Number(game.rating).toFixed(1) : "—", "РЕЙТИНГ ИГРЫ"],
+    [String(Number(game.active_viewers || 0)), "СЕЙЧАС СМОТРЯТ"],
+    [String(stories.length), "ГЛАВ В КАМПАНИИ"],
+  ];
+  statItems.forEach(([value, label]) => {
+    const item = createElement("div", "critical-dnd__stat");
+    item.append(createElement("strong", "", value), createElement("small", "", label));
+    stats.append(item);
+  });
+  const section = createElement("section", "critical-dnd__campaign-preview");
+  const sectionHead = createElement("div", "critical-dnd__section-head");
+  sectionHead.append(
+    createElement("div", "critical-dnd__eyebrow", "КАМПАНИЯ ИЗ ПЯТИ ГЛАВ"),
+    createElement("h2", "", "Хроники Пепельной Короны"),
+    createElement("p", "", "Пять связанных приключений — от первой тревоги у ворот до судьбы целого королевства."),
+  );
+  const storyList = createElement("div", "critical-dnd__story-list");
+  stories.slice(0, 3).forEach(([number, heading, description, level, tags]) => {
+    const row = createElement("article", "critical-dnd__story");
+    row.append(createElement("span", "critical-dnd__story-number", number));
+    const copy = createElement("div");
+    copy.append(createElement("h3", "", heading), createElement("p", "", description), createElement("small", "", level + " · " + tags));
+    row.append(copy);
+    storyList.append(row);
+  });
+  const allStories = createElement("button", "button button--secondary critical-dnd__button", "Все пять глав →");
+  allStories.type = "button";
+  allStories.dataset.dndTab = "adventures";
+  section.append(sectionHead, storyList, allStories);
+  overviewPage.append(hero, modeHeading, modes, stats, section);
+
+  const adventuresPage = createElement("section", "critical-dnd__page");
+  adventuresPage.dataset.dndPage = "adventures";
+  adventuresPage.append(
+    createElement("span", "critical-dnd__eyebrow", "КАМПАНИЯ · УРОВНИ 1–5"),
+    createElement("h1", "critical-dnd__page-title", "Хроники Пепельной Короны"),
+    createElement("p", "critical-dnd__lead", "Пять связанных историй. Исследование, социальные сцены, опасности, кульминация и последствия — решения отряда меняют ход кампании."),
+  );
+  const allStoryCards = createElement("div", "critical-dnd__full-stories");
+  stories.forEach(([number, heading, description, level, tags]) => {
+    const card = createElement("article", "critical-dnd__full-story");
+    card.append(createElement("span", "critical-dnd__story-number", number), createElement("div", "critical-dnd__eyebrow", level), createElement("h2", "", heading), createElement("p", "", description), createElement("small", "", tags));
+    const link = createElement("a", "button button--secondary critical-dnd__button", "Играть эту главу →");
+    link.href = "/games/dnd/play";
+    card.append(link);
+    allStoryCards.append(card);
+  });
+  adventuresPage.append(allStoryCards);
+
+  const roomsPage = createElement("section", "critical-dnd__page");
+  roomsPage.dataset.dndPage = "rooms";
+  roomsPage.append(
+    createElement("span", "critical-dnd__eyebrow", "СОБЕРИ СВОЮ ПАРТИЮ"),
+    createElement("h1", "critical-dnd__page-title", "Игровые комнаты"),
+    createElement("p", "critical-dnd__lead", "Создавай публичные или закрытые комнаты, приглашай друзей по коду и продолжай кампанию вместе. Все действия выполняются через Biblio, а не в локальной демо-копии."),
+  );
+  const roomLink = createElement("a", "button button--primary critical-dnd__button", currentUser ? "Открыть комнаты и создать свою ↗" : "Войти и открыть игровые комнаты ↗");
+  roomLink.href = "/games/dnd/play";
+  roomsPage.append(roomLink);
+
+  content.append(overviewPage, adventuresPage, roomsPage);
+  main.append(top, content);
+  shell.append(side, main);
+  panel.append(shell);
+  panel.hidden = false;
+  panel.focus();
+  document.title = "Критический успех — D&D | Biblio";
+
+  panel.querySelectorAll("[data-dnd-tab]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = button.dataset.dndTab;
+      panel.querySelectorAll("[data-dnd-page]").forEach((page) => page.classList.toggle("is-active", page.dataset.dndPage === target));
+      panel.querySelectorAll(".critical-dnd__nav [data-dnd-tab]").forEach((item) => item.classList.toggle("is-active", item.dataset.dndTab === target));
+      if (target === "rooms") location.href = "/games/dnd/play";
+      else window.scrollTo({ top: panel.getBoundingClientRect().top + window.scrollY, behavior: "smooth" });
+    });
+  });
+  startCatalogPresence(game.slug);
+}
+
+function renderCommunityGameDetail(game, panel) {
+  const title = game.title || "Игра сообщества";
   const hero = createElement("section", "game-page__hero");
-  hero.dataset.theme = game.cover_theme || "fantasy";
   const copy = createElement("div", "game-page__hero-copy");
   copy.append(
-    createElement("span", "game-page__eyebrow", isDnd ? "МИРЫ BIBLIO · НАСТОЛЬНЫЕ ПРИКЛЮЧЕНИЯ" : "МИРЫ BIBLIO · ИГРОВАЯ ЗОНА"),
-    createElement("h2", "", isDnd ? "История, которую вы создаёте вместе." : "Твоё следующее приключение начинается здесь."),
-    createElement("p", "", isDnd
-      ? "Собери друзей, придумай героя и отправляйся навстречу неизвестному. Здесь важны не только правила, но и решения, которые превращают игру в вашу общую историю."
-      : "Открой игровые комнаты, собери компанию и создай собственную историю вместе с сообществом Biblio."),
+    createElement("span", "game-page__eyebrow", "МИРЫ BIBLIO · ИГРОВАЯ ЗОНА"),
+    createElement("h2", "", "Твоё следующее приключение начинается здесь."),
+    createElement("p", "", game.description || "Открой игровые комнаты, собери компанию и создай собственную историю вместе с сообществом Biblio."),
   );
-  const tags = createElement("div", "game-page__tags");
-  (isDnd ? ["Персонажи и кампании", "Броски кубиков", "Истории без границ"] : ["Игровые комнаты", "Сообщество", "Совместная игра"])
-    .forEach((tag) => tags.append(createElement("span", "", tag)));
-  copy.append(tags);
-  const art = createElement("div", "game-page__hero-art");
-  art.setAttribute("aria-hidden", "true");
-  art.append(
-    createElement("span", "game-page__orbit game-page__orbit--one", ""),
-    createElement("span", "game-page__orbit game-page__orbit--two", ""),
-    createElement("span", "game-page__die", game.cover_symbol || "✦"),
-    createElement("small", "", isDnd ? "ROLL · EXPLORE · CREATE" : "PLAY · CREATE · SHARE"),
-  );
-  hero.append(copy, art);
-
-  const overview = createElement("section", "game-page__overview");
-  const cover = createElement("div", "game-page__cover");
-  cover.dataset.theme = game.cover_theme || "fantasy";
-  cover.append(
-    createElement("span", "game-page__cover-mark", game.cover_symbol || "✦"),
-    createElement("strong", "", title),
-    createElement("small", "", isDnd ? "THE ADVENTURE BEGINS" : "BIBLIO COMMUNITY GAME"),
-  );
-  const intro = createElement("div", "game-page__intro");
-  intro.append(
-    createElement("span", "eyebrow", "ЗНАКОМСТВО С ИГРОЙ"),
-    createElement("h2", "", title),
-    createElement("p", "game-page__description", game.description || "Описание игры скоро появится."),
-  );
-  const stats = createElement("div", "game-page__stats");
-  const ratingStat = createElement("div");
-  ratingStat.append(createElement("strong", "", game.rating_count ? Number(game.rating).toFixed(1) : "—"));
-  ratingStat.append(createElement("span", "", `Рейтинг · ${Number(game.rating_count || 0)} оценок`));
-  const onlineStat = createElement("div");
-  onlineStat.append(createElement("strong", "game-catalog-active-count", String(Number(game.active_viewers || 0))));
-  onlineStat.append(createElement("span", "", "Сейчас изучают игру"));
-  stats.append(ratingStat, onlineStat);
-  const rating = createElement("div", "game-page__rating");
-  rating.append(createElement("strong", "", "Понравилась игра?"));
-  const stars = createElement("div", "game-catalog-rating-stars");
-  stars.setAttribute("role", "group");
-  stars.setAttribute("aria-label", "Оценка игры");
-  for (let value = 1; value <= 5; value += 1) {
-    const button = createElement("button", "", "★");
-    button.type = "button";
-    button.dataset.rating = String(value);
-    button.setAttribute("aria-label", `${value} из 5`);
-    button.classList.toggle("is-selected", value <= Number(game.user_rating || 0));
-    button.addEventListener("click", () => rateCatalogGame(game.slug, value));
-    stars.append(button);
-  }
-  rating.append(stars, createElement("small", "game-catalog-detail__rating-message", currentUser ? "Оцени игру — оценку можно изменить." : "Войди, чтобы оставить оценку."));
-  intro.append(stats, rating);
-  overview.append(cover, intro);
-
-  const features = createElement("section", "game-page__features");
-  const sectionHeading = createElement("div", "game-page__section-heading");
-  sectionHeading.append(
-    createElement("span", "eyebrow", "КАК ЭТО УСТРОЕНО"),
-    createElement("h2", "", isDnd ? "Всё для вашей кампании" : "Играй вместе с Biblio"),
-    createElement("p", "", isDnd
-      ? "Основные инструменты уже собраны в одном месте — от первой идеи до большой игровой сессии."
-      : "Создавай комнаты и приглашай друзей в собственные игровые истории."),
-  );
-  const featureGrid = createElement("div", "game-page__feature-grid");
-  const featureItems = isDnd ? [
-    ["✧", "Создай героя", "Заполни лист персонажа, выбери класс и расу, следи за характеристиками, здоровьем и опытом."],
-    ["◇", "Собери партию", "Создай открытую или закрытую комнату, пригласи участников и играйте в одной кампании."],
-    ["⚄", "Играй по ходу истории", "Бросай кубики, веди инициативу, управляй боем и отмечай заклинания и снаряжение."],
-  ] : [
-    ["✧", "Открой комнату", "Создай пространство для своей игры и настрой доступ."],
-    ["◇", "Пригласи друзей", "Собери участников и начни совместную историю."],
-    ["⚄", "Продолжай вместе", "Возвращайся в комнату и развивай игру с сообществом."],
-  ];
-  featureItems.forEach(([icon, heading, description]) => {
-    const item = createElement("article", "game-page__feature");
-    item.append(createElement("span", "game-page__feature-icon", icon), createElement("h3", "", heading), createElement("p", "", description));
-    featureGrid.append(item);
-  });
-  features.append(sectionHeading, featureGrid);
-
-  if (isDnd) {
-    const world = createElement("section", "game-page__world");
-    const worldHeading = createElement("div", "game-page__world-heading");
-    worldHeading.append(
-      createElement("span", "game-page__eyebrow", "ЗА ПРЕДЕЛАМИ ОБЫДЕННОГО"),
-      createElement("h2", "", "Мир ждёт твоего решения"),
-      createElement("p", "", "Каждая партия — отдельная легенда. Выбери, каким будет следующий поворот вашей истории."),
-    );
-    const worldGrid = createElement("div", "game-page__world-grid");
-    [
-      ["I", "Зов приключений", "Исследуйте древние руины, опасные подземелья и места, которых ещё нет на картах.", "game-page__world-card--ruins"],
-      ["II", "Испытание клинком", "Сражайтесь с чудовищами, продумывайте тактику и действуйте сообща.", "game-page__world-card--battle"],
-      ["III", "Тайны и магия", "Разгадывайте загадки, ищите артефакты и меняйте ход событий одним решением.", "game-page__world-card--arcane"],
-    ].forEach(([number, heading, description, theme]) => {
-      const card = createElement("article", `game-page__world-card ${theme}`);
-      card.append(
-        createElement("span", "game-page__world-number", number),
-        createElement("div", "game-page__world-card-copy",
-          ""),
-      );
-      const copy = card.querySelector(".game-page__world-card-copy");
-      copy.append(createElement("h3", "", heading), createElement("p", "", description));
-      worldGrid.append(card);
-    });
-    world.append(worldHeading, worldGrid);
-    features.after(world);
-  }
-
-  const cta = createElement("section", "game-page__cta");
-  const ctaCopy = createElement("div");
-  ctaCopy.append(
-    createElement("span", "game-page__eyebrow", "ТВОЙ ХОД"),
-    createElement("h2", "", isDnd ? "Готов начать своё приключение?" : "Готов начать игру?"),
-    createElement("p", "", isDnd ? "Выбери комнату или создай новую — остальное зависит от вашей фантазии." : "Загляни в комнаты сообщества или создай собственную."),
-  );
-  const actions = createElement("div", "game-page__actions");
-  const playButton = createElement("a", "button button--primary game-page__primary-action", "Открыть игровые комнаты →");
-  playButton.href = `/games/${encodeURIComponent(game.slug)}/play`;
-  const catalogButton = createElement("a", "game-page__back-link", "← Вернуться ко всем играм");
-  catalogButton.href = "/games";
-  actions.append(playButton, catalogButton);
-  cta.append(ctaCopy, actions);
-
-  panel.append(breadcrumb, hero, overview, features, cta);
+  const cta = createElement("a", "button button--primary game-page__primary-action", "Открыть игровые комнаты →");
+  cta.href = `/games/${encodeURIComponent(game.slug)}/play`;
+  panel.append(hero, cta);
+  hero.append(copy);
   panel.hidden = false;
   panel.focus();
   document.title = `${title} — Игры | Biblio`;
