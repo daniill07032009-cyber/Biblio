@@ -1607,7 +1607,7 @@ function renderCatalogGameDetail(game) {
   panel.append(shell);
   panel.hidden = false;
   panel.focus();
-  document.title = "Критический успех — D&D | Biblio";
+  document.title = "Критический успех — D&D";
 
   panel.querySelectorAll("[data-dnd-tab]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -1697,7 +1697,7 @@ function renderGameRoomsPage(game) {
   panel.append(header, roomsSection);
   panel.hidden = false;
   panel.focus();
-  document.title = `Игровые комнаты — ${game.title} | Biblio`;
+  document.title = `Игровые комнаты — ${game.title}`;
   startCatalogPresence(game.slug);
 }
 
