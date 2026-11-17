@@ -1840,6 +1840,7 @@ body[data-game-site="true"] {
   min-height: 100vh;
   background: #11150f;
 }
+body[data-game-site="true"] .announcement,
 body[data-game-site="true"] .site-header,
 body[data-game-site="true"] .site-footer,
 body[data-game-site="true"] main > section:not(#games-page),
