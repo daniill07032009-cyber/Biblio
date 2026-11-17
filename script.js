@@ -2073,6 +2073,7 @@ function renderGameDetail(game) {
       <input type="number" name="${field.key}" min="${field.min}" max="${field.max}" value="${Number(hero[field.key] ?? field.value)}" required />
     </label>
   `).join("");
+  const races = ["Человек","Эльф","Высший эльф","Лесной эльф","Дроу","Полуэльф","Дварф","Холмовой дварф","Горный дварф","Дуэргар","Халфлинг","Легконогий халфлинг","Коренастый халфлинг","Гном","Лесной гном","Скальный гном","Глубинный гном","Полуорк","Орк","Тифлинг","Аасимар","Драконорождённый","Гитъянки","Гитцерай","Табакси","Кенку","Ааракокра","Генази воздуха","Генази воды","Генази земли","Генази огня","Голиаф","Фирболг","Сатир","Кентавр","Минотавр","Леонин","Тритон","Локсодон","Ведалкен","Симик-гибрид","Калаштар","Перевёртыш","Шифтер","Варфорджед","Черепаха-тортл","Грунг","Харенгон","Аулин","Фея","Плазмоид","Автогном","Возрождённый","Дампир","Хексблад","Астральный эльф","Арлинг","Хобгоблин","Багбир","Кобольд","Гоблин","Юань-ти","Ящеролюд","Тэнгу","Огненный генази","Морской эльф","Эладрин","Морской полуэльф","Крылатый тифлинг","Сумеречный эльф"];
   const heroStats = (hero) => GAME_STAT_FIELDS.map((field) =>
     `<span>${field.label}: ${Number(hero[field.key] ?? field.value)}</span>`
   ).join("");
@@ -2309,12 +2310,12 @@ function renderGameDetail(game) {
       <div class="game-detail__section" id="game-hero-section">
         <strong>${currentHero ? "Мой персонаж" : "Создание персонажа"}</strong>
         ${canJoin && !currentHero ? "<p>Чтобы вступить в приключение, сначала создай персонажа. Ведущий комнаты исключение — ему герой не нужен.</p>" : ""}
-        <form id="game-hero-form" class="games-form">
-          <label>Имя героя<input name="hero_name" maxlength="80" value="${escapeHtml(heroName)}" required /></label>
-          <label>Класс<input name="hero_class" maxlength="60" value="${escapeHtml(heroClass)}" /></label>
-          <label>Раса<input name="race" maxlength="60" value="${escapeHtml(heroRace)}" /></label>
-          ${currentHero ? "" : `<div class="game-stat-grid">${statInputs()}</div>`}
-          <button class="button button--primary" type="submit">Сохранить героя</button>
+        <form id="game-hero-form" class="games-form game-hero-create-form">
+          <div class="game-hero-account"><span>НИК АККАУНТА BIBLIO</span><strong>${escapeHtml(currentUser.display_name || currentUser.username || "Игрок")}</strong><small>Подставлен автоматически из твоего профиля</small></div>
+          <label>Имя героя<input name="hero_name" maxlength="80" value="${escapeHtml(heroName)}" placeholder="Например, Элиан Серебряный Лист" required /></label>
+          <label>Раса <small>Выбери одну из 70 рас</small><select name="race" required>${races.map((race) => `<option value="${escapeHtml(race)}" ${heroRace === race ? "selected" : ""}>${escapeHtml(race)}</option>`).join("")}</select></label>
+          <p class="game-hero-random-note">✦ Характеристики и очки навыков будут распределены случайно при создании. Повторно они не перебрасываются.</p>
+          <button class="button button--primary" type="submit">${currentHero ? "Сохранить имя и расу" : "✦ Создать персонажа"}</button>
         </form>
       </div>
     ` : ""}
@@ -2629,14 +2630,8 @@ function renderGameDetail(game) {
       try {
         const payload = {
           name: formData.get("hero_name") || "",
-          class_name: formData.get("hero_class") || "",
           race: formData.get("race") || "",
         };
-        if (!currentHero) {
-          GAME_STAT_FIELDS.forEach((field) => {
-            payload[field.key] = Number(formData.get(field.key));
-          });
-        }
         const result = await api(`/api/games/${game.id}/characters`, { method: "POST", body: JSON.stringify(payload) });
         if (result.character) {
           const refreshedGame = await api(`/api/games/${game.id}`);
