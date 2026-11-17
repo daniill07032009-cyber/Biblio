@@ -1126,6 +1126,8 @@ class BiblioServerTests(unittest.TestCase):
         self.assertEqual(result["healing"], 6)
         self.assertEqual(result["hp"], 10)
         self.assertEqual(result["spell_slots"][0], 1)
+        with self.assertRaises(server.APIError):
+            server.game_character_cast({"spell": "Лечение ран", "level": 0}, character)
 
         full_health = {**character, "hp": 10, "spell_slots": [2, 0, 0, 0, 0, 0, 0, 0, 0]}
         with patch("server.secrets.randbelow", return_value=0):
