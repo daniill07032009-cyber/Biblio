@@ -2151,6 +2151,7 @@ function renderGameDetail(game) {
     <div class="game-detail__header">
       <div><span class="eyebrow">${isGameMaster ? "Ведущий" : "Игрок"} · Игровая комната</span><h3>${escapeHtml(title)}</h3></div>
       <div class="game-detail__header-actions">
+        ${canJoin && !currentHero ? `<button class="button button--primary" type="button" data-game-action="create-hero">✦ Создать персонажа</button>` : ""}
         ${canJoin && game.access === "public" ? `<button class="button button--primary" type="button" data-game-action="join" ${currentHero ? "" : "disabled title=\"Сначала создай героя\""}>${currentHero ? "Вступить" : "Сначала создай героя"}</button>` : ""}
         ${canLeave ? `<button class="button button--secondary" type="button" data-game-action="leave">Покинуть</button>` : ""}
         <button class="button button--secondary" type="button" data-game-action="back">${/\/play\/?$/.test(location.pathname) ? "← К комнатам" : "← К игре"}</button>
@@ -2305,8 +2306,8 @@ function renderGameDetail(game) {
       </div>
     ` : ""}
     ${currentUser && (game.is_member || canJoin) && !isGameMaster ? `
-      <div class="game-detail__section">
-        <strong>${currentHero ? "Мой персонаж" : "Сначала создай героя"}</strong>
+      <div class="game-detail__section" id="game-hero-section">
+        <strong>${currentHero ? "Мой персонаж" : "Создание персонажа"}</strong>
         ${canJoin && !currentHero ? "<p>Чтобы вступить в приключение, сначала создай персонажа. Ведущий комнаты исключение — ему герой не нужен.</p>" : ""}
         <form id="game-hero-form" class="games-form">
           <label>Имя героя<input name="hero_name" maxlength="80" value="${escapeHtml(heroName)}" required /></label>
@@ -2543,6 +2544,15 @@ function renderGameDetail(game) {
       showToast(error.message);
     }
   });
+
+  const createHeroButton = panel.querySelector('[data-game-action="create-hero"]');
+  if (createHeroButton) {
+    createHeroButton.addEventListener("click", () => {
+      const heroSection = panel.querySelector("#game-hero-section");
+      heroSection?.scrollIntoView({ behavior: "smooth", block: "center" });
+      heroSection?.querySelector('input[name="hero_name"]')?.focus({ preventScroll: true });
+    });
+  }
 
   const joinButton = panel.querySelector('[data-game-action="join"]');
   if (joinButton) {
