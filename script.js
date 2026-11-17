@@ -2151,7 +2151,7 @@ function renderGameDetail(game) {
     <div class="game-detail__header">
       <div><span class="eyebrow">${isGameMaster ? "Ведущий" : "Игрок"} · Игровая комната</span><h3>${escapeHtml(title)}</h3></div>
       <div class="game-detail__header-actions">
-        ${canJoin && game.access === "public" ? `<button class="button button--primary" type="button" data-game-action="join">Вступить</button>` : ""}
+        ${canJoin && game.access === "public" ? `<button class="button button--primary" type="button" data-game-action="join" ${currentHero ? "" : "disabled title=\"Сначала создай героя\""}>${currentHero ? "Вступить" : "Сначала создай героя"}</button>` : ""}
         ${canLeave ? `<button class="button button--secondary" type="button" data-game-action="leave">Покинуть</button>` : ""}
         <button class="button button--secondary" type="button" data-game-action="back">${/\/play\/?$/.test(location.pathname) ? "← К комнатам" : "← К игре"}</button>
       </div>
@@ -2304,9 +2304,10 @@ function renderGameDetail(game) {
         ${game.is_owner ? `<p>Чтобы участники нашли комнату, сообщи им также свой ник: ${escapeHtml(currentUser.display_name)}.</p>` : ""}
       </div>
     ` : ""}
-    ${currentUser && game.is_member && !isGameMaster ? `
+    ${currentUser && (game.is_member || canJoin) && !isGameMaster ? `
       <div class="game-detail__section">
-        <strong>${currentHero ? "Мой персонаж" : "Создать персонажа"}</strong>
+        <strong>${currentHero ? "Мой персонаж" : "Сначала создай героя"}</strong>
+        ${canJoin && !currentHero ? "<p>Чтобы вступить в приключение, сначала создай персонажа. Ведущий комнаты исключение — ему герой не нужен.</p>" : ""}
         <form id="game-hero-form" class="games-form">
           <label>Имя героя<input name="hero_name" maxlength="80" value="${escapeHtml(heroName)}" required /></label>
           <label>Класс<input name="hero_class" maxlength="60" value="${escapeHtml(heroClass)}" /></label>
@@ -2316,7 +2317,8 @@ function renderGameDetail(game) {
         </form>
       </div>
     ` : ""}
-    ${canJoin && game.access !== "public" ? `
+    ${canJoin && game.access !== "public" && !currentHero ? `<div class="game-detail__section"><strong>Вступление пока закрыто</strong><p>Сохрани героя выше — после этого появится форма входа.</p></div>` : ""}
+    ${canJoin && game.access !== "public" && currentHero ? `
       <div class="game-detail__section">
         <strong>Вступить в комнату</strong>
         <form id="game-join-form" class="games-form">
