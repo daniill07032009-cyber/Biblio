@@ -747,3 +747,169 @@ body[data-game-site="true"] .dnd-workspace-panel .dnd-workspace__main,
 body[data-game-site="true"] .dnd-workspace-panel .dnd-workspace__body {
   background: var(--dnd-surface) !important;
 }
+
+
+/* Unified D&D finish: visual-only normalization across every existing D&D screen.
+   Keep the DOM, component order, dimensions and interactions unchanged. */
+body[data-game-site="true"] :is(
+  .dnd-workspace-panel, .dnd-workspace__main, .dnd-workspace__body,
+  .game-detail-panel, .game-catalog-detail, .game-catalog-rooms,
+  .game-catalog-room, .game-room-create, .dnd-play-card, .dnd-play-summary,
+  .dnd-gm-dashboard, .dnd-gm-box, .game-detail__section,
+  .game-hero-card, .game-combat, .game-spellbook, .game-dice,
+  .game-leaderboard, .game-catalog-card, .game-page__overview,
+  .game-page__feature, .game-page__cta
+) {
+  color: var(--dnd-text);
+  border-color: var(--dnd-line);
+}
+body[data-game-site="true"] :is(
+  .dnd-workspace-panel, .dnd-workspace__main, .dnd-workspace__body,
+  .game-detail-panel, .game-catalog-detail
+) {
+  background-color: var(--dnd-surface);
+}
+body[data-game-site="true"] :is(
+  .game-detail__section, .game-catalog-room, .game-room-create,
+  .dnd-play-card, .dnd-play-summary, .dnd-gm-dashboard,
+  .game-hero-card, .game-combat, .game-spellbook,
+  .game-leaderboard, .game-catalog-card, .game-page__overview,
+  .game-page__feature
+) {
+  border-radius: 14px;
+  border-color: var(--dnd-line);
+  box-shadow: none;
+}
+body[data-game-site="true"] :is(
+  .game-detail__section, .game-catalog-room, .game-room-create,
+  .dnd-play-card, .dnd-play-summary, .dnd-gm-dashboard,
+  .game-hero-card, .game-combat, .game-spellbook,
+  .game-leaderboard, .game-catalog-card, .game-page__overview,
+  .game-page__feature
+) {
+  background-color: var(--dnd-surface);
+  color: var(--dnd-text);
+}
+body[data-game-site="true"] :is(
+  .game-detail__section p, .game-detail__section li,
+  .game-catalog-room span, .game-catalog-detail p,
+  .game-room-create p, .dnd-play-card p, .dnd-play-summary p,
+  .game-hero-card small, .game-combat small, .game-spellbook small,
+  .game-page__feature p, .game-page__overview p
+) {
+  color: var(--dnd-muted);
+}
+body[data-game-site="true"] :is(
+  .game-detail__section h1, .game-detail__section h2,
+  .game-detail__section h3, .game-detail__section h4,
+  .game-catalog-detail h1, .game-catalog-detail h2,
+  .game-catalog-detail h3, .game-catalog-room strong,
+  .game-room-create h2, .game-room-create h3,
+  .dnd-play-card strong, .dnd-play-summary strong,
+  .game-hero-card strong, .game-combat strong,
+  .game-spellbook strong
+) {
+  color: var(--dnd-text);
+  text-shadow: none;
+}
+body[data-game-site="true"] :is(
+  .game-detail__section .eyebrow, .game-catalog-detail .eyebrow,
+  .game-room-create__eyebrow, .dnd-play-card__eyebrow,
+  .dnd-gm-dashboard .eyebrow
+) {
+  color: var(--dnd-accent-strong);
+}
+body[data-game-site="true"] :is(
+  .game-detail-panel button, .dnd-workspace button,
+  .dnd-workspace-panel button, .game-catalog-detail button,
+  .game-room-create button, .dnd-play-nav a
+) {
+  border-radius: 9px;
+  font: inherit;
+  transition: background-color .14s ease, border-color .14s ease, color .14s ease;
+}
+body[data-game-site="true"] :is(
+  .dnd-workspace button:not(.button--primary):not(.button--danger),
+  .dnd-workspace-panel button:not(.button--primary):not(.button--danger),
+  .game-detail-panel button:not(.button--primary):not(.button--danger),
+  .game-catalog-detail button:not(.button--primary):not(.button--danger),
+  .game-room-create button:not(.button--primary):not(.button--danger)
+) {
+  border-color: var(--dnd-line-strong);
+  background: var(--dnd-surface-raised);
+  color: var(--dnd-text);
+  box-shadow: none;
+}
+body[data-game-site="true"] :is(
+  .dnd-workspace button:not(:disabled):hover,
+  .dnd-workspace-panel button:not(:disabled):hover,
+  .game-detail-panel button:not(:disabled):hover,
+  .game-catalog-detail button:not(:disabled):hover,
+  .game-room-create button:not(:disabled):hover
+) {
+  border-color: var(--dnd-accent);
+}
+body[data-game-site="true"] :is(
+  .dnd-workspace .button--primary, .dnd-workspace-panel .button--primary,
+  .game-detail-panel .button--primary, .game-catalog-detail .button--primary,
+  .game-room-create .button--primary, .dnd-gm-dashboard .button--primary
+) {
+  border: 1px solid var(--dnd-accent-strong);
+  background: var(--dnd-accent);
+  color: var(--dnd-accent-ink);
+}
+body[data-game-site="true"] :is(
+  .dnd-workspace .button--danger, .dnd-workspace-panel .button--danger,
+  .game-detail-panel .button--danger, .game-catalog-detail .button--danger
+) {
+  border: 1px solid #875d5b;
+  background: #402b2d;
+  color: #f0c1bb;
+}
+body[data-game-site="true"] :is(
+  .dnd-workspace input, .dnd-workspace select, .dnd-workspace textarea,
+  .dnd-workspace-panel input, .dnd-workspace-panel select, .dnd-workspace-panel textarea,
+  .game-detail-panel input, .game-detail-panel select, .game-detail-panel textarea,
+  .game-catalog-detail input, .game-catalog-detail select, .game-catalog-detail textarea,
+  .game-room-create input, .game-room-create select, .game-room-create textarea
+) {
+  border: 1px solid var(--dnd-line-strong);
+  border-radius: 9px;
+  background: var(--dnd-bg-deep);
+  color: var(--dnd-text);
+  box-shadow: none;
+}
+body[data-game-site="true"] :is(
+  .dnd-workspace input, .dnd-workspace select, .dnd-workspace textarea,
+  .dnd-workspace-panel input, .dnd-workspace-panel select, .dnd-workspace-panel textarea,
+  .game-detail-panel input, .game-detail-panel select, .game-detail-panel textarea,
+  .game-catalog-detail input, .game-catalog-detail select, .game-catalog-detail textarea,
+  .game-room-create input, .game-room-create select, .game-room-create textarea
+):focus {
+  border-color: var(--dnd-accent);
+  outline: 2px solid #d8bd8333;
+  outline-offset: 1px;
+}
+body[data-game-site="true"] :is(
+  .dnd-workspace label, .dnd-workspace-panel label,
+  .game-detail-panel label, .game-catalog-detail label,
+  .game-room-create label
+) { color: var(--dnd-muted); }
+body[data-game-site="true"] :is(
+  .dnd-workspace hr, .dnd-workspace-panel hr,
+  .game-detail-panel hr, .game-catalog-detail hr
+) { border-color: var(--dnd-line); }
+body[data-game-site="true"] :is(
+  .game-catalog-room:hover, .game-catalog-card:hover,
+  .game-hero-card:hover, .dnd-play-card:hover
+) {
+  border-color: var(--dnd-line-strong);
+  box-shadow: none;
+}
+@media (max-width: 620px) {
+  body[data-game-site="true"] :is(
+    .game-detail__section, .game-catalog-room, .game-room-create,
+    .dnd-play-card, .dnd-play-summary, .dnd-gm-dashboard,
+    .game-hero-card, .game-combat, .game-spellbook
+  ) { border-radius: 12px; }
+}
