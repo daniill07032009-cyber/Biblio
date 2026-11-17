@@ -1048,7 +1048,7 @@ class BiblioServerTests(unittest.TestCase):
         state = server.game_combat_transition("damage", {"target_id": goblin["id"], "amount": 9}, [], state)
         goblin = next(item for item in state["combatants"] if item["id"] == goblin["id"])
         self.assertEqual(goblin["hp"], 0)
-        self.assertIn("0/7 HP", state["events"][-1]["message"])
+        self.assertIn("0/7)", state["events"][-1]["message"])
         state = server.game_combat_transition("heal", {"target_id": goblin["id"], "amount": 3}, [], state)
         goblin = next(item for item in state["combatants"] if item["id"] == goblin["id"])
         self.assertEqual(goblin["hp"], 3)
