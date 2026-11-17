@@ -2001,9 +2001,7 @@ window.setInterval(async () => {
     const snapshot = JSON.stringify(result.game);
     if (snapshot !== activeGameRoomSnapshot) {
       const scrollPosition = window.scrollY;
-      const activeHash = panel.querySelector(".dnd-play-nav a.is-active")?.getAttribute("href");
       renderGameDetail(result.game);
-      if (activeHash) panel.querySelector('.dnd-play-nav a[href="' + activeHash + '"]')?.click();
       window.scrollTo(0, scrollPosition);
     }
   } catch {
