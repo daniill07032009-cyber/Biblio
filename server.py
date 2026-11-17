@@ -799,7 +799,28 @@ def game_character_cast(payload, character):
         if slots["spell_slots"][index] < 1:
             raise APIError(HTTPStatus.CONFLICT, f"Нет свободных ячеек {level}-го уровня.")
         slots["spell_slots"][index] -= 1
-    return {"spell": spell_name, "level": level, **slots}
+
+    # Resolve only known, server-allowlisted effects; never trust client effect data.
+    healing_dice = {
+        "лечение ран": 8, "cure wounds": 8,
+        "лечебное слово": 4, "healing word": 4,
+    }
+    result = {"spell": spell_name, "level": level, **slots}
+    die = healing_dice.get(spell_name.casefold())
+    if die:
+        try:
+            current_hp = int(character.get("hp", 0) or 0)
+            max_hp = int(character.get("max_hp", 0) or 0)
+        except (TypeError, ValueError):
+            current_hp, max_hp = 0, 0
+        if max_hp < 1 or current_hp < 0 or current_hp > max_hp:
+            raise APIError(HTTPStatus.CONFLICT, "У персонажа некорректно настроено здоровье.")
+        dice_count = 2 if level > 1 else 1
+        healing = sum(secrets.randbelow(die) + 1 for _ in range(dice_count))
+        healing += max(0, level - 1)
+        actual = min(max_hp, current_hp + healing) - current_hp
+        result.update({"effect": "healing", "healing": actual, "hp": current_hp + actual, "max_hp": max_hp})
+    return result
 
 
 def game_character_record(row):
@@ -1910,9 +1931,9 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 if game["owner_id"] != user["id"] and target_user_id != user["id"]:
                     raise APIError(HTTPStatus.FORBIDDEN, "Использовать заклинания может сам игрок или ведущий.")
                 result = game_character_cast(self.read_json(), character)
-                db.game_characters.update_one({"game_id": game_id, "user_id": target_user_id}, {"$set": {"spell_slots": result["spell_slots"], "updated_at": utc_timestamp()}})
+                db.game_characters.update_one({"game_id": game_id, "user_id": target_user_id}, {"$set": {"spell_slots": result["spell_slots"], **({"hp": result["hp"]} if "hp" in result else {}), "updated_at": utc_timestamp()}})
                 updated = db.game_characters.find_one({"game_id": game_id, "user_id": target_user_id})
-                return {"character": game_character_record(updated), "cast": {"spell": result["spell"], "level": result["level"]}}, HTTPStatus.OK, []
+                return {"character": game_character_record(updated), "cast": {key: result[key] for key in ("spell", "level", "effect", "healing", "hp", "max_hp") if key in result}}, HTTPStatus.OK, []
             if game["owner_id"] != user["id"]:
                 raise APIError(HTTPStatus.FORBIDDEN, "Восстановить ячейки после продолжительного отдыха может только ведущий.")
             slots = game_character_spell_slots({}, character)
@@ -1935,9 +1956,12 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 if game["owner_id"] != user["id"] and target_user_id != user["id"]:
                     raise APIError(HTTPStatus.FORBIDDEN, "Использовать заклинания может сам игрок или ведущий.")
                 result = game_character_cast(self.read_json(), character)
-                db.execute("UPDATE game_characters SET spell_slots = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE game_id = ? AND user_id = ?", (json.dumps(result["spell_slots"]), game_id, target_user_id))
+                if "hp" in result:
+                    db.execute("UPDATE game_characters SET spell_slots = ?, hp = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE game_id = ? AND user_id = ?", (json.dumps(result["spell_slots"]), result["hp"], game_id, target_user_id))
+                else:
+                    db.execute("UPDATE game_characters SET spell_slots = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE game_id = ? AND user_id = ?", (json.dumps(result["spell_slots"]), game_id, target_user_id))
                 updated = db.execute("SELECT * FROM game_characters WHERE game_id = ? AND user_id = ?", (game_id, target_user_id)).fetchone()
-                return {"character": game_character_record(dict(updated)), "cast": {"spell": result["spell"], "level": result["level"]}}, HTTPStatus.OK, []
+                return {"character": game_character_record(dict(updated)), "cast": {key: result[key] for key in ("spell", "level", "effect", "healing", "hp", "max_hp") if key in result}}, HTTPStatus.OK, []
             if game["owner_id"] != user["id"]:
                 raise APIError(HTTPStatus.FORBIDDEN, "Восстановить ячейки после продолжительного отдыха может только ведущий.")
             slots = game_character_spell_slots({}, character)
