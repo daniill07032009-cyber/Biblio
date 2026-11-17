@@ -1528,6 +1528,34 @@ function renderCatalogGameDetail(game) {
   });
   features.append(sectionHeading, featureGrid);
 
+  if (isDnd) {
+    const world = createElement("section", "game-page__world");
+    const worldHeading = createElement("div", "game-page__world-heading");
+    worldHeading.append(
+      createElement("span", "game-page__eyebrow", "ЗА ПРЕДЕЛАМИ ОБЫДЕННОГО"),
+      createElement("h2", "", "Мир ждёт твоего решения"),
+      createElement("p", "", "Каждая партия — отдельная легенда. Выбери, каким будет следующий поворот вашей истории."),
+    );
+    const worldGrid = createElement("div", "game-page__world-grid");
+    [
+      ["I", "Зов приключений", "Исследуйте древние руины, опасные подземелья и места, которых ещё нет на картах.", "game-page__world-card--ruins"],
+      ["II", "Испытание клинком", "Сражайтесь с чудовищами, продумывайте тактику и действуйте сообща.", "game-page__world-card--battle"],
+      ["III", "Тайны и магия", "Разгадывайте загадки, ищите артефакты и меняйте ход событий одним решением.", "game-page__world-card--arcane"],
+    ].forEach(([number, heading, description, theme]) => {
+      const card = createElement("article", `game-page__world-card ${theme}`);
+      card.append(
+        createElement("span", "game-page__world-number", number),
+        createElement("div", "game-page__world-card-copy",
+          ""),
+      );
+      const copy = card.querySelector(".game-page__world-card-copy");
+      copy.append(createElement("h3", "", heading), createElement("p", "", description));
+      worldGrid.append(card);
+    });
+    world.append(worldHeading, worldGrid);
+    features.after(world);
+  }
+
   const cta = createElement("section", "game-page__cta");
   const ctaCopy = createElement("div");
   ctaCopy.append(
