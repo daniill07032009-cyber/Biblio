@@ -2012,6 +2012,8 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 refreshed = db.games.find_one({"id": game_id})
                 return {"game": game_record_row(refreshed, user_id=user["id"])}, HTTPStatus.OK, []
             if game_action_match.group(2) == "join":
+                if game["owner_id"] != user["id"] and not db.game_characters.find_one({"game_id": game_id, "user_id": user["id"]}):
+                    raise APIError(HTTPStatus.FORBIDDEN, "Сначала создай и сохрани персонажа, затем вступай в комнату.")
                 if db.game_participants.find_one({"game_id": game_id, "user_id": user["id"]}):
                     return {"ok": True, "joined": True}, HTTPStatus.OK, []
                 if game["access"] in {"private", "invite_only"}:
@@ -2041,9 +2043,6 @@ class BiblioHandler(BaseHTTPRequestHandler):
             if game_action_match.group(2) in {"characters", "heroes"}:
                 if game["owner_id"] == user["id"]:
                     raise APIError(HTTPStatus.FORBIDDEN, "Ведущий не создаёт персонажа в своей комнате.")
-                participant = db.game_participants.find_one({"game_id": game_id, "user_id": user["id"]})
-                if participant is None:
-                    raise APIError(HTTPStatus.FORBIDDEN, "Сначала вступи в комнату.")
                 payload = self.read_json()
                 name = self.valid_text(payload.get("name") or payload.get("hero_name"), "Имя героя", 1, 80)
                 class_name = self.valid_text(payload.get("class_name") or payload.get("archetype") or payload.get("hero_class") or "", "Класс героя", 0, 60)
@@ -2986,6 +2985,11 @@ class BiblioHandler(BaseHTTPRequestHandler):
                     "is_owner": True,
                 }, user_id=user["id"])}, HTTPStatus.OK, []
             if action == "join":
+                if game["owner_id"] != user["id"] and db.execute(
+                    "SELECT 1 FROM game_characters WHERE game_id = ? AND user_id = ?",
+                    (game_id, user["id"]),
+                ).fetchone() is None:
+                    raise APIError(HTTPStatus.FORBIDDEN, "Сначала создай и сохрани персонажа, затем вступай в комнату.")
                 existing = db.execute(
                     "SELECT 1 FROM game_participants WHERE game_id = ? AND user_id = ?",
                     (game_id, user["id"]),
@@ -3026,12 +3030,6 @@ class BiblioHandler(BaseHTTPRequestHandler):
             if action in {"characters", "heroes"}:
                 if game["owner_id"] == user["id"]:
                     raise APIError(HTTPStatus.FORBIDDEN, "Ведущий не создаёт персонажа в своей комнате.")
-                participant = db.execute(
-                    "SELECT 1 FROM game_participants WHERE game_id = ? AND user_id = ?",
-                    (game_id, user["id"]),
-                ).fetchone()
-                if participant is None:
-                    raise APIError(HTTPStatus.FORBIDDEN, "Сначала вступи в комнату.")
                 payload = self.read_json()
                 name = self.valid_text(payload.get("name") or payload.get("hero_name"), "Имя героя", 1, 80)
                 class_name = self.valid_text(payload.get("class_name") or payload.get("archetype") or payload.get("hero_class") or "", "Класс героя", 0, 60)
