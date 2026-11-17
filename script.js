@@ -1851,6 +1851,16 @@ function renderGameDetail(game) {
             <div class="game-hero-card__hp-track" role="progressbar" aria-label="Здоровье персонажа" aria-valuemin="0" aria-valuemax="${Number(hero.max_hp || 10)}" aria-valuenow="${Number(hero.hp || 0)}"><span style="width:${Math.max(0, Math.min(100, Number(hero.hp || 0) / Math.max(1, Number(hero.max_hp || 10)) * 100))}%"></span></div>
             <div class="game-hero-card__stats">${heroStats(hero)}</div>
           </div>
+          ${(isGameMaster || Number(hero.user_id) === Number(currentUser?.id)) ? `
+            <form class="games-form game-hero-card__loadout" data-hero-user-id="${Number(hero.user_id)}">
+              <label>Инвентарь <small>Один предмет на строку</small><textarea name="inventory" rows="3" maxlength="4000" placeholder="Зелье лечения&#10;Верёвка 15 м&#10;Факел">${escapeHtml((hero.inventory || []).join("\n"))}</textarea></label>
+              <label>Заклинания <small>Одно заклинание на строку</small><textarea name="spells" rows="3" maxlength="4000" placeholder="Волшебная стрела&#10;Щит&#10;Лечение ран">${escapeHtml((hero.spells || []).join("\n"))}</textarea></label>
+              <button class="button button--secondary" type="submit">Сохранить инвентарь и заклинания</button>
+            </form>
+          ` : `<div class="game-hero-card__loadout-preview">
+            <strong>Инвентарь</strong><p>${(hero.inventory || []).length ? (hero.inventory || []).map(escapeHtml).join(" · ") : "Пока пусто"}</p>
+            <strong>Заклинания</strong><p>${(hero.spells || []).length ? (hero.spells || []).map(escapeHtml).join(" · ") : "Нет записанных заклинаний"}</p>
+          </div>`}
           ${isGameMaster ? `
             <form class="games-form game-hero-card__hp-form" data-hero-user-id="${Number(hero.user_id)}">
               <label>Текущее HP<input type="number" name="hp" min="0" max="${Number(hero.max_hp || 10)}" value="${Number(hero.hp || 0)}" required /></label>
@@ -2051,6 +2061,31 @@ function renderGameDetail(game) {
       }
     });
   }
+
+  panel.querySelectorAll(".game-hero-card__loadout").forEach((form) => {
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const formData = new FormData(form);
+      const toList = (value) => String(value || "").split(/\\r?\\n/).map((item) => item.trim()).filter(Boolean);
+      const inventory = toList(formData.get("inventory"));
+      const spells = toList(formData.get("spells"));
+      if (inventory.length > 40 || spells.length > 40 || [...inventory, ...spells].some((item) => item.length > 100)) {
+        showToast("Максимум 40 записей в каждом списке, до 100 символов каждая");
+        return;
+      }
+      try {
+        await api(`/api/games/${game.id}/characters/${form.dataset.heroUserId}`, {
+          method: "PATCH",
+          body: JSON.stringify({ inventory, spells }),
+        });
+        const refreshedGame = await api(`/api/games/${game.id}`);
+        renderGameDetail(refreshedGame.game);
+        showToast("Инвентарь и заклинания сохранены");
+      } catch (error) {
+        showToast(error.message);
+      }
+    });
+  });
 
   panel.querySelectorAll(".game-hero-card__hp-form").forEach((form) => {
     form.addEventListener("submit", async (event) => {
