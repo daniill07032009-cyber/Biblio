@@ -1761,3 +1761,69 @@ html[data-reader-theme="dark"] .reader-dialog { --surface: #20231f; }
   .game-page__world-card{min-height:190px}
 }
 @media(max-width:420px){.game-page__hero{grid-template-columns:minmax(0,1fr) 70px}.game-page__die{width:66px;height:75px;font-size:21px}}
+
+
+/* Critical Success — D&D campaign hub, integrated into the Biblio page shell. */
+.critical-dnd{--cd-bg:#100d14;--cd-panel:#19141e;--cd-panel2:#211a27;--cd-line:#3a2e40;--cd-gold:#d7ad69;--cd-gold-light:#f0d39d;--cd-text:#f4ecdf;--cd-muted:#b0a4b4;display:grid;grid-template-columns:218px minmax(0,1fr);min-height:850px;overflow:hidden;border:1px solid #3b3040;border-radius:18px;background:radial-gradient(ellipse at 82% 0%,#302235 0,transparent 36%),var(--cd-bg);color:var(--cd-text);box-shadow:0 24px 70px rgba(25,17,29,.18);font-family:var(--sans)}
+.critical-dnd *{box-sizing:border-box}
+.critical-dnd__side{position:relative;display:flex;min-width:0;flex-direction:column;padding:25px 15px;background:rgba(13,10,17,.82);border-right:1px solid var(--cd-line)}
+.critical-dnd__brand{padding:5px 8px 24px;color:var(--cd-gold);font:700 16px/1.3 Georgia,serif;letter-spacing:1.1px}
+.critical-dnd__brand small{display:block;margin-top:6px;color:#95899b;font:700 8px var(--sans);letter-spacing:2px}
+.critical-dnd__profile{display:flex;align-items:center;gap:10px;margin-bottom:25px;padding:12px 10px;border:1px solid var(--cd-line);border-radius:11px;background:var(--cd-panel);font-size:11px;font-weight:700;overflow-wrap:anywhere}
+.critical-dnd__avatar{display:grid;width:36px;height:36px;flex:0 0 auto;place-items:center;border-radius:50%;background:linear-gradient(135deg,#755a40,#382942);color:var(--cd-gold-light);font-size:18px}
+.critical-dnd__nav-label,.critical-dnd__eyebrow{color:var(--cd-gold);font-size:9px;font-weight:800;letter-spacing:2px}
+.critical-dnd__nav-label{padding:0 10px 8px;color:#897d8d}
+.critical-dnd__nav{display:grid;gap:4px}
+.critical-dnd__nav button{display:flex;align-items:center;gap:11px;width:100%;padding:12px 10px;border:0;border-radius:8px;background:transparent;color:#c0b5c4;text-align:left;font-size:11px;cursor:pointer;transition:background .18s,color .18s}
+.critical-dnd__nav button:hover,.critical-dnd__nav button.is-active{background:#2a202f;color:var(--cd-gold-light)}
+.critical-dnd__nav-icon{width:20px;text-align:center;font-size:16px}
+.critical-dnd__side-note{margin:auto 8px 0;padding-top:24px;color:#837787;font-size:8px;line-height:1.8;letter-spacing:1.3px}
+.critical-dnd__main{min-width:0}
+.critical-dnd__top{position:sticky;top:0;z-index:2;display:flex;min-height:57px;align-items:center;justify-content:space-between;gap:12px;padding:0 25px;border-bottom:1px solid var(--cd-line);background:rgba(16,13,20,.88);backdrop-filter:blur(14px)}
+.critical-dnd__crumb{display:flex;flex-wrap:wrap;gap:8px;color:var(--cd-muted);font-size:10px}
+.critical-dnd__crumb strong{color:var(--cd-text)}
+.critical-dnd__crumb a:hover{color:var(--cd-gold-light)}
+.critical-dnd__status{padding:7px 10px;border:1px solid var(--cd-line);border-radius:30px;color:var(--cd-gold-light);font-size:8px;font-weight:800;letter-spacing:1px;white-space:nowrap}
+.critical-dnd__content{display:grid;gap:28px;padding:25px}
+.critical-dnd__page{display:none;min-width:0}
+.critical-dnd__page.is-active{display:grid;gap:24px;animation:criticalFade .24s ease}
+@keyframes criticalFade{from{opacity:.5;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+.critical-dnd__hero{position:relative;display:flex;min-height:310px;flex-direction:column;justify-content:center;align-items:flex-start;overflow:hidden;padding:clamp(25px,4vw,48px);border:1px solid #695039;border-radius:14px;background:radial-gradient(ellipse at 82% 20%,rgba(111,128,154,.34),transparent 27%),radial-gradient(ellipse at 75% 100%,rgba(181,111,62,.24),transparent 34%),linear-gradient(110deg,#171421 0%,#1e2532 54%,#382b2b 100%)}
+.critical-dnd__hero:after{position:absolute;right:6%;top:2%;color:#e3c58a16;content:"✧";font-size:clamp(130px,20vw,230px);pointer-events:none}
+.critical-dnd__hero>*{position:relative;z-index:1}
+.critical-dnd__hero h1{max-width:650px;margin:13px 0 12px;color:#fff5e6;font:700 clamp(34px,5vw,59px)/1.04 Georgia,serif;letter-spacing:-1.7px}
+.critical-dnd__hero h1:after{display:block;margin-top:5px;color:var(--cd-gold);content:"БРОСАЙ КУБИК."}
+.critical-dnd__hero p{max-width:600px;margin:0;color:#d0c5d0;font-size:12px;line-height:1.85}
+.critical-dnd__actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:22px}
+.critical-dnd__button{min-height:40px;padding:10px 15px;border-radius:7px;font-size:10px;font-weight:800;letter-spacing:.4px}
+.critical-dnd__section-head{display:grid;gap:7px}
+.critical-dnd__section-head h2,.critical-dnd__page-title{margin:0;color:var(--cd-text);font:600 clamp(23px,3vw,31px)/1.2 Georgia,serif}
+.critical-dnd__section-head p,.critical-dnd__lead{max-width:700px;margin:0;color:var(--cd-muted);font-size:11px;line-height:1.75}
+.critical-dnd__mode-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px}
+.critical-dnd__mode{display:flex;min-height:190px;flex-direction:column;align-items:flex-start;padding:18px;border:1px solid var(--cd-line);border-radius:12px;background:linear-gradient(145deg,#201a26,#151119);transition:transform .2s,border-color .2s}
+.critical-dnd__mode:hover{transform:translateY(-3px);border-color:#8a704d}
+.critical-dnd__mode-icon{font-size:23px}
+.critical-dnd__mode h3{margin:12px 0 5px;color:var(--cd-text);font:600 17px Georgia,serif}
+.critical-dnd__mode p{flex:1;margin:0 0 14px;color:var(--cd-muted);font-size:10px;line-height:1.7}
+.critical-dnd__text-link{color:var(--cd-gold-light);font-size:9px;font-weight:800}
+.critical-dnd__text-link:hover{text-decoration:underline}
+.critical-dnd__stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.critical-dnd__stat{display:grid;gap:5px;padding:14px;border:1px solid var(--cd-line);border-radius:10px;background:#100d14}
+.critical-dnd__stat strong{color:var(--cd-gold);font:600 25px Georgia,serif}
+.critical-dnd__stat small{color:var(--cd-muted);font-size:8px;font-weight:800;letter-spacing:1px}
+.critical-dnd__campaign-preview{display:grid;gap:15px;padding:20px;border:1px solid var(--cd-line);border-radius:13px;background:rgba(25,20,30,.86)}
+.critical-dnd__story-list{display:grid;gap:8px}
+.critical-dnd__story{display:grid;grid-template-columns:44px minmax(0,1fr);gap:13px;align-items:center;padding:12px;border:1px solid #382e40;border-radius:9px;background:#17131c}
+.critical-dnd__story-number{color:var(--cd-gold);font:600 22px Georgia,serif;text-align:center}
+.critical-dnd__story h3{margin:0 0 4px;color:var(--cd-text);font:600 14px Georgia,serif}
+.critical-dnd__story p{margin:0;color:var(--cd-muted);font-size:10px;line-height:1.6}
+.critical-dnd__story small{display:block;margin-top:6px;color:#b99b70;font-size:8px;letter-spacing:.4px}
+.critical-dnd__full-stories{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.critical-dnd__full-story{display:flex;min-height:220px;flex-direction:column;align-items:flex-start;gap:10px;padding:20px;border:1px solid var(--cd-line);border-radius:12px;background:linear-gradient(145deg,#201a26,#151119)}
+.critical-dnd__full-story .critical-dnd__story-number{align-self:flex-start}
+.critical-dnd__full-story h2{margin:0;color:var(--cd-text);font:600 20px Georgia,serif}
+.critical-dnd__full-story p{flex:1;margin:0;color:var(--cd-muted);font-size:11px;line-height:1.7}
+.critical-dnd__full-story small{color:var(--cd-gold-light);font-size:9px}
+.critical-dnd__full-story .button{margin-top:4px}
+@media(max-width:900px){.critical-dnd{grid-template-columns:72px minmax(0,1fr)}.critical-dnd__side{align-items:center;padding:18px 7px}.critical-dnd__brand{font-size:0;padding:6px 0 24px}.critical-dnd__brand:first-letter{font-size:19px}.critical-dnd__brand small,.critical-dnd__profile>span:last-child,.critical-dnd__nav-label,.critical-dnd__nav button span:last-child,.critical-dnd__side-note{display:none}.critical-dnd__profile{justify-content:center;padding:7px}.critical-dnd__nav{width:100%}.critical-dnd__nav button{justify-content:center;padding:13px 3px}.critical-dnd__mode-grid{grid-template-columns:1fr}.critical-dnd__mode{min-height:0}.critical-dnd__mode p{margin-bottom:12px}}
+@media(max-width:620px){.critical-dnd{grid-template-columns:1fr;min-height:0;border-radius:13px}.critical-dnd__side{position:sticky;top:0;z-index:4;display:block;padding:0;border-right:0;border-bottom:1px solid var(--cd-line)}.critical-dnd__brand,.critical-dnd__profile,.critical-dnd__nav-label,.critical-dnd__side-note{display:none}.critical-dnd__nav{display:flex;justify-content:stretch;gap:3px;padding:5px}.critical-dnd__nav button{display:flex;flex:1;flex-direction:column;gap:4px;padding:8px 3px;font-size:8px}.critical-dnd__nav button span:last-child{display:block}.critical-dnd__nav-icon{font-size:15px}.critical-dnd__top{min-height:49px;padding:0 13px}.critical-dnd__content{gap:20px;padding:13px}.critical-dnd__hero{min-height:285px;padding:23px 19px}.critical-dnd__hero h1{font-size:36px}.critical-dnd__stats{gap:6px}.critical-dnd__stat{padding:10px}.critical-dnd__stat strong{font-size:21px}.critical-dnd__stat small{font-size:7px;letter-spacing:.4px}.critical-dnd__full-stories{grid-template-columns:1fr}.critical-dnd__campaign-preview{padding:14px}.critical-dnd__story{grid-template-columns:35px minmax(0,1fr);gap:9px;padding:10px}.critical-dnd__status{font-size:7px}}
