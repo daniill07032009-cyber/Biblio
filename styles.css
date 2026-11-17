@@ -1636,3 +1636,23 @@ html[data-reader-theme="dark"] .reader-dialog { --surface: #20231f; }
 .game-combat__attack-fields input,.game-combat__attack-fields select{width:100%;min-width:0;min-height:38px;padding:7px 9px;border:1px solid var(--border-color, #ddd);border-radius:8px;background:var(--surface, #fff);color:inherit}
 @media(max-width:700px){.game-combat__attack-fields{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:420px){.game-combat__attack-fields{grid-template-columns:1fr}}
+
+
+/* D&D spellbook and spell-slot tracker */
+.game-spellbook{display:grid;gap:12px;margin-top:16px;padding:15px;border:1px solid var(--border-color, #ddd);border-radius:14px;background:var(--surface-soft, rgba(120,130,110,.04))}
+.game-spellbook__heading{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.game-spellbook__heading span{font-size:12px;opacity:.65}
+.game-spellbook__slots{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:6px}
+.game-spellbook__slot{display:grid;gap:4px;padding:8px 4px;border:1px solid var(--border-color, #ddd);border-radius:9px;text-align:center}
+.game-spellbook__slot span{font-size:10px;opacity:.65}
+.game-spellbook__slot strong{font-size:13px;font-variant-numeric:tabular-nums}
+.game-spellbook__cast{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(130px,.8fr) auto;align-items:end;gap:10px}
+.game-spellbook__cast label,.game-spellbook__config-grid label{display:grid;gap:5px;font-size:12px}
+.game-spellbook__cast input,.game-spellbook__cast select,.game-spellbook__config-grid input{width:100%;min-width:0;min-height:36px;padding:6px 8px;border:1px solid var(--border-color, #ddd);border-radius:8px;background:var(--surface, #fff);color:inherit}
+.game-spellbook__configure{display:grid;gap:9px;padding-top:12px;border-top:1px solid var(--border-color, #ddd)}
+.game-spellbook__config-grid{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:7px}
+.game-spellbook__config-grid label{font-size:10px;text-align:center}
+.game-spellbook__config-grid input{text-align:center;padding:4px}
+.game-spellbook__rest{justify-self:start}
+@media(max-width:760px){.game-spellbook__slots,.game-spellbook__config-grid{grid-template-columns:repeat(5,minmax(0,1fr))}.game-spellbook__cast{grid-template-columns:1fr 1fr}.game-spellbook__cast button{grid-column:1/-1}}
+@media(max-width:420px){.game-spellbook__slots,.game-spellbook__config-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.game-spellbook__cast{grid-template-columns:1fr}}
