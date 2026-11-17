@@ -2231,6 +2231,36 @@ function renderGameDetail(game) {
       ${currentUser && Number(game.owner_id) === Number(currentUser.id) ? `<button class="button button--secondary" type="button" data-game-action="refresh">Обновить</button>` : ""}
     </div>
   `;
+  const dndAreaSpecs = [
+    ["progress", "Прогресс", "✦"],
+    ["party", "Персонажи", "♙"],
+    ["dice", "Кубики", "⚄"],
+    ["combat", "Сражение", "⚔"],
+    ["journal", "Журнал", "▤"],
+  ];
+  const detailSections = [...panel.querySelectorAll(":scope > .game-detail__section")];
+  detailSections.forEach((section, index) => {
+    const spec = dndAreaSpecs[index] || ["extra-" + index, "Дополнительно", "·"];
+    section.id = "dnd-area-" + spec[0];
+    section.dataset.dndArea = spec[0];
+    section.classList.add("dnd-play-card");
+    if (spec[0] === "party" || spec[0] === "combat") section.classList.add("dnd-play-card--wide");
+  });
+  const playNav = createElement("nav", "dnd-play-nav");
+  playNav.setAttribute("aria-label", "Разделы игрового стола");
+  dndAreaSpecs.forEach(([key, label, icon], index) => {
+    if (!detailSections[index]) return;
+    const link = createElement("a", index === 0 ? "is-active" : "");
+    link.href = "#dnd-area-" + key;
+    link.append(createElement("span", "dnd-play-nav__icon", icon), createElement("span", "", label));
+    link.addEventListener("click", () => {
+      playNav.querySelectorAll("a").forEach((item) => item.classList.toggle("is-active", item === link));
+    });
+    playNav.append(link);
+  });
+  const playGrid = createElement("div", "dnd-play-grid");
+  detailSections.forEach((section) => playGrid.append(section));
+  panel.append(playNav, playGrid);
   wrapDndWorkspace(panel, title, "rooms");
 
     panel.querySelector('[data-game-action="back"]')?.addEventListener("click", () => {
