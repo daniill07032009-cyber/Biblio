@@ -691,3 +691,50 @@ body[data-game-site="true"] .game-spellbook__config-grid input {
   background: var(--dnd-bg-deep);
   color: var(--dnd-text);
 }
+
+
+/* GM party panel: match the surrounding workspace panels and keep empty-state copy readable. */
+body[data-game-site="true"] .dnd-workspace-panel .dnd-gm-dashboard {
+  border: 1px solid var(--dnd-line);
+  border-radius: 16px;
+  background: var(--dnd-surface);
+  color: var(--dnd-text);
+  box-shadow: none;
+}
+body[data-game-site="true"] .dnd-workspace-panel .dnd-gm-box {
+  border: 1px solid var(--dnd-line);
+  background: var(--dnd-surface-raised);
+  color: var(--dnd-text);
+}
+body[data-game-site="true"] .dnd-workspace-panel .dnd-gm-dashboard__stats > div {
+  border: 1px solid var(--dnd-line);
+  background: var(--dnd-surface-soft);
+  color: var(--dnd-text);
+}
+body[data-game-site="true"] .dnd-workspace-panel .dnd-gm-roster__item,
+body[data-game-site="true"] .dnd-workspace-panel .dnd-gm-encounter__current {
+  border: 1px solid var(--dnd-line);
+  background: var(--dnd-surface-soft);
+  color: var(--dnd-text);
+}
+body[data-game-site="true"] .dnd-workspace-panel .dnd-gm-empty,
+body[data-game-site="true"] .dnd-workspace-panel .dnd-gm-roster > p,
+body[data-game-site="true"] .dnd-workspace-panel .dnd-gm-roster__empty,
+body[data-game-site="true"] .dnd-workspace-panel .dnd-gm-empty-state,
+body[data-game-site="true"] .dnd-workspace-panel .dnd-gm-box p {
+  color: var(--dnd-muted) !important;
+  opacity: 1;
+  font-size: 13px;
+  line-height: 1.65;
+}
+body[data-game-site="true"] .dnd-workspace-panel .dnd-gm-dashboard__heading p,
+body[data-game-site="true"] .dnd-workspace-panel .dnd-gm-dashboard__stats span,
+body[data-game-site="true"] .dnd-workspace-panel .dnd-gm-dashboard__stats small,
+body[data-game-site="true"] .dnd-workspace-panel .dnd-gm-roster__identity small,
+body[data-game-site="true"] .dnd-workspace-panel .dnd-gm-roster__vitals,
+body[data-game-site="true"] .dnd-workspace-panel .dnd-gm-empty {
+  color: var(--dnd-muted);
+}
+body[data-game-site="true"] .dnd-workspace-panel .dnd-gm-dashboard :is(p, small, span, label) {
+  text-shadow: none;
+}
