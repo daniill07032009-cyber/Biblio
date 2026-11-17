@@ -17,8 +17,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/styles.css?v=6" />
-    <script src="/script.js?v=8" defer></script>
+    <link rel="stylesheet" href="/styles.css?v=16" />
+    <script src="/script.js?v=18" defer></script>
   </head>
   <body>
     <div class="announcement">
@@ -314,9 +314,14 @@
           <div>
             <span class="eyebrow">Твои предпочтения</span>
             <h1>Настройки</h1>
-            <p>Настрой внешний вид сайта, чтение и данные аккаунта.</p>
+            <p>Собери Biblio под себя: выбери оформление, настрой комфортное чтение и управляй профилем и безопасностью.</p>
           </div>
         </div>
+        <nav class="settings-shortcuts" aria-label="Разделы настроек">
+          <a href="#site-settings-title"><span>◐</span><strong>Внешний вид</strong><small>Тема и уведомления</small></a>
+          <a href="#reading-settings-title"><span>Aa</span><strong>Чтение</strong><small>Шрифт и комфорт</small></a>
+          <a href="#account-settings-title"><span>♙</span><strong>Аккаунт</strong><small>Профиль и безопасность</small></a>
+        </nav>
         <div class="settings-grid">
           <section class="settings-card" aria-labelledby="site-settings-title">
             <span class="eyebrow">Для всего сайта</span>
@@ -410,10 +415,20 @@
         <div class="games-page__header">
           <div>
             <span class="eyebrow">Игровая зона</span>
-            <h1>Игры</h1>
-            <p>Выбирай игру, смотри оценки сообщества и узнавай, кто сейчас заглянул в игровой блок.</p>
+            <h1>Игровая комната Biblio</h1>
+            <p>Создавай кампании, собирай команду и отправляйся в приключения. Твой следующий бросок может изменить всю историю.</p>
           </div>
         </div>
+
+        <section class="games-welcome" aria-label="Возможности игровой зоны">
+          <div class="games-welcome__copy">
+            <span class="games-welcome__kicker">ПРИКЛЮЧЕНИЕ НАЧИНАЕТСЯ ЗДЕСЬ</span>
+            <h2>Не просто играй. <em>Создавай историю.</em></h2>
+            <p>Выбери Dungeons & Dragons, создай героя, открой комнату для друзей или присоединись к чужой кампании. Ведущий управляет миром, а решения игроков определяют сюжет.</p>
+            <div class="games-welcome__tags"><span>✦ Персонажи и характеристики</span><span>✦ Игровые комнаты</span><span>✦ Кубики d4–d100</span></div>
+          </div>
+          <div class="games-welcome__die" aria-hidden="true"><span>D</span><strong>20</strong><small>YOUR STORY</small></div>
+        </section>
 
         <div class="game-catalog-layout" id="game-catalog-layout">
           <div class="games-panel">

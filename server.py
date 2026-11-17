@@ -230,6 +230,7 @@ def initialize_db():
                 description TEXT NOT NULL DEFAULT '',
                 access TEXT NOT NULL DEFAULT 'public' CHECK (access IN ('public', 'private', 'invite_only')),
                 join_code TEXT NOT NULL DEFAULT '',
+                combat_state TEXT NOT NULL DEFAULT '{}',
                 created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
                 updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
             );
@@ -282,6 +283,8 @@ def initialize_db():
                 hp INTEGER NOT NULL DEFAULT 10,
                 max_hp INTEGER NOT NULL DEFAULT 10,
                 armor_class INTEGER NOT NULL DEFAULT 10,
+                inventory TEXT NOT NULL DEFAULT '[]',
+                spells TEXT NOT NULL DEFAULT '[]',
                 created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
                 updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
                 UNIQUE(game_id, user_id),
@@ -362,6 +365,15 @@ def initialize_db():
         for name in ("hp", "max_hp", "armor_class"):
             if name not in character_columns:
                 db.execute(f"ALTER TABLE game_characters ADD COLUMN {name} INTEGER NOT NULL DEFAULT 10")
+        for name in ("inventory", "spells"):
+            if name not in character_columns:
+                db.execute(f"ALTER TABLE game_characters ADD COLUMN {name} TEXT NOT NULL DEFAULT '[]'")
+        for name in ("spell_slots_max", "spell_slots"):
+            if name not in character_columns:
+                db.execute(f"ALTER TABLE game_characters ADD COLUMN {name} TEXT NOT NULL DEFAULT '[0,0,0,0,0,0,0,0,0]'")
+        game_columns = {row["name"] for row in db.execute("PRAGMA table_info(games)").fetchall()}
+        if "combat_state" not in game_columns:
+            db.execute("ALTER TABLE games ADD COLUMN combat_state TEXT NOT NULL DEFAULT '{}'")
         db.execute(
             "UPDATE games SET catalog_game_slug = 'dnd' WHERE catalog_game_slug IS NULL"
         )
@@ -580,8 +592,242 @@ def game_catalog_record(game, rating=0, rating_count=0, active_viewers=0, user_r
     }
 
 
+def game_combat_transition(action, payload, heroes, existing=None):
+    existing = existing or {}
+
+    def record_event(state, message):
+        events = list(state.get("events") or [])
+        events.append({"message": message, "created_at": utc_timestamp()})
+        state["events"] = events[-50:]
+        state["updated_at"] = utc_timestamp()
+        return state
+
+    if action == "start":
+        monsters = payload.get("monsters", [])
+        if not isinstance(monsters, list) or len(monsters) > 12:
+            raise APIError(HTTPStatus.BAD_REQUEST, "Можно добавить не более 12 противников.")
+        combatants = []
+        for hero in heroes:
+            dexterity = int(hero.get("dexterity", 10) or 10)
+            combatants.append({
+                "id": f"hero-{hero['user_id']}", "name": hero.get("name") or "Герой",
+                "kind": "hero", "user_id": hero["user_id"],
+                "initiative": secrets.randbelow(20) + 1 + (dexterity - 10) // 2,
+                "hp": int(hero.get("hp", 10) or 0), "max_hp": int(hero.get("max_hp", 10) or 10),
+                "armor_class": int(hero.get("armor_class", 10) or 10),
+            })
+        for index, raw in enumerate(monsters):
+            if not isinstance(raw, str) or not raw.strip() or len(raw.strip()) > 100:
+                raise APIError(HTTPStatus.BAD_REQUEST, "Строка противника должна содержать от 1 до 100 символов.")
+            parts = [part.strip() for part in raw.split("|")]
+            if len(parts) > 4 or not parts[0]:
+                raise APIError(HTTPStatus.BAD_REQUEST, "Формат противника: Имя | инициатива | HP.")
+            name = parts[0]
+            initiative = None
+            if len(parts) > 1 and parts[1]:
+                try:
+                    initiative = int(parts[1])
+                except ValueError:
+                    raise APIError(HTTPStatus.BAD_REQUEST, "Инициатива противника должна быть целым числом.")
+                if not -20 <= initiative <= 40:
+                    raise APIError(HTTPStatus.BAD_REQUEST, "Инициатива должна быть от -20 до 40.")
+            hp = max_hp = None
+            if len(parts) > 2 and parts[2]:
+                hp_match = re.fullmatch(r"(\d{1,5})(?:\s*/\s*(\d{1,5}))?", parts[2])
+                if not hp_match:
+                    raise APIError(HTTPStatus.BAD_REQUEST, "Здоровье укажи числом или в формате 7/10.")
+                hp = int(hp_match.group(1))
+                max_hp = int(hp_match.group(2) or hp)
+                if not 1 <= hp <= max_hp <= 10000:
+                    raise APIError(HTTPStatus.BAD_REQUEST, "Здоровье должно быть от 1 до 10000, текущее HP не выше максимального.")
+            armor_class = 10
+            if len(parts) > 3 and parts[3]:
+                try:
+                    armor_class = int(parts[3])
+                except ValueError:
+                    raise APIError(HTTPStatus.BAD_REQUEST, "Класс брони противника должен быть целым числом.")
+                if not 1 <= armor_class <= 30:
+                    raise APIError(HTTPStatus.BAD_REQUEST, "Класс брони должен быть от 1 до 30.")
+            combatants.append({
+                "id": f"monster-{index}-{secrets.token_hex(3)}", "name": name,
+                "kind": "monster", "initiative": initiative if initiative is not None else secrets.randbelow(20) + 1,
+                "hp": hp, "max_hp": max_hp, "armor_class": armor_class,
+            })
+        if not combatants:
+            raise APIError(HTTPStatus.BAD_REQUEST, "Нужен хотя бы один герой или противник для начала боя.")
+        combatants.sort(key=lambda item: (-item["initiative"], item["name"].casefold()))
+        state = {"active": True, "round": 1, "current_index": 0, "combatants": combatants, "events": []}
+        return record_event(state, "Бой начался. Инициатива определена.")
+    if action == "next":
+        if not existing.get("active") or not existing.get("combatants"):
+            raise APIError(HTTPStatus.CONFLICT, "Сейчас нет активного боя.")
+        combatants = existing["combatants"]
+        index = int(existing.get("current_index", 0)) + 1
+        round_number = int(existing.get("round", 1))
+        if index >= len(combatants):
+            index = 0
+            round_number += 1
+        state = {**existing, "round": round_number, "current_index": index}
+        return record_event(state, f"Раунд {round_number}: ходит {combatants[index]['name']}.")
+    if action in ("damage", "heal"):
+        if not existing.get("active"):
+            raise APIError(HTTPStatus.CONFLICT, "Сейчас нет активного боя.")
+        target_id = str(payload.get("target_id") or "")
+        try:
+            amount = int(payload.get("amount", 0))
+        except (TypeError, ValueError):
+            amount = 0
+        if not 1 <= amount <= 1000:
+            raise APIError(HTTPStatus.BAD_REQUEST, "Значение должно быть от 1 до 1000.")
+        combatants = [dict(item) for item in existing.get("combatants", [])]
+        target = next((item for item in combatants if item.get("id") == target_id), None)
+        if target is None:
+            raise APIError(HTTPStatus.NOT_FOUND, "Участник боя не найден.")
+        if target.get("hp") is None or target.get("max_hp") is None:
+            raise APIError(HTTPStatus.CONFLICT, "Для этого участника не задано здоровье.")
+        before = int(target["hp"])
+        after = max(0, before - amount) if action == "damage" else min(int(target["max_hp"]), before + amount)
+        target["hp"] = after
+        state = {**existing, "combatants": combatants}
+        delta = abs(after - before)
+        verb = "получил урон" if action == "damage" else "восстановил здоровье"
+        suffix = " · без сознания" if target["kind"] == "hero" and after == 0 else ""
+        return record_event(state, f"{target['name']} {verb}: {delta} HP ({after}/{target['max_hp']}){suffix}.")
+    if action == "attack":
+        if not existing.get("active"):
+            raise APIError(HTTPStatus.CONFLICT, "Сейчас нет активного боя.")
+        fighters = [dict(item) for item in existing.get("combatants", [])]
+        attacker_id = str(payload.get("attacker_id") or "")
+        target_id = str(payload.get("target_id") or "")
+        attacker = next((item for item in fighters if item.get("id") == attacker_id), None)
+        target = next((item for item in fighters if item.get("id") == target_id), None)
+        if attacker is None or target is None or attacker_id == target_id:
+            raise APIError(HTTPStatus.BAD_REQUEST, "Выбери разных участников для атаки.")
+        try:
+            bonus = int(payload.get("attack_bonus", 0))
+            damage = int(payload.get("damage", 0))
+        except (TypeError, ValueError):
+            raise APIError(HTTPStatus.BAD_REQUEST, "Бонус атаки и урон должны быть целыми числами.")
+        if not -20 <= bonus <= 30 or not 1 <= damage <= 1000:
+            raise APIError(HTTPStatus.BAD_REQUEST, "Бонус атаки должен быть от -20 до 30, урон — от 1 до 1000.")
+        roll = secrets.randbelow(20) + 1
+        total = roll + bonus
+        armor_class = int(target.get("armor_class", 10) or 10)
+        hit = roll == 20 or (roll != 1 and total >= armor_class)
+        if hit and target.get("hp") is not None:
+            applied_damage = damage * (2 if roll == 20 else 1)
+            before = int(target["hp"])
+            target["hp"] = max(0, before - applied_damage)
+            actual_damage = before - target["hp"]
+        else:
+            actual_damage = 0
+        state = {**existing, "combatants": fighters}
+        result = "критическое попадание" if roll == 20 else ("попадание" if hit else "промах")
+        suffix = f", урон {actual_damage} HP ({target['hp']}/{target['max_hp']})" if hit and target.get("hp") is not None else ""
+        return record_event(state, f"{attacker['name']} атакует {target['name']}: d20={roll} + {bonus} = {total} против КБ {armor_class} — {result}{suffix}.")
+    if action == "end":
+        return None
+    raise APIError(HTTPStatus.BAD_REQUEST, "Неизвестное действие боя.")
+
+def game_character_loadout(payload, existing=None):
+    existing = existing or {}
+    result = {}
+    for field in ("inventory", "spells"):
+        value = payload.get(field, existing.get(field, []))
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except (TypeError, ValueError):
+                value = [line.strip() for line in value.splitlines() if line.strip()]
+        if not isinstance(value, list) or len(value) > 40:
+            raise APIError(HTTPStatus.BAD_REQUEST, "Список предметов и заклинаний должен содержать не более 40 записей.")
+        cleaned = []
+        for item in value:
+            if not isinstance(item, str):
+                raise APIError(HTTPStatus.BAD_REQUEST, "Каждая запись должна быть текстом.")
+            item = item.strip()
+            if not item or len(item) > 100:
+                raise APIError(HTTPStatus.BAD_REQUEST, "Название записи должно содержать от 1 до 100 символов.")
+            if item not in cleaned:
+                cleaned.append(item)
+        result[field] = cleaned
+    return result
+
+
+
+def game_character_spell_slots(payload, existing=None):
+    existing = existing or {}
+    result = {}
+    for field in ("spell_slots_max", "spell_slots"):
+        value = payload.get(field, existing.get(field, [0] * 9))
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except (TypeError, ValueError):
+                value = [part.strip() for part in value.split(",")]
+        if not isinstance(value, list) or len(value) != 9:
+            raise APIError(HTTPStatus.BAD_REQUEST, "Для ячеек заклинаний нужны 9 значений — уровни с 1-го по 9-й.")
+        cleaned = []
+        for item in value:
+            try:
+                number = int(item)
+            except (TypeError, ValueError):
+                raise APIError(HTTPStatus.BAD_REQUEST, "Количество ячеек должно быть целым числом.")
+            if not 0 <= number <= 20:
+                raise APIError(HTTPStatus.BAD_REQUEST, "Количество ячеек каждого уровня должно быть от 0 до 20.")
+            cleaned.append(number)
+        result[field] = cleaned
+    if any(result["spell_slots"][i] > result["spell_slots_max"][i] for i in range(9)):
+        raise APIError(HTTPStatus.BAD_REQUEST, "Оставшихся ячеек не может быть больше максимума.")
+    return result
+
+
+def game_character_cast(payload, character):
+    spell_name = " ".join(str(payload.get("spell") or "").split())
+    try:
+        level = int(payload.get("level", 0))
+    except (TypeError, ValueError):
+        level = -1
+    if not spell_name or len(spell_name) > 100 or not 0 <= level <= 9:
+        raise APIError(HTTPStatus.BAD_REQUEST, "Укажи заклинание и его уровень от 0 до 9.")
+    known_spells = game_character_loadout({}, character)["spells"]
+    if spell_name.casefold() not in {spell.casefold() for spell in known_spells}:
+        raise APIError(HTTPStatus.FORBIDDEN, "Это заклинание не записано в листе персонажа.")
+    if spell_name.casefold() in {"лечение ран", "cure wounds", "лечебное слово", "healing word"} and level < 1:
+        raise APIError(HTTPStatus.BAD_REQUEST, "Это заклинание требует ячейку как минимум 1-го уровня.")
+    slots = game_character_spell_slots({}, character)
+    if level > 0:
+        index = level - 1
+        if slots["spell_slots"][index] < 1:
+            raise APIError(HTTPStatus.CONFLICT, f"Нет свободных ячеек {level}-го уровня.")
+        slots["spell_slots"][index] -= 1
+
+    # Resolve only known, server-allowlisted effects; never trust client effect data.
+    healing_dice = {
+        "лечение ран": 8, "cure wounds": 8,
+        "лечебное слово": 4, "healing word": 4,
+    }
+    result = {"spell": spell_name, "level": level, **slots}
+    die = healing_dice.get(spell_name.casefold())
+    if die:
+        try:
+            current_hp = int(character.get("hp", 0) or 0)
+            max_hp = int(character.get("max_hp", 0) or 0)
+        except (TypeError, ValueError):
+            current_hp, max_hp = 0, 0
+        if max_hp < 1 or current_hp < 0 or current_hp > max_hp:
+            raise APIError(HTTPStatus.CONFLICT, "У персонажа некорректно настроено здоровье.")
+        dice_count = level
+        healing = sum(secrets.randbelow(die) + 1 for _ in range(dice_count))
+        actual = min(max_hp, current_hp + healing) - current_hp
+        result.update({"effect": "healing", "healing": actual, "hp": current_hp + actual, "max_hp": max_hp})
+    return result
+
+
 def game_character_record(row):
     xp = int(row.get("xp", 0) or 0)
+    loadout = game_character_loadout({}, row)
+    spell_slots = game_character_spell_slots({}, row)
     return {
         "id": row["id"],
         "game_id": row["game_id"],
@@ -593,6 +839,8 @@ def game_character_record(row):
         "level": int(row.get("level", calculate_character_level(xp)) or calculate_character_level(xp)),
         "xp": xp,
         **game_character_stats({}, row),
+        **loadout,
+        **spell_slots,
         "created_at": row.get("created_at", utc_timestamp()),
         "updated_at": row.get("updated_at", utc_timestamp()),
     }
@@ -1487,6 +1735,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
                     "description": game.get("description", ""),
                     "access": game.get("access", "public"),
                     "join_code": game.get("join_code", ""),
+                    "combat": game.get("combat_state") or None,
                     "created_at": game.get("created_at", utc_timestamp()),
                     "updated_at": game.get("updated_at", utc_timestamp()),
                     "member_count": member_count,
@@ -1652,28 +1901,97 @@ class BiblioHandler(BaseHTTPRequestHandler):
             game = db.games.find_one({"id": game_id})
             if game is None:
                 raise APIError(HTTPStatus.NOT_FOUND, "Комната не найдена.")
-            if game["owner_id"] != user["id"]:
-                raise APIError(HTTPStatus.FORBIDDEN, "Параметры персонажей может менять только ведущий.")
-            if target_user_id == game["owner_id"]:
-                raise APIError(HTTPStatus.FORBIDDEN, "Ведущий не управляет персонажем в своей комнате.")
+            if game["owner_id"] != user["id"] and target_user_id != user["id"]:
+                raise APIError(HTTPStatus.FORBIDDEN, "Изменять лист героя может сам игрок или ведущий.")
             character = db.game_characters.find_one({"game_id": game_id, "user_id": target_user_id})
             if character is None:
                 raise APIError(HTTPStatus.NOT_FOUND, "Герой участника не найден.")
-            stats = game_character_stats(self.read_json(), character)
+            payload = self.read_json()
+            if game["owner_id"] != user["id"] and set(payload) - {"inventory", "spells"}:
+                raise APIError(HTTPStatus.FORBIDDEN, "Игрок может менять только свой инвентарь и список заклинаний.")
+            stats = game_character_stats(payload, character)
+            loadout = game_character_loadout(payload, character)
+            spell_slots = game_character_spell_slots(payload, character)
             db.game_characters.update_one(
                 {"game_id": game_id, "user_id": target_user_id},
-                {"$set": {**stats, "updated_at": utc_timestamp()}},
+                {"$set": {**stats, **loadout, **spell_slots, "updated_at": utc_timestamp()}},
             )
             updated_character = db.game_characters.find_one({"game_id": game_id, "user_id": target_user_id})
             return {"character": game_character_record(updated_character)}, HTTPStatus.OK, []
 
-        game_action_match = re.fullmatch(r"/api/games/(\d+)/(join|leave|characters|heroes|sessions|xp|join-code)", path)
+        spell_action_match = re.fullmatch(r"/api/games/(\d+)/characters/(\d+)/(cast|rest)", path)
+        if method == "POST" and spell_action_match:
+            user = self.current_user_mongo(db, required=True)
+            game_id, target_user_id = map(int, spell_action_match.groups()[:2])
+            action = spell_action_match.group(3)
+            game = db.games.find_one({"id": game_id})
+            character = db.game_characters.find_one({"game_id": game_id, "user_id": target_user_id})
+            if game is None or character is None:
+                raise APIError(HTTPStatus.NOT_FOUND, "Комната или персонаж не найдены.")
+            if action == "cast":
+                if game["owner_id"] != user["id"] and target_user_id != user["id"]:
+                    raise APIError(HTTPStatus.FORBIDDEN, "Использовать заклинания может сам игрок или ведущий.")
+                result = game_character_cast(self.read_json(), character)
+                db.game_characters.update_one({"game_id": game_id, "user_id": target_user_id}, {"$set": {"spell_slots": result["spell_slots"], **({"hp": result["hp"]} if "hp" in result else {}), "updated_at": utc_timestamp()}})
+                updated = db.game_characters.find_one({"game_id": game_id, "user_id": target_user_id})
+                return {"character": game_character_record(updated), "cast": {key: result[key] for key in ("spell", "level", "effect", "healing", "hp", "max_hp") if key in result}}, HTTPStatus.OK, []
+            if game["owner_id"] != user["id"]:
+                raise APIError(HTTPStatus.FORBIDDEN, "Восстановить ячейки после продолжительного отдыха может только ведущий.")
+            slots = game_character_spell_slots({}, character)
+            slots["spell_slots"] = list(slots["spell_slots_max"])
+            db.game_characters.update_one({"game_id": game_id, "user_id": target_user_id}, {"$set": {**slots, "updated_at": utc_timestamp()}})
+            updated = db.game_characters.find_one({"game_id": game_id, "user_id": target_user_id})
+            return {"character": game_character_record(updated), "restored": True}, HTTPStatus.OK, []
+
+        spell_action_match = re.fullmatch(r"/api/games/(\d+)/characters/(\d+)/(cast|rest)", path)
+        if method == "POST" and spell_action_match:
+            user = self.current_user(db, required=True)
+            game_id, target_user_id = map(int, spell_action_match.groups()[:2])
+            action = spell_action_match.group(3)
+            game = db.execute("SELECT owner_id FROM games WHERE id = ?", (game_id,)).fetchone()
+            character = db.execute("SELECT * FROM game_characters WHERE game_id = ? AND user_id = ?", (game_id, target_user_id)).fetchone()
+            if game is None or character is None:
+                raise APIError(HTTPStatus.NOT_FOUND, "Комната или персонаж не найдены.")
+            character = dict(character)
+            if action == "cast":
+                if game["owner_id"] != user["id"] and target_user_id != user["id"]:
+                    raise APIError(HTTPStatus.FORBIDDEN, "Использовать заклинания может сам игрок или ведущий.")
+                result = game_character_cast(self.read_json(), character)
+                if "hp" in result:
+                    db.execute("UPDATE game_characters SET spell_slots = ?, hp = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE game_id = ? AND user_id = ?", (json.dumps(result["spell_slots"]), result["hp"], game_id, target_user_id))
+                else:
+                    db.execute("UPDATE game_characters SET spell_slots = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE game_id = ? AND user_id = ?", (json.dumps(result["spell_slots"]), game_id, target_user_id))
+                updated = db.execute("SELECT * FROM game_characters WHERE game_id = ? AND user_id = ?", (game_id, target_user_id)).fetchone()
+                return {"character": game_character_record(dict(updated)), "cast": {key: result[key] for key in ("spell", "level", "effect", "healing", "hp", "max_hp") if key in result}}, HTTPStatus.OK, []
+            if game["owner_id"] != user["id"]:
+                raise APIError(HTTPStatus.FORBIDDEN, "Восстановить ячейки после продолжительного отдыха может только ведущий.")
+            slots = game_character_spell_slots({}, character)
+            slots["spell_slots"] = list(slots["spell_slots_max"])
+            db.execute("UPDATE game_characters SET spell_slots_max = ?, spell_slots = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE game_id = ? AND user_id = ?", (json.dumps(slots["spell_slots_max"]), json.dumps(slots["spell_slots"]), game_id, target_user_id))
+            updated = db.execute("SELECT * FROM game_characters WHERE game_id = ? AND user_id = ?", (game_id, target_user_id)).fetchone()
+            return {"character": game_character_record(dict(updated)), "restored": True}, HTTPStatus.OK, []
+
+        game_action_match = re.fullmatch(r"/api/games/(\d+)/(join|leave|characters|heroes|sessions|xp|join-code|combat)", path)
         if method in {"POST", "DELETE"} and game_action_match:
             user = self.current_user_mongo(db, required=True)
             game_id = int(game_action_match.group(1))
             game = db.games.find_one({"id": game_id})
             if game is None:
                 raise APIError(HTTPStatus.NOT_FOUND, "Комната не найдена.")
+            if game_action_match.group(2) == "combat":
+                if game["owner_id"] != user["id"]:
+                    raise APIError(HTTPStatus.FORBIDDEN, "Управлять боем может только ведущий.")
+                payload = self.read_json()
+                combat = game_combat_transition(str(payload.get("action") or ""), payload, list(db.game_characters.find({"game_id": game_id})), game.get("combat_state"))
+                if combat and payload.get("action") in ("damage", "heal", "attack"):
+                    for fighter in combat.get("combatants", []):
+                        if fighter.get("kind") == "hero" and fighter.get("hp") is not None:
+                            db.game_characters.update_one(
+                                {"game_id": game_id, "user_id": fighter["user_id"]},
+                                {"$set": {"hp": fighter["hp"], "updated_at": utc_timestamp()}},
+                            )
+                db.games.update_one({"id": game_id}, {"$set": {"combat_state": combat or {}, "updated_at": utc_timestamp()}})
+                return {"combat": combat}, HTTPStatus.OK, []
             if game_action_match.group(2) == "join-code":
                 if game["owner_id"] != user["id"]:
                     raise APIError(HTTPStatus.FORBIDDEN, "Только владелец комнаты может менять код доступа.")
@@ -2389,6 +2707,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
                     "description": game["description"],
                     "access": game["access"],
                     "join_code": game["join_code"],
+                    "combat": json.loads(game["combat_state"] or "{}") or None,
                     "created_at": game["created_at"],
                     "updated_at": game["updated_at"],
                     "member_count": member_count,
@@ -2569,26 +2888,32 @@ class BiblioHandler(BaseHTTPRequestHandler):
             game = db.execute("SELECT owner_id FROM games WHERE id = ?", (game_id,)).fetchone()
             if game is None:
                 raise APIError(HTTPStatus.NOT_FOUND, "Комната не найдена.")
-            if game["owner_id"] != user["id"]:
-                raise APIError(HTTPStatus.FORBIDDEN, "Параметры персонажей может менять только ведущий.")
-            if target_user_id == game["owner_id"]:
-                raise APIError(HTTPStatus.FORBIDDEN, "Ведущий не управляет персонажем в своей комнате.")
+            if game["owner_id"] != user["id"] and target_user_id != user["id"]:
+                raise APIError(HTTPStatus.FORBIDDEN, "Изменять лист героя может сам игрок или ведущий.")
             character = db.execute(
                 "SELECT * FROM game_characters WHERE game_id = ? AND user_id = ?",
                 (game_id, target_user_id),
             ).fetchone()
             if character is None:
                 raise APIError(HTTPStatus.NOT_FOUND, "Герой участника не найден.")
-            stats = game_character_stats(self.read_json(), dict(character))
+            payload = self.read_json()
+            if game["owner_id"] != user["id"] and set(payload) - {"inventory", "spells"}:
+                raise APIError(HTTPStatus.FORBIDDEN, "Игрок может менять только свой инвентарь и список заклинаний.")
+            stats = game_character_stats(payload, dict(character))
+            loadout = game_character_loadout(payload, dict(character))
+            spell_slots = game_character_spell_slots(payload, dict(character))
             db.execute(
                 """
                 UPDATE game_characters
                 SET strength = ?, dexterity = ?, constitution = ?, intelligence = ?,
                     wisdom = ?, charisma = ?, hp = ?, max_hp = ?, armor_class = ?,
+                    inventory = ?, spells = ?, spell_slots_max = ?, spell_slots = ?,
                     updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
                 WHERE game_id = ? AND user_id = ?
                 """,
-                (*stats.values(), game_id, target_user_id),
+                (*stats.values(), json.dumps(loadout["inventory"], ensure_ascii=False),
+                 json.dumps(loadout["spells"], ensure_ascii=False),
+                 json.dumps(spell_slots["spell_slots_max"]), json.dumps(spell_slots["spell_slots"]), game_id, target_user_id),
             )
             updated_character = db.execute(
                 "SELECT * FROM game_characters WHERE game_id = ? AND user_id = ?",
@@ -2596,7 +2921,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
             ).fetchone()
             return {"character": game_character_record(dict(updated_character))}, HTTPStatus.OK, []
 
-        game_action_match = re.fullmatch(r"/api/games/(\d+)/(join|leave|characters|heroes|sessions|xp|join-code)", path)
+        game_action_match = re.fullmatch(r"/api/games/(\d+)/(join|leave|characters|heroes|sessions|xp|join-code|combat)", path)
         if method in {"POST", "DELETE"} and game_action_match:
             user = self.current_user(db, required=True)
             game = db.execute("SELECT * FROM games WHERE id = ?", (int(game_action_match.group(1)),)).fetchone()
@@ -2604,6 +2929,25 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 raise APIError(HTTPStatus.NOT_FOUND, "Комната не найдена.")
             game_id = game["id"]
             action = game_action_match.group(2)
+            if action == "combat":
+                if game["owner_id"] != user["id"]:
+                    raise APIError(HTTPStatus.FORBIDDEN, "Управлять боем может только ведущий.")
+                payload = self.read_json()
+                heroes = [dict(row) for row in db.execute("SELECT * FROM game_characters WHERE game_id = ?", (game_id,)).fetchall()]
+                existing_combat = json.loads(game["combat_state"] or "{}")
+                combat = game_combat_transition(str(payload.get("action") or ""), payload, heroes, existing_combat)
+                if combat and payload.get("action") in ("damage", "heal"):
+                    for fighter in combat.get("combatants", []):
+                        if fighter.get("kind") == "hero" and fighter.get("hp") is not None:
+                            db.execute(
+                                "UPDATE game_characters SET hp = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE game_id = ? AND user_id = ?",
+                                (fighter["hp"], game_id, fighter["user_id"]),
+                            )
+                db.execute(
+                    "UPDATE games SET combat_state = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?",
+                    (json.dumps(combat or {}, ensure_ascii=False), game_id),
+                )
+                return {"combat": combat}, HTTPStatus.OK, []
             if action == "join-code":
                 if game["owner_id"] != user["id"]:
                     raise APIError(HTTPStatus.FORBIDDEN, "Только владелец комнаты может менять код доступа.")

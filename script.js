@@ -1421,7 +1421,7 @@ async function openCatalogGame(slug) {
 function renderCatalogGameDetail(game) {
   const panel = document.querySelector("#game-catalog-detail-panel");
   const catalogLayout = document.querySelector("#game-catalog-layout");
-  if (!panel) return;
+  if (!panel || !catalogLayout) return;
   stopCatalogPresence();
   activeCatalogGameSlug = game.slug;
   const listedGame = gameCatalogGames.find((item) => item.slug === game.slug);
@@ -1430,63 +1430,213 @@ function renderCatalogGameDetail(game) {
   document.querySelector("#game-detail-panel").hidden = true;
   panel.replaceChildren();
 
-  const header = createElement("div", "game-detail__header");
-  const heading = createElement("div");
-  heading.append(
-    createElement("span", "eyebrow", "Игра сообщества"),
-    createElement("h3", "", game.title),
-  );
-  const backButton = createElement("button", "button button--secondary", "← К каталогу");
-  backButton.type = "button";
-  backButton.addEventListener("click", () => window.location.assign("/games"));
-  header.append(heading, backButton);
-
-  const content = createElement("div", "game-catalog-detail__content");
-  const cover = createElement("div", "game-catalog-detail__cover");
-  cover.dataset.theme = game.cover_theme;
-  cover.append(createElement("span", "", game.cover_symbol), createElement("strong", "", game.title));
-  const description = createElement("p", "game-catalog-detail__description", game.description);
-  content.append(cover, description);
-
-  const stats = createElement("div", "game-catalog-detail__stats");
-  stats.append(createElement(
-    "span",
-    "",
-    `★ ${game.rating_count ? Number(game.rating).toFixed(1) : "—"} · ${game.rating_count} оценок`,
-  ));
-  const online = createElement("span", "game-catalog-detail__online");
-  online.append(createElement("span", "game-catalog-card__online-dot", ""));
-  online.append(createElement("strong", "game-catalog-active-count", String(game.active_viewers || 0)));
-  online.append(document.createTextNode(" сейчас внутри блока D&D"));
-  stats.append(online);
-
-  const ratingSection = createElement("div", "game-catalog-detail__rating");
-  const ratingTitle = createElement("strong", "", "Оценка игры");
-  const stars = createElement("div", "game-catalog-rating-stars");
-  stars.setAttribute("role", "group");
-  stars.setAttribute("aria-label", "Оценка игры");
-  for (let value = 1; value <= 5; value += 1) {
-    const button = createElement("button", "", "★");
-    button.type = "button";
-    button.dataset.rating = String(value);
-    button.setAttribute("aria-label", `${value} из 5`);
-    button.classList.toggle("is-selected", value <= Number(game.user_rating || 0));
-    button.addEventListener("click", () => rateCatalogGame(game.slug, value));
-    stars.append(button);
+  const isDnd = game.slug === "dnd";
+  if (!isDnd) {
+    renderCommunityGameDetail(game, panel);
+    return;
   }
-  const ratingMessage = createElement(
-    "small",
-    "game-catalog-detail__rating-message",
-    currentUser ? "Оцени игру — оценку можно изменить." : "Войди, чтобы оставить оценку.",
-  );
-  ratingSection.append(ratingTitle, stars, ratingMessage);
 
-  const playButton = createElement("a", "button button--primary game-catalog-play", "Начать игру");
-  playButton.href = `/games/${encodeURIComponent(game.slug)}/play`;
-  panel.append(header, content, stats, ratingSection, playButton);
+  const title = game.title || "Dungeons & Dragons";
+  const stories = [
+    ["01", "Пепел у ворот", "В пограничном селении гаснут защитные огни. Следы ведут к старому дозорному посту.", "Уровень 1", "Исследование · Первая опасность"],
+    ["02", "Шёпот затонувшего храма", "Из высохшего колодца доносится колокольный звон. Под землёй скрыт храм, которого нет ни на одной карте.", "Уровень 2", "Тайны · Древние загадки"],
+    ["03", "Бал масок в Серебряном городе", "На королевском балу кто-то продаёт имена живых. У каждого гостя есть маска, но не у каждого — лицо.", "Уровень 3", "Интриги · Социальные сцены"],
+    ["04", "Кровь ледяного дракона", "Горный перевал замерзает посреди лета. Дракон просит о помощи, но его кровь уже ищут охотники.", "Уровень 4", "Путешествие · Дилемма"],
+    ["05", "Корона из пепла", "Пять следов ведут к трону забытого короля. В последней битве отряд узнает, кто направлял события.", "Уровень 5", "Финал · Судьба королевства"],
+  ];
+
+  const shell = createElement("div", "critical-dnd");
+  const side = createElement("aside", "critical-dnd__side");
+  const brand = createElement("a", "critical-dnd__brand", "КРИТИЧЕСКИЙ УСПЕХ");
+  brand.href = "/games/dnd";
+  brand.append(createElement("small", "", "REALMS · ADVENTURES · LEGENDS"));
+  const profile = createElement("div", "critical-dnd__profile");
+  profile.append(
+    createElement("span", "critical-dnd__avatar", "✦"),
+    createElement("span", "", currentUser ? (currentUser.username || currentUser.name || "Искатель приключений") : "Гость"),
+  );
+  const navLabel = createElement("span", "critical-dnd__nav-label", "ИГРОВОЙ МИР");
+  const nav = createElement("nav", "critical-dnd__nav");
+  const navItems = [
+    ["overview", "⌂", "Обзор"],
+    ["adventures", "▤", "Приключения"],
+    ["rooms", "⚔", "Игровые комнаты"],
+  ];
+  navItems.forEach(([key, icon, label], index) => {
+    const button = createElement("button", index === 0 ? "is-active" : "", "");
+    button.type = "button";
+    button.dataset.dndTab = key;
+    button.append(createElement("span", "critical-dnd__nav-icon", icon), createElement("span", "", label));
+    nav.append(button);
+  });
+  const sideNote = createElement("p", "critical-dnd__side-note", "ТВОЯ ИСТОРИЯ. ТВОИ РЕШЕНИЯ. ТВОЯ ЛЕГЕНДА.");
+  side.append(brand, profile, navLabel, nav, sideNote);
+
+  const main = createElement("div", "critical-dnd__main");
+  const top = createElement("div", "critical-dnd__top");
+  const crumb = createElement("div", "critical-dnd__crumb");
+  crumb.append(createElement("a", "", "Игры"), createElement("span", "", "／"), createElement("strong", "", title));
+  crumb.querySelector("a").href = "/games";
+  const topStatus = createElement("span", "critical-dnd__status", "✦ ИГРОВОЙ МИР");
+  top.append(crumb, topStatus);
+
+  const content = createElement("div", "critical-dnd__content");
+  const overviewPage = createElement("section", "critical-dnd__page is-active");
+  overviewPage.dataset.dndPage = "overview";
+  const hero = createElement("section", "critical-dnd__hero");
+  hero.append(
+    createElement("span", "critical-dnd__eyebrow", "ТВОЯ СЛЕДУЮЩАЯ ЛЕГЕНДА НАЧИНАЕТСЯ ЗДЕСЬ"),
+    createElement("h1", "", "МИР ЖДЁТ. БРОСАЙ КУБИК."),
+    createElement("p", "", "Создай героя, собери отряд и отправляйся навстречу историям, в которых каждое решение оставляет след. Выбирай формат игры — остальное станет легендой."),
+  );
+  const heroActions = createElement("div", "critical-dnd__actions");
+  const startLink = createElement("a", "button button--primary critical-dnd__button", "Начать приключение ↗");
+  startLink.href = "/games/dnd/play";
+  const createLink = createElement("a", "button button--secondary critical-dnd__button", "Создать персонажа");
+  createLink.href = "/games/dnd/play";
+  heroActions.append(startLink, createLink);
+  hero.append(heroActions);
+
+  const modeHeading = createElement("div", "critical-dnd__section-head");
+  modeHeading.append(
+    createElement("div", "critical-dnd__eyebrow", "ВЫБЕРИ СВОЙ ПУТЬ"),
+    createElement("h2", "", "Как будем играть?"),
+    createElement("p", "", "Три формата — одна большая история."),
+  );
+  const modes = createElement("div", "critical-dnd__mode-grid");
+  [
+    ["🗡", "Один герой", "Проходи приключения самостоятельно и принимай решения от лица своего персонажа.", "Открыть игру"],
+    ["⚔", "Отряд искателей", "Собери команду, создай комнату и проходи кампанию вместе с друзьями.", "Собрать отряд"],
+    ["♛", "Игра с ведущим", "Создай комнату для партии, управляй историей и веди игроков через испытания.", "Стать ведущим"],
+  ].forEach(([icon, heading, description, action]) => {
+    const card = createElement("article", "critical-dnd__mode");
+    card.append(createElement("span", "critical-dnd__mode-icon", icon), createElement("h3", "", heading), createElement("p", "", description));
+    const link = createElement("a", "critical-dnd__text-link", action + " →");
+    link.href = "/games/dnd/play";
+    card.append(link);
+    modes.append(card);
+  });
+
+  const stats = createElement("div", "critical-dnd__stats");
+  const statItems = [
+    [game.rating_count ? Number(game.rating).toFixed(1) : "—", "РЕЙТИНГ ИГРЫ"],
+    [String(Number(game.active_viewers || 0)), "СЕЙЧАС СМОТРЯТ"],
+    [String(stories.length), "ГЛАВ В КАМПАНИИ"],
+  ];
+  statItems.forEach(([value, label]) => {
+    const item = createElement("div", "critical-dnd__stat");
+    const number = createElement("strong", label === "СЕЙЧАС СМОТРЯТ" ? "game-catalog-active-count" : "", value);
+    item.append(number, createElement("small", "", label));
+    stats.append(item);
+  });
+  const ratingPanel = createElement("div", "critical-dnd__rating");
+  ratingPanel.append(createElement("strong", "", "Оцени игровую зону"));
+  const ratingStars = createElement("div", "game-catalog-rating-stars");
+  ratingStars.setAttribute("role", "group");
+  ratingStars.setAttribute("aria-label", "Оценка игры");
+  for (let value = 1; value <= 5; value += 1) {
+    const star = createElement("button", "", "★");
+    star.type = "button";
+    star.dataset.rating = String(value);
+    star.setAttribute("aria-label", `${value} из 5`);
+    star.classList.toggle("is-selected", value <= Number(game.user_rating || 0));
+    star.addEventListener("click", () => rateCatalogGame(game.slug, value));
+    ratingStars.append(star);
+  }
+  ratingPanel.append(ratingStars);
+  const ratingMessage = createElement("small", "game-catalog-detail__rating-message",
+    currentUser ? "Оценку можно изменить в любое время." : "Войди в Biblio, чтобы оставить оценку.");
+  ratingPanel.append(ratingMessage);
+  const section = createElement("section", "critical-dnd__campaign-preview");
+  const sectionHead = createElement("div", "critical-dnd__section-head");
+  sectionHead.append(
+    createElement("div", "critical-dnd__eyebrow", "КАМПАНИЯ ИЗ ПЯТИ ГЛАВ"),
+    createElement("h2", "", "Хроники Пепельной Короны"),
+    createElement("p", "", "Пять связанных приключений — от первой тревоги у ворот до судьбы целого королевства."),
+  );
+  const storyList = createElement("div", "critical-dnd__story-list");
+  stories.slice(0, 3).forEach(([number, heading, description, level, tags]) => {
+    const row = createElement("article", "critical-dnd__story");
+    row.append(createElement("span", "critical-dnd__story-number", number));
+    const copy = createElement("div");
+    copy.append(createElement("h3", "", heading), createElement("p", "", description), createElement("small", "", level + " · " + tags));
+    row.append(copy);
+    storyList.append(row);
+  });
+  const allStories = createElement("button", "button button--secondary critical-dnd__button", "Все пять глав →");
+  allStories.type = "button";
+  allStories.dataset.dndTab = "adventures";
+  section.append(sectionHead, storyList, allStories);
+  overviewPage.append(hero, modeHeading, modes, stats, ratingPanel, section);
+
+  const adventuresPage = createElement("section", "critical-dnd__page");
+  adventuresPage.dataset.dndPage = "adventures";
+  adventuresPage.append(
+    createElement("span", "critical-dnd__eyebrow", "КАМПАНИЯ · УРОВНИ 1–5"),
+    createElement("h1", "critical-dnd__page-title", "Хроники Пепельной Короны"),
+    createElement("p", "critical-dnd__lead", "Пять связанных историй. Исследование, социальные сцены, опасности, кульминация и последствия — решения отряда меняют ход кампании."),
+  );
+  const allStoryCards = createElement("div", "critical-dnd__full-stories");
+  stories.forEach(([number, heading, description, level, tags]) => {
+    const card = createElement("article", "critical-dnd__full-story");
+    card.append(createElement("span", "critical-dnd__story-number", number), createElement("div", "critical-dnd__eyebrow", level), createElement("h2", "", heading), createElement("p", "", description), createElement("small", "", tags));
+    const link = createElement("a", "button button--secondary critical-dnd__button", "Играть эту главу →");
+    link.href = "/games/dnd/play";
+    card.append(link);
+    allStoryCards.append(card);
+  });
+  adventuresPage.append(allStoryCards);
+
+  const roomsPage = createElement("section", "critical-dnd__page");
+  roomsPage.dataset.dndPage = "rooms";
+  roomsPage.append(
+    createElement("span", "critical-dnd__eyebrow", "СОБЕРИ СВОЮ ПАРТИЮ"),
+    createElement("h1", "critical-dnd__page-title", "Игровые комнаты"),
+    createElement("p", "critical-dnd__lead", "Создавай публичные или закрытые комнаты, приглашай друзей по коду и продолжай кампанию вместе. Твоя партия и прогресс сохраняются на сервере."),
+  );
+  const roomLink = createElement("a", "button button--primary critical-dnd__button", currentUser ? "Открыть комнаты и создать свою ↗" : "Войти и открыть игровые комнаты ↗");
+  roomLink.href = "/games/dnd/play";
+  roomsPage.append(roomLink);
+
+  content.append(overviewPage, adventuresPage, roomsPage);
+  main.append(top, content);
+  shell.append(side, main);
+  const exitLink = createElement("a", "critical-dnd__exit", "← Вернуться в Biblio");
+  exitLink.href = "/games";
+  main.querySelector(".critical-dnd__top").append(exitLink);
+  panel.append(shell);
   panel.hidden = false;
   panel.focus();
-  document.title = `${game.title} — Игры | Biblio`;
+  document.title = "Критический успех — D&D";
+
+  panel.querySelectorAll("[data-dnd-tab]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = button.dataset.dndTab;
+      panel.querySelectorAll("[data-dnd-page]").forEach((page) => page.classList.toggle("is-active", page.dataset.dndPage === target));
+      panel.querySelectorAll(".critical-dnd__nav [data-dnd-tab]").forEach((item) => item.classList.toggle("is-active", item.dataset.dndTab === target));
+      if (target === "rooms") location.href = "/games/dnd/play";
+      else window.scrollTo({ top: panel.getBoundingClientRect().top + window.scrollY, behavior: "smooth" });
+    });
+  });
+  startCatalogPresence(game.slug);
+}
+
+function renderCommunityGameDetail(game, panel) {
+  const title = game.title || "Игра сообщества";
+  const hero = createElement("section", "game-page__hero");
+  const copy = createElement("div", "game-page__hero-copy");
+  copy.append(
+    createElement("span", "game-page__eyebrow", "МИРЫ BIBLIO · ИГРОВАЯ ЗОНА"),
+    createElement("h2", "", "Твоё следующее приключение начинается здесь."),
+    createElement("p", "", game.description || "Открой игровые комнаты, собери компанию и создай собственную историю вместе с сообществом Biblio."),
+  );
+  const cta = createElement("a", "button button--primary game-page__primary-action", "Открыть игровые комнаты →");
+  cta.href = `/games/${encodeURIComponent(game.slug)}/play`;
+  panel.append(hero, cta);
+  hero.append(copy);
+  panel.hidden = false;
+  panel.focus();
+  document.title = `${title} — Игры | Biblio`;
   startCatalogPresence(game.slug);
 }
 
@@ -1508,7 +1658,9 @@ function renderGameRoomsPage(game) {
   );
   const backButton = createElement("a", "button button--secondary", "← К игре");
   backButton.href = `/games/${encodeURIComponent(game.slug)}`;
-  header.append(heading, backButton);
+  const exitLink = createElement("a", "button button--secondary", "В Biblio");
+  exitLink.href = "/games";
+  header.append(heading, backButton, exitLink);
 
   const roomsSection = createElement("section", "game-catalog-rooms");
   const roomsHeading = createElement("div", "game-catalog-rooms__heading");
@@ -1545,53 +1697,71 @@ function renderGameRoomsPage(game) {
   panel.append(header, roomsSection);
   panel.hidden = false;
   panel.focus();
-  document.title = `Игровые комнаты — ${game.title} | Biblio`;
+  document.title = `Игровые комнаты — ${game.title}`;
   startCatalogPresence(game.slug);
 }
 
 function createGameRoomForm() {
-  const form = createElement("form", "games-form");
+  const form = createElement("form", "games-form game-room-create");
   form.id = "game-room-create-form";
   form.addEventListener("submit", createGameRoom);
-  form.append(
-    createElement("h4", "", "Создать комнату"),
-    createElement("label", "", "Название комнаты"),
+
+  const heading = createElement("div", "game-room-create__heading");
+  heading.append(
+    createElement("span", "game-room-create__eyebrow", "НОВАЯ ИГРА"),
+    createElement("h4", "", "Создай свою комнату"),
+    createElement("p", "", "Собери друзей, выбери формат доступа и начни собственное приключение."),
   );
+
+  const details = createElement("div", "game-room-create__details");
+  const nameLabel = createElement("label", "game-room-create__field", "Название комнаты");
   const nameInput = createElement("input");
   nameInput.name = "name";
   nameInput.maxLength = 80;
   nameInput.required = true;
   nameInput.placeholder = "Например, Кампания «Северный путь»";
-  form.querySelector("label").append(nameInput);
-  const descriptionLabel = createElement("label", "", "Описание");
+  nameInput.autocomplete = "off";
+  nameLabel.append(nameInput);
+
+  const descriptionLabel = createElement("label", "game-room-create__field game-room-create__field--wide", "О чём будет приключение?");
   const descriptionInput = createElement("textarea");
   descriptionInput.name = "description";
   descriptionInput.maxLength = 500;
-  descriptionInput.rows = 3;
-  descriptionInput.placeholder = "Опиши свою кампанию";
+  descriptionInput.rows = 4;
+  descriptionInput.placeholder = "Кратко опиши мир, сюжет или правила своей кампании…";
   descriptionLabel.append(descriptionInput);
-  const accessLabel = createElement("label", "", "Доступ");
+
+  const accessLabel = createElement("label", "game-room-create__field", "Кто сможет присоединиться?");
   const accessSelect = createElement("select");
   accessSelect.name = "access";
   [
-    ["public", "Публичная"],
-    ["private", "По коду"],
-    ["invite_only", "По приглашениям"],
+    ["public", "Публичная — открыта всем"],
+    ["private", "По коду — для тех, у кого есть код"],
+    ["invite_only", "По приглашениям — только выбранные игроки"],
   ].forEach(([value, label]) => {
     const option = createElement("option", "", label);
     option.value = value;
     accessSelect.append(option);
   });
   accessLabel.append(accessSelect);
-  const codeLabel = createElement("label", "", "Код доступа");
+
+  const codeLabel = createElement("label", "game-room-create__field", "Код доступа (необязательно)");
   const codeInput = createElement("input");
   codeInput.name = "join_code";
   codeInput.maxLength = 32;
-  codeInput.placeholder = "Оставь пустым для генерации";
+  codeInput.placeholder = "Придумай свой или оставь пустым";
+  codeInput.autocomplete = "off";
   codeLabel.append(codeInput);
-  const submit = createElement("button", "button button--primary", "Создать комнату");
+
+  details.append(nameLabel, descriptionLabel, accessLabel, codeLabel);
+
+  const footer = createElement("div", "game-room-create__footer");
+  const note = createElement("p", "game-room-create__note", "Настройки доступа можно будет сообщить игрокам после создания комнаты.");
+  const submit = createElement("button", "button button--primary game-room-create__submit", "✦  Создать комнату");
   submit.type = "submit";
-  form.append(descriptionLabel, accessLabel, codeLabel, submit);
+  footer.append(note, submit);
+
+  form.append(heading, details, footer);
   return form;
 }
 
@@ -1740,12 +1910,16 @@ async function rateCatalogGame(slug, rating) {
     renderGameCatalogCards();
     const currentGame = gameCatalogGames.find((item) => item.slug === slug);
     if (currentGame && activeCatalogGameSlug === slug) {
-      document.querySelector(".game-catalog-detail__stats > span").textContent =
-        `★ ${Number(result.rating).toFixed(1)} · ${result.rating_count} оценок`;
+      const ratingValue = document.querySelector(".critical-dnd__stat strong");
+      if (ratingValue) ratingValue.textContent = Number(result.rating).toFixed(1);
+      const ratingCaption = [...document.querySelectorAll(".critical-dnd__stat small")]
+        .find((item) => item.textContent.startsWith("РЕЙТИНГ"));
+      if (ratingCaption) ratingCaption.textContent = `РЕЙТИНГ · ${result.rating_count} ОЦЕНОК`;
       document.querySelectorAll(".game-catalog-rating-stars [data-rating]").forEach((button) => {
         button.classList.toggle("is-selected", Number(button.dataset.rating) <= rating);
       });
-      document.querySelector(".game-catalog-detail__rating-message").textContent = "Твоя оценка сохранена.";
+      const ratingMessage = document.querySelector(".game-catalog-detail__rating-message");
+      if (ratingMessage) ratingMessage.textContent = "Твоя оценка сохранена.";
     }
   } catch (error) {
     showToast(error.message);
@@ -1826,6 +2000,7 @@ function renderGameDetail(game) {
     <div class="game-detail__header">
       <div><span class="eyebrow">${isGameMaster ? "Ведущий" : "Игрок"} · Игровая комната</span><h3>${escapeHtml(title)}</h3></div>
       <button class="button button--secondary" type="button" data-game-action="back">${/\/play\/?$/.test(location.pathname) ? "← К комнатам" : "← К игре"}</button>
+      <a class="button button--secondary" href="/games">Вернуться в Biblio</a>
     </div>
     <p>${escapeHtml(game.description || "Без описания.")}</p>
     <ul class="game-detail-list">
@@ -1846,8 +2021,48 @@ function renderGameDetail(game) {
             <strong>${escapeHtml(hero.name)} · ${hero.level} ур. · ${hero.xp} XP</strong>
             <span>${escapeHtml([hero.class_name, hero.race].filter(Boolean).join(" · ") || "Класс и раса не указаны")}</span>
           </div>
-          <div class="game-hero-card__stats">${heroStats(hero)}</div>
+          <div class="game-hero-card__vitals">
+            <div class="game-hero-card__vitals-heading"><span>Здоровье</span><strong>${Number(hero.hp || 0)} / ${Number(hero.max_hp || 10)} HP</strong></div>
+            <div class="game-hero-card__hp-track" role="progressbar" aria-label="Здоровье персонажа" aria-valuemin="0" aria-valuemax="${Number(hero.max_hp || 10)}" aria-valuenow="${Number(hero.hp || 0)}"><span style="width:${Math.max(0, Math.min(100, Number(hero.hp || 0) / Math.max(1, Number(hero.max_hp || 10)) * 100))}%"></span></div>
+            <div class="game-hero-card__stats">${heroStats(hero)}</div>
+          </div>
+          ${(isGameMaster || Number(hero.user_id) === Number(currentUser?.id)) ? `
+            <form class="games-form game-hero-card__loadout" data-hero-user-id="${Number(hero.user_id)}">
+              <label>Инвентарь <small>Один предмет на строку</small><textarea name="inventory" rows="3" maxlength="4000" placeholder="Зелье лечения&#10;Верёвка 15 м&#10;Факел">${escapeHtml((hero.inventory || []).join("\n"))}</textarea></label>
+              <label>Заклинания <small>Одно заклинание на строку</small><textarea name="spells" rows="3" maxlength="4000" placeholder="Волшебная стрела&#10;Щит&#10;Лечение ран">${escapeHtml((hero.spells || []).join("\n"))}</textarea></label>
+              <button class="button button--secondary" type="submit">Сохранить инвентарь и заклинания</button>
+            </form>
+          ` : `<div class="game-hero-card__loadout-preview">
+            <strong>Инвентарь</strong><p>${(hero.inventory || []).length ? (hero.inventory || []).map(escapeHtml).join(" · ") : "Пока пусто"}</p>
+            <strong>Заклинания</strong><p>${(hero.spells || []).length ? (hero.spells || []).map(escapeHtml).join(" · ") : "Нет записанных заклинаний"}</p>
+          </div>`}
+          <section class="game-spellbook">
+            <div class="game-spellbook__heading"><strong>Магия и ячейки</strong><span>Уровни заклинаний: 1–9</span></div>
+            <div class="game-spellbook__slots">
+              ${Array.from({ length: 9 }, (_, index) => `<div class="game-spellbook__slot"><span>${index + 1} ур.</span><strong>${Number((hero.spell_slots || [])[index] || 0)} / ${Number((hero.spell_slots_max || [])[index] || 0)}</strong></div>`).join("")}
+            </div>
+            ${(isGameMaster || Number(hero.user_id) === Number(currentUser?.id)) && (hero.spells || []).length ? `
+              <form class="games-form game-spellbook__cast" data-hero-user-id="${Number(hero.user_id)}">
+                <label>Заклинание<select name="spell">${(hero.spells || []).map((spell) => `<option value="${escapeHtml(spell)}">${escapeHtml(spell)}</option>`).join("")}</select></label>
+                <label>Уровень ячейки<select name="level"><option value="0">Заговор — без ячейки</option>${Array.from({length:9},(_,i)=>`<option value="${i+1}">${i+1}-й уровень</option>`).join("")}</select></label>
+                <button class="button button--primary" type="submit">Использовать заклинание</button>
+              </form>` : ""}
+            ${isGameMaster ? `
+              <form class="games-form game-spellbook__configure" data-hero-user-id="${Number(hero.user_id)}">
+                <strong>Максимум и остаток ячеек</strong>
+                <div class="game-spellbook__config-grid">
+                  ${Array.from({length:9},(_,i)=>`<label>${i+1} ур.<input type="number" min="0" max="20" name="max_${i+1}" value="${Number((hero.spell_slots_max || [])[i] || 0)}"><input type="number" min="0" max="20" name="left_${i+1}" value="${Number((hero.spell_slots || [])[i] || 0)}" aria-label="Остаток ячеек ${i+1}-го уровня"></label>`).join("")}
+                </div>
+                <button class="button button--secondary" type="submit">Сохранить ячейки</button>
+              </form>
+              <button class="button button--secondary game-spellbook__rest" type="button" data-spell-rest-user-id="${Number(hero.user_id)}">Продолжительный отдых · восстановить ячейки</button>
+            ` : ""}
+          </section>
           ${isGameMaster ? `
+            <form class="games-form game-hero-card__hp-form" data-hero-user-id="${Number(hero.user_id)}">
+              <label>Текущее HP<input type="number" name="hp" min="0" max="${Number(hero.max_hp || 10)}" value="${Number(hero.hp || 0)}" required /></label>
+              <button class="button button--secondary" type="submit">Обновить здоровье</button>
+            </form>
             <form class="games-form game-hero-card__form" data-hero-user-id="${Number(hero.user_id)}">
               <strong>Изменить параметры</strong>
               <div class="game-stat-grid">${statInputs(hero)}</div>
@@ -1872,6 +2087,42 @@ function renderGameDetail(game) {
           <button type="button" class="button button--primary" data-dice-roll>Бросить d20</button>
         </div>
       </div>
+    </div>
+    <div class="game-detail__section game-combat">
+      <div class="game-combat__heading"><div><strong>Боевая сцена</strong><p>Инициатива и очерёдность ходов в текущем бою</p></div>
+        ${game.combat?.active ? `<span class="game-combat__round">Раунд ${Number(game.combat.round || 1)}</span>` : ""}
+      </div>
+      ${game.combat?.active ? `
+        <ol class="game-combat__order">
+          ${(game.combat.combatants || []).map((fighter, index) => `
+            <li class="${index === Number(game.combat.current_index || 0) ? "is-current" : ""} ${fighter.hp === 0 ? "is-defeated" : ""}">
+              <span class="game-combat__initiative">${Number(fighter.initiative)}</span>
+              <span class="game-combat__fighter"><strong>${escapeHtml(fighter.name)}</strong><small>${fighter.kind === "hero" ? "Герой" : "Противник"}${fighter.hp !== null && fighter.hp !== undefined ? ` · ${Number(fighter.hp)}/${Number(fighter.max_hp)} HP` : ""}</small></span>
+              ${index === Number(game.combat.current_index || 0) ? "<em>Ход сейчас</em>" : ""}
+              ${isGameMaster && fighter.hp !== null && fighter.hp !== undefined ? "<span class=\"game-combat__hp-controls\"><input type=\"number\" min=\"1\" max=\"1000\" value=\"1\" aria-label=\"Количество HP\" data-combat-amount=\"" + escapeHtml(fighter.id) + "\"><button type=\"button\" class=\"button button--secondary\" data-combat-adjust=\"damage\" data-combat-target=\"" + escapeHtml(fighter.id) + "\">− Урон</button><button type=\"button\" class=\"button button--secondary\" data-combat-adjust=\"heal\" data-combat-target=\"" + escapeHtml(fighter.id) + "\">+ Лечение</button></span>" : ""}
+            </li>
+          `).join("")}
+        </ol>
+        ${(game.combat.events || []).length ? `<div class="game-combat__log"><strong>Журнал боя</strong><ol>${game.combat.events.slice().reverse().map((entry) => `<li><span>${escapeHtml(entry.message)}</span><time>${new Date(entry.created_at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</time></li>`).join("")}</ol></div>` : ""}
+        ${isGameMaster ? `<div class="game-combat__actions"><button class="button button--primary" type="button" data-combat-action="next">Следующий ход →</button><button class="button button--secondary" type="button" data-combat-action="end">Завершить бой</button></div>` : ""}
+        ${isGameMaster ? `<form class="games-form game-combat__attack" id="game-combat-attack-form">
+          <strong>Атака</strong>
+          <div class="game-combat__attack-fields">
+            <label>Атакующий<select name="attacker_id">${game.combat.combatants.map((fighter) => `<option value="${escapeHtml(fighter.id)}">${escapeHtml(fighter.name)}</option>`).join("")}</select></label>
+            <label>Цель<select name="target_id">${game.combat.combatants.map((fighter) => `<option value="${escapeHtml(fighter.id)}">${escapeHtml(fighter.name)}</option>`).join("")}</select></label>
+            <label>Бонус атаки<input type="number" name="attack_bonus" min="-20" max="30" value="0" required></label>
+            <label>Урон при попадании<input type="number" name="damage" min="1" max="1000" value="1" required></label>
+          </div>
+          <button class="button button--primary" type="submit">Бросить атаку d20</button>
+        </form>` : ""}
+      ` : isGameMaster ? `
+        <form class="games-form game-combat__start" id="game-combat-form">
+          <label>Противники <small>Каждый с новой строки: «Гоблин | 14 | 7 | 15» (имя | инициатива | HP | КБ). Инициативу можно пропустить; HP и КБ необязательны.</small>
+            <textarea name="monsters" rows="3" maxlength="1400" placeholder="Гоблин | 14 | 7 | 15&#10;Орк | | 15/18 | 13&#10;Скелет"></textarea>
+          </label>
+          <button class="button button--primary" type="submit">Начать бой и бросить инициативу</button>
+        </form>
+      ` : "<p>Ведущий ещё не начал бой.</p>"}
     </div>
     <div class="game-detail__section">
       <strong>Недавние сессии</strong>
@@ -1938,6 +2189,78 @@ function renderGameDetail(game) {
       ? `${gamePath}/play`
       : gamePath;
     window.location.assign(destination);
+  });
+
+  const combatForm = panel.querySelector("#game-combat-form");
+  combatForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const monsters = String(new FormData(combatForm).get("monsters") || "").split(/\\r?\\n/).map((line) => line.trim()).filter(Boolean);
+    if (monsters.length > 12 || monsters.some((line) => line.length > 100)) {
+      showToast("Добавь не более 12 противников, до 100 символов каждый");
+      return;
+    }
+    try {
+      await api(`/api/games/${game.id}/combat`, { method: "POST", body: JSON.stringify({ action: "start", monsters }) });
+      const refreshedGame = await api(`/api/games/${game.id}`);
+      renderGameDetail(refreshedGame.game);
+      showToast("Бой начался — инициатива определена");
+    } catch (error) {
+      showToast(error.message);
+    }
+  });
+  panel.querySelectorAll("[data-combat-action]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      try {
+        await api(`/api/games/${game.id}/combat`, { method: "POST", body: JSON.stringify({ action: button.dataset.combatAction }) });
+        const refreshedGame = await api(`/api/games/${game.id}`);
+        renderGameDetail(refreshedGame.game);
+        showToast(button.dataset.combatAction === "next" ? "Ход передан следующему участнику" : "Бой завершён");
+      } catch (error) {
+        showToast(error.message);
+      }
+    });
+  });
+  panel.querySelectorAll("[data-combat-adjust]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const amountInput = panel.querySelector('[data-combat-amount="' + button.dataset.combatTarget + '"]');
+      const amount = Number(amountInput?.value || 0);
+      if (!Number.isInteger(amount) || amount < 1 || amount > 1000) {
+        showToast("Укажи значение от 1 до 1000");
+        return;
+      }
+      try {
+        await api("/api/games/" + game.id + "/combat", {
+          method: "POST",
+          body: JSON.stringify({ action: button.dataset.combatAdjust, target_id: button.dataset.combatTarget, amount }),
+        });
+        const refreshedGame = await api("/api/games/" + game.id);
+        renderGameDetail(refreshedGame.game);
+        showToast(button.dataset.combatAdjust === "damage" ? "Урон применён" : "Здоровье восстановлено");
+      } catch (error) {
+        showToast(error.message);
+      }
+    });
+  });
+
+  const combatAttackForm = panel.querySelector("#game-combat-attack-form");
+  combatAttackForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const formData = new FormData(combatAttackForm);
+    const payload = {
+      action: "attack",
+      attacker_id: formData.get("attacker_id"),
+      target_id: formData.get("target_id"),
+      attack_bonus: Number(formData.get("attack_bonus")),
+      damage: Number(formData.get("damage")),
+    };
+    try {
+      await api("/api/games/" + game.id + "/combat", { method: "POST", body: JSON.stringify(payload) });
+      const refreshedGame = await api("/api/games/" + game.id);
+      renderGameDetail(refreshedGame.game);
+      showToast("Результат атаки добавлен в журнал боя");
+    } catch (error) {
+      showToast(error.message);
+    }
   });
 
   const joinButton = panel.querySelector('[data-game-action="join"]');
@@ -2043,6 +2366,91 @@ function renderGameDetail(game) {
       }
     });
   }
+
+  panel.querySelectorAll(".game-spellbook__configure").forEach((form) => {
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const data = new FormData(form);
+      const spell_slots_max = Array.from({length:9},(_,i)=>Number(data.get("max_"+(i+1))));
+      const spell_slots = Array.from({length:9},(_,i)=>Number(data.get("left_"+(i+1))));
+      if ([...spell_slots_max, ...spell_slots].some((value) => !Number.isInteger(value) || value < 0 || value > 20) || spell_slots.some((value,index)=>value>spell_slots_max[index])) {
+        showToast("Проверь ячейки: остаток не может превышать максимум"); return;
+      }
+      try {
+        await api("/api/games/"+game.id+"/characters/"+form.dataset.heroUserId, {method:"PATCH",body:JSON.stringify({spell_slots_max,spell_slots})});
+        const refreshedGame = await api("/api/games/"+game.id); renderGameDetail(refreshedGame.game); showToast("Ячейки заклинаний сохранены");
+      } catch (error) { showToast(error.message); }
+    });
+  });
+
+  panel.querySelectorAll(".game-spellbook__cast").forEach((form) => {
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault(); const data = new FormData(form);
+      try {
+        const result = await api("/api/games/"+game.id+"/characters/"+form.dataset.heroUserId+"/cast", {method:"POST",body:JSON.stringify({spell:data.get("spell"),level:Number(data.get("level"))})});
+        const refreshedGame = await api("/api/games/"+game.id); renderGameDetail(refreshedGame.game);
+        showToast(result.cast.effect === "healing" ? "Заклинание восстановило " + result.cast.healing + " HP" : (result.cast.level === 0 ? "Заговор использован" : "Заклинание использовано · ячейка списана"));
+      } catch (error) { showToast(error.message); }
+    });
+  });
+
+  panel.querySelectorAll("[data-spell-rest-user-id]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      if (!window.confirm("Восстановить все ячейки заклинаний этого персонажа?")) return;
+      try {
+        await api("/api/games/"+game.id+"/characters/"+button.dataset.spellRestUserId+"/rest", {method:"POST",body:JSON.stringify({type:"long"})});
+        const refreshedGame = await api("/api/games/"+game.id); renderGameDetail(refreshedGame.game); showToast("Ячейки восстановлены после продолжительного отдыха");
+      } catch (error) { showToast(error.message); }
+    });
+  });
+
+  panel.querySelectorAll(".game-hero-card__loadout").forEach((form) => {
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const formData = new FormData(form);
+      const toList = (value) => String(value || "").split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+      const inventory = toList(formData.get("inventory"));
+      const spells = toList(formData.get("spells"));
+      if (inventory.length > 40 || spells.length > 40 || [...inventory, ...spells].some((item) => item.length > 100)) {
+        showToast("Максимум 40 записей в каждом списке, до 100 символов каждая");
+        return;
+      }
+      try {
+        await api(`/api/games/${game.id}/characters/${form.dataset.heroUserId}`, {
+          method: "PATCH",
+          body: JSON.stringify({ inventory, spells }),
+        });
+        const refreshedGame = await api(`/api/games/${game.id}`);
+        renderGameDetail(refreshedGame.game);
+        showToast("Инвентарь и заклинания сохранены");
+      } catch (error) {
+        showToast(error.message);
+      }
+    });
+  });
+
+  panel.querySelectorAll(".game-hero-card__hp-form").forEach((form) => {
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const hp = Number(new FormData(form).get("hp"));
+      const hero = heroes.find((item) => Number(item.user_id) === Number(form.dataset.heroUserId));
+      if (!hero || !Number.isInteger(hp) || hp < 0 || hp > Number(hero.max_hp || 10)) {
+        showToast("Проверь значение здоровья");
+        return;
+      }
+      try {
+        await api(`/api/games/${game.id}/characters/${form.dataset.heroUserId}`, {
+          method: "PATCH",
+          body: JSON.stringify({ hp }),
+        });
+        const refreshedGame = await api(`/api/games/${game.id}`);
+        renderGameDetail(refreshedGame.game);
+        showToast("Здоровье персонажа обновлено");
+      } catch (error) {
+        showToast(error.message);
+      }
+    });
+  });
 
   panel.querySelectorAll(".game-hero-card__form").forEach((form) => {
     form.addEventListener("submit", async (event) => {
@@ -2219,6 +2627,7 @@ function applyPageLayout() {
   const currentUserIsLoggedIn = Boolean(currentUser);
 
   document.body.dataset.page = page;
+  document.body.dataset.gameSite = /^\/games\/dnd(?:\/play)?\/?$/.test(path) ? "true" : "false";
   if (page !== "games" && activeCatalogGameSlug) {
     stopCatalogPresence();
     activeCatalogGameSlug = "";

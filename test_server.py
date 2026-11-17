@@ -1031,6 +1031,137 @@ class BiblioServerTests(unittest.TestCase):
             server._MONGO_CLIENTS.pop(uri, None)
             client.close()
 
+    def test_dnd_combat_tracks_monster_health_damage_healing_and_events(self):
+        state = server.game_combat_transition(
+            "start",
+            {"monsters": ["Гоблин | 14 | 7", "Орк | | 15/18", "Скелет"]},
+            [],
+        )
+        self.assertTrue(state["active"])
+        goblin = next(item for item in state["combatants"] if item["name"] == "Гоблин")
+        orc = next(item for item in state["combatants"] if item["name"] == "Орк")
+        skeleton = next(item for item in state["combatants"] if item["name"] == "Скелет")
+        self.assertEqual((goblin["initiative"], goblin["hp"], goblin["max_hp"]), (14, 7, 7))
+        self.assertEqual((orc["hp"], orc["max_hp"]), (15, 18))
+        self.assertIsNone(skeleton["hp"])
+
+        state = server.game_combat_transition("damage", {"target_id": goblin["id"], "amount": 9}, [], state)
+        goblin = next(item for item in state["combatants"] if item["id"] == goblin["id"])
+        self.assertEqual(goblin["hp"], 0)
+        self.assertIn("0/7)", state["events"][-1]["message"])
+        state = server.game_combat_transition("heal", {"target_id": goblin["id"], "amount": 3}, [], state)
+        goblin = next(item for item in state["combatants"] if item["id"] == goblin["id"])
+        self.assertEqual(goblin["hp"], 3)
+        self.assertIn("восстановил здоровье", state["events"][-1]["message"])
+        with self.assertRaises(server.APIError):
+            server.game_combat_transition("damage", {"target_id": skeleton["id"], "amount": 1}, [], state)
+        with self.assertRaises(server.APIError):
+            server.game_combat_transition("damage", {"target_id": goblin["id"], "amount": 0}, [], state)
+
+    def test_dnd_combat_attack_roll_uses_armor_class_and_critical_damage(self):
+        heroes = [{
+            "user_id": 7, "name": "Следопыт", "dexterity": 14,
+            "hp": 12, "max_hp": 12, "armor_class": 15,
+        }]
+        state = server.game_combat_transition(
+            "start", {"monsters": ["Гоблин | 12 | 8 | 13"]}, heroes
+        )
+        hero = next(item for item in state["combatants"] if item["kind"] == "hero")
+        goblin = next(item for item in state["combatants"] if item["kind"] == "monster")
+        with patch("server.secrets.randbelow", return_value=19):
+            state = server.game_combat_transition(
+                "attack",
+                {"attacker_id": hero["id"], "target_id": goblin["id"], "attack_bonus": 4, "damage": 3},
+                heroes,
+                state,
+            )
+        goblin = next(item for item in state["combatants"] if item["id"] == goblin["id"])
+        self.assertEqual(goblin["hp"], 2)
+        self.assertIn("критическое попадание", state["events"][-1]["message"])
+        self.assertIn("6 HP", state["events"][-1]["message"])
+
+    def test_dnd_combat_attack_misses_when_roll_is_one(self):
+        state = server.game_combat_transition("start", {"monsters": ["Орк | 10 | 10 | 18"]}, [])
+        orc = state["combatants"][0]
+        attacker = {"id": "hero-test", "name": "Герой", "kind": "hero"}
+        state["combatants"].append(attacker)
+        with patch("server.secrets.randbelow", return_value=0):
+            state = server.game_combat_transition(
+                "attack",
+                {"attacker_id": attacker["id"], "target_id": orc["id"], "attack_bonus": 30, "damage": 5},
+                [],
+                state,
+            )
+        orc = next(item for item in state["combatants"] if item["id"] == orc["id"])
+        self.assertEqual(orc["hp"], 10)
+        self.assertIn("промах", state["events"][-1]["message"])
+
+    def test_dnd_spell_slots_are_validated_and_casts_consume_them(self):
+        character = {
+            "spells": ["Волшебная стрела", "Щит", "Свет"],
+            "spell_slots_max": [2, 1, 0, 0, 0, 0, 0, 0, 0],
+            "spell_slots": [2, 1, 0, 0, 0, 0, 0, 0, 0],
+        }
+        first = server.game_character_cast({"spell": "Волшебная стрела", "level": 1}, character)
+        self.assertEqual(first["spell_slots"][0], 1)
+        second = server.game_character_cast({"spell": "Щит", "level": 1}, {**character, "spell_slots": first["spell_slots"]})
+        self.assertEqual(second["spell_slots"][0], 0)
+        with self.assertRaises(server.APIError):
+            server.game_character_cast({"spell": "Щит", "level": 1}, {**character, "spell_slots": second["spell_slots"]})
+        cantrip = server.game_character_cast({"spell": "Свет", "level": 0}, {**character, "spell_slots": second["spell_slots"]})
+        self.assertEqual(cantrip["spell_slots"], second["spell_slots"])
+        with self.assertRaises(server.APIError):
+            server.game_character_cast({"spell": "Неизвестное заклинание", "level": 0}, character)
+
+    def test_dnd_healing_spells_restore_character_hp_without_exceeding_maximum(self):
+        character = {
+            "spells": ["Лечение ран", "Лечебное слово"],
+            "hp": 4, "max_hp": 10,
+            "spell_slots_max": [2, 0, 0, 0, 0, 0, 0, 0, 0],
+            "spell_slots": [2, 0, 0, 0, 0, 0, 0, 0, 0],
+        }
+        with patch("server.secrets.randbelow", return_value=7):
+            result = server.game_character_cast({"spell": "Лечение ран", "level": 1}, character)
+        self.assertEqual(result["effect"], "healing")
+        self.assertEqual(result["healing"], 6)
+        self.assertEqual(result["hp"], 10)
+        self.assertEqual(result["spell_slots"][0], 1)
+        with self.assertRaises(server.APIError):
+            server.game_character_cast({"spell": "Лечение ран", "level": 0}, character)
+
+        full_health = {**character, "hp": 10, "spell_slots": [2, 0, 0, 0, 0, 0, 0, 0, 0]}
+        with patch("server.secrets.randbelow", return_value=0):
+            result = server.game_character_cast({"spell": "Лечебное слово", "level": 1}, full_health)
+        self.assertEqual(result["healing"], 0)
+        self.assertEqual(result["hp"], 10)
+
+        with patch("server.secrets.randbelow", return_value=7):
+            upcast = server.game_character_cast(
+                {"spell": "Лечение ран", "level": 2},
+                {
+                    **character, "hp": 1, "max_hp": 20,
+                    "spell_slots_max": [2, 1, 0, 0, 0, 0, 0, 0, 0],
+                    "spell_slots": [2, 1, 0, 0, 0, 0, 0, 0, 0],
+                },
+            )
+        self.assertEqual(upcast["healing"], 16)
+        self.assertEqual(upcast["hp"], 17)
+
+    def test_dnd_spell_slot_configuration_rejects_invalid_counts(self):
+        valid = {"spell_slots_max": [2, 1, 0, 0, 0, 0, 0, 0, 0], "spell_slots": [1, 0, 0, 0, 0, 0, 0, 0, 0]}
+        result = server.game_character_spell_slots(valid)
+        self.assertEqual(result["spell_slots_max"][0], 2)
+        with self.assertRaises(server.APIError):
+            server.game_character_spell_slots({"spell_slots_max": [1], "spell_slots": [1]})
+        with self.assertRaises(server.APIError):
+            server.game_character_spell_slots({"spell_slots_max": [1] * 9, "spell_slots": [2] + [0] * 8})
+
+    def test_dnd_combat_rejects_invalid_monster_health(self):
+        with self.assertRaises(server.APIError):
+            server.game_combat_transition("start", {"monsters": ["Гоблин | 14 | 0/7"]}, [])
+        with self.assertRaises(server.APIError):
+            server.game_combat_transition("start", {"monsters": ["Гоблин | nope | 7"]}, [])
+
     def test_static_site_is_served_by_the_application_server(self):
         request = Request(self.base_url + "/", method="GET")
         with self.client.open(request) as response:
