@@ -500,3 +500,194 @@ body[data-game-site="true"] .dnd-gm-dashboard .button--secondary:hover {
   border-color: var(--dnd-accent);
   background: var(--dnd-surface-raised);
 }
+
+
+/* Final palette audit: unify remaining legacy D&D landing, catalog and world-card colors. */
+body[data-game-site="true"] .game-page__hero {
+  border-color: var(--dnd-line-strong);
+  background:
+    radial-gradient(ellipse at 78% 45%, #d8bd8318, transparent 34%),
+    linear-gradient(120deg, #1b2633, #111923 72%);
+  color: var(--dnd-text);
+  box-shadow: none;
+}
+body[data-game-site="true"] .game-page__hero:after {
+  border-color: #d8bd8328;
+}
+body[data-game-site="true"] .game-page__eyebrow,
+body[data-game-site="true"] .game-page__world-number,
+body[data-game-site="true"] .game-page__cover-mark {
+  color: var(--dnd-accent-strong);
+}
+body[data-game-site="true"] .game-page__hero h2,
+body[data-game-site="true"] .game-page__world-card-copy h3,
+body[data-game-site="true"] .game-page__cover strong {
+  color: var(--dnd-text);
+}
+body[data-game-site="true"] .game-page__hero p,
+body[data-game-site="true"] .game-page__world-card-copy p,
+body[data-game-site="true"] .game-page__cover small {
+  color: var(--dnd-muted);
+}
+body[data-game-site="true"] .game-page__tags span {
+  border-color: var(--dnd-line-strong);
+  background: #0d131c88;
+  color: var(--dnd-accent-strong);
+}
+body[data-game-site="true"] .game-page__orbit {
+  border-color: #d8bd8330;
+  box-shadow: none;
+}
+body[data-game-site="true"] .game-page__die {
+  background: linear-gradient(145deg, var(--dnd-accent-strong), #a98b58);
+  color: var(--dnd-accent-ink);
+  filter: none;
+}
+body[data-game-site="true"] .game-page__cover {
+  border: 1px solid var(--dnd-line);
+  background:
+    radial-gradient(circle at 50% 32%, #d8bd8318, transparent 42%),
+    linear-gradient(155deg, var(--dnd-surface-raised), var(--dnd-bg-deep) 75%);
+  color: var(--dnd-text);
+  box-shadow: none;
+}
+body[data-game-site="true"] .game-page__cover:before,
+body[data-game-site="true"] .game-page__cover:after {
+  border-color: #d8bd8328;
+}
+body[data-game-site="true"] .game-page__overview,
+body[data-game-site="true"] .game-page__feature {
+  border: 1px solid var(--dnd-line);
+  background: var(--dnd-surface);
+  color: var(--dnd-text);
+  box-shadow: none;
+}
+body[data-game-site="true"] .game-page__overview h2,
+body[data-game-site="true"] .game-page__feature h3,
+body[data-game-site="true"] .game-page__cta h2 {
+  color: var(--dnd-text);
+}
+body[data-game-site="true"] .game-page__overview p,
+body[data-game-site="true"] .game-page__feature p,
+body[data-game-site="true"] .game-page__cta p {
+  color: var(--dnd-muted);
+}
+body[data-game-site="true"] .game-page__feature-icon {
+  border: 1px solid var(--dnd-line-strong);
+  background: var(--dnd-surface-raised);
+  color: var(--dnd-accent-strong);
+}
+body[data-game-site="true"] .game-page__world-card {
+  border-color: var(--dnd-line-strong);
+  background: var(--dnd-surface);
+  color: var(--dnd-text);
+}
+body[data-game-site="true"] .game-page__world-card:before {
+  background:
+    radial-gradient(ellipse at 75% 25%, #d8bd8320, transparent 28%),
+    linear-gradient(145deg, #263343, #111923 72%);
+}
+body[data-game-site="true"] .game-page__world-card--ruins:before,
+body[data-game-site="true"] .game-page__world-card--battle:before,
+body[data-game-site="true"] .game-page__world-card--arcane:before {
+  background:
+    radial-gradient(ellipse at 70% 28%, #d8bd8320, transparent 28%),
+    linear-gradient(145deg, #293545, #111923 72%);
+}
+body[data-game-site="true"] .game-page__world-card:after {
+  background:
+    linear-gradient(0deg, #0d131cf2, transparent 82%),
+    repeating-linear-gradient(135deg, transparent 0 25px, #ead3a20c 26px 27px);
+}
+body[data-game-site="true"] .game-page__cta {
+  border: 1px solid var(--dnd-line-strong);
+  border-radius: 12px;
+  background:
+    radial-gradient(ellipse at 100% 0%, #d8bd8310, transparent 38%),
+    linear-gradient(115deg, var(--dnd-surface-raised), var(--dnd-bg-deep));
+}
+body[data-game-site="true"] .game-page__cta .button--primary {
+  border: 1px solid var(--dnd-accent-strong);
+  background: var(--dnd-accent);
+  color: var(--dnd-accent-ink);
+}
+body[data-game-site="true"] .game-page__cta .button--primary:hover {
+  background: var(--dnd-accent-strong);
+}
+body[data-game-site="true"] .game-page__back-link {
+  color: var(--dnd-accent-strong);
+}
+body[data-game-site="true"] .game-catalog-card__cover,
+body[data-game-site="true"] .game-catalog-detail__cover {
+  border-color: var(--dnd-line-strong);
+  background:
+    radial-gradient(ellipse at 50% 42%, #d8bd8320, transparent 46%),
+    linear-gradient(155deg, #293545, #111923);
+  color: var(--dnd-text);
+  box-shadow: none;
+}
+body[data-game-site="true"] .game-catalog-card__cover:before {
+  border-color: #ead3a230;
+}
+body[data-game-site="true"] .game-catalog-card__cover[data-theme="fantasy"] {
+  background:
+    radial-gradient(ellipse at 50% 43%, #d8bd8320, transparent 46%),
+    linear-gradient(155deg, #293545, #111923);
+}
+body[data-game-site="true"] .game-catalog-card__cover-mark,
+body[data-game-site="true"] .game-catalog-detail__cover span {
+  border-color: #ead3a266;
+  color: var(--dnd-accent-strong);
+}
+body[data-game-site="true"] .game-catalog-card__rating,
+body[data-game-site="true"] .game-catalog-detail__stats > span:first-child {
+  color: var(--dnd-accent-strong);
+}
+body[data-game-site="true"] .game-catalog-card__online-dot {
+  background: var(--dnd-accent);
+  box-shadow: 0 0 0 3px #d8bd8322;
+}
+body[data-game-site="true"] .game-cover-card,
+body[data-game-site="true"] .game-cover-card[data-cover-style="1"],
+body[data-game-site="true"] .game-cover-card[data-cover-style="2"],
+body[data-game-site="true"] .game-cover-card[data-cover-style="3"] {
+  border-color: var(--dnd-line-strong);
+  background:
+    radial-gradient(ellipse at 50% 40%, #d8bd8318, transparent 48%),
+    linear-gradient(155deg, #293545, #111923);
+  color: var(--dnd-text);
+  box-shadow: none;
+}
+body[data-game-site="true"] .game-cover-card:before,
+body[data-game-site="true"] .game-cover-card__action {
+  border-color: #ead3a230;
+}
+body[data-game-site="true"] .game-cover-card:after,
+body[data-game-site="true"] .game-cover-card__symbol,
+body[data-game-site="true"] .game-cover-card__action {
+  color: var(--dnd-accent-strong);
+}
+body[data-game-site="true"] .game-cover-card__meta {
+  color: var(--dnd-muted);
+}
+body[data-game-site="true"] .game-cover-card__access {
+  border: 1px solid var(--dnd-line-strong);
+  background: var(--dnd-surface-raised);
+  color: var(--dnd-accent-strong);
+}
+body[data-game-site="true"] .game-hero-card__hp-track {
+  background: var(--dnd-bg-deep);
+}
+body[data-game-site="true"] .game-hero-card__hp-track span {
+  background: var(--dnd-accent);
+}
+body[data-game-site="true"] .game-combat__hp-controls input,
+body[data-game-site="true"] .game-combat__attack-fields input,
+body[data-game-site="true"] .game-combat__attack-fields select,
+body[data-game-site="true"] .game-spellbook__cast input,
+body[data-game-site="true"] .game-spellbook__cast select,
+body[data-game-site="true"] .game-spellbook__config-grid input {
+  border-color: var(--dnd-line-strong);
+  background: var(--dnd-bg-deep);
+  color: var(--dnd-text);
+}
