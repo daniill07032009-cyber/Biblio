@@ -1525,7 +1525,8 @@ function renderCatalogGameDetail(game) {
   ];
   statItems.forEach(([value, label]) => {
     const item = createElement("div", "critical-dnd__stat");
-    item.append(createElement("strong", "", value), createElement("small", "", label));
+    const number = createElement("strong", label === "СЕЙЧАС СМОТРЯТ" ? "game-catalog-active-count" : "", value);
+    item.append(number, createElement("small", "", label));
     stats.append(item);
   });
   const section = createElement("section", "critical-dnd__campaign-preview");
@@ -1868,12 +1869,16 @@ async function rateCatalogGame(slug, rating) {
     renderGameCatalogCards();
     const currentGame = gameCatalogGames.find((item) => item.slug === slug);
     if (currentGame && activeCatalogGameSlug === slug) {
-      document.querySelector(".game-catalog-detail__stats > span").textContent =
-        `★ ${Number(result.rating).toFixed(1)} · ${result.rating_count} оценок`;
+      const ratingValue = document.querySelector(".critical-dnd__stat strong");
+      if (ratingValue) ratingValue.textContent = Number(result.rating).toFixed(1);
+      const ratingCaption = [...document.querySelectorAll(".critical-dnd__stat small")]
+        .find((item) => item.textContent === "РЕЙТИНГ ИГРЫ");
+      if (ratingCaption) ratingCaption.textContent = `${result.rating_count} ОЦЕНОК`;
       document.querySelectorAll(".game-catalog-rating-stars [data-rating]").forEach((button) => {
         button.classList.toggle("is-selected", Number(button.dataset.rating) <= rating);
       });
-      document.querySelector(".game-catalog-detail__rating-message").textContent = "Твоя оценка сохранена.";
+      const ratingMessage = document.querySelector(".game-catalog-detail__rating-message");
+      if (ratingMessage) ratingMessage.textContent = "Твоя оценка сохранена.";
     }
   } catch (error) {
     showToast(error.message);
