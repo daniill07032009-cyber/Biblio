@@ -1135,6 +1135,14 @@ class BiblioServerTests(unittest.TestCase):
         self.assertEqual(result["healing"], 0)
         self.assertEqual(result["hp"], 10)
 
+        with patch("server.secrets.randbelow", return_value=7):
+            upcast = server.game_character_cast(
+                {"spell": "Лечение ран", "level": 2},
+                {**character, "spell_slots": [2, 1, 0, 0, 0, 0, 0, 0, 0]},
+            )
+        self.assertEqual(upcast["healing"], 8)
+        self.assertEqual(upcast["hp"], 10)
+
     def test_dnd_spell_slot_configuration_rejects_invalid_counts(self):
         valid = {"spell_slots_max": [2, 1, 0, 0, 0, 0, 0, 0, 0], "spell_slots": [1, 0, 0, 0, 0, 0, 0, 0, 0]}
         result = server.game_character_spell_slots(valid)
