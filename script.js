@@ -1898,16 +1898,11 @@ function renderGameDetail(game) {
       ${game.combat?.active ? `
         <ol class="game-combat__order">
           ${(game.combat.combatants || []).map((fighter, index) => `
-            <li class="${index === Number(game.combat.current_index || 0) ? "is-current" : ""}">
+            <li class="${index === Number(game.combat.current_index || 0) ? "is-current" : ""} ${fighter.hp === 0 ? "is-defeated" : ""}">
               <span class="game-combat__initiative">${Number(fighter.initiative)}</span>
               <span class="game-combat__fighter"><strong>${escapeHtml(fighter.name)}</strong><small>${fighter.kind === "hero" ? "Герой" : "Противник"}${fighter.hp !== null && fighter.hp !== undefined ? ` · ${Number(fighter.hp)}/${Number(fighter.max_hp)} HP` : ""}</small></span>
               ${index === Number(game.combat.current_index || 0) ? "<em>Ход сейчас</em>" : ""}
-              ${isGameMaster && fighter.hp !== null && fighter.hp !== undefined ? '
-                <span class="game-combat__hp-controls">
-                  <input type="number" min="1" max="1000" value="1" aria-label="Количество HP" data-combat-amount="${escapeHtml(fighter.id)}">
-                  <button type="button" class="button button--secondary" data-combat-adjust="damage" data-combat-target="${escapeHtml(fighter.id)}">− Урон</button>
-                  <button type="button" class="button button--secondary" data-combat-adjust="heal" data-combat-target="${escapeHtml(fighter.id)}">+ Лечение</button>
-                </span>' : ""}
+              ${isGameMaster && fighter.hp !== null && fighter.hp !== undefined ? "<span class=\"game-combat__hp-controls\"><input type=\"number\" min=\"1\" max=\"1000\" value=\"1\" aria-label=\"Количество HP\" data-combat-amount=\"" + escapeHtml(fighter.id) + "\"><button type=\"button\" class=\"button button--secondary\" data-combat-adjust=\"damage\" data-combat-target=\"" + escapeHtml(fighter.id) + "\">− Урон</button><button type=\"button\" class=\"button button--secondary\" data-combat-adjust=\"heal\" data-combat-target=\"" + escapeHtml(fighter.id) + "\">+ Лечение</button></span>" : ""}
             </li>
           `).join("")}
         </ol>
