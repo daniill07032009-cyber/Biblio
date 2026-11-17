@@ -230,6 +230,7 @@ def initialize_db():
                 description TEXT NOT NULL DEFAULT '',
                 access TEXT NOT NULL DEFAULT 'public' CHECK (access IN ('public', 'private', 'invite_only')),
                 join_code TEXT NOT NULL DEFAULT '',
+                combat_state TEXT NOT NULL DEFAULT '{}',
                 created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
                 updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
             );
@@ -367,6 +368,9 @@ def initialize_db():
         for name in ("inventory", "spells"):
             if name not in character_columns:
                 db.execute(f"ALTER TABLE game_characters ADD COLUMN {name} TEXT NOT NULL DEFAULT '[]'")
+        game_columns = {row["name"] for row in db.execute("PRAGMA table_info(games)").fetchall()}
+        if "combat_state" not in game_columns:
+            db.execute("ALTER TABLE games ADD COLUMN combat_state TEXT NOT NULL DEFAULT '{}'")
         db.execute(
             "UPDATE games SET catalog_game_slug = 'dnd' WHERE catalog_game_slug IS NULL"
         )
@@ -583,6 +587,49 @@ def game_catalog_record(game, rating=0, rating_count=0, active_viewers=0, user_r
         "active_viewers": int(active_viewers or 0),
         "user_rating": int(user_rating or 0),
     }
+
+
+def game_combat_transition(action, payload, heroes, existing=None):
+    existing = existing or {}
+    if action == "start":
+        monsters = payload.get("monsters", [])
+        if not isinstance(monsters, list) or len(monsters) > 12:
+            raise APIError(HTTPStatus.BAD_REQUEST, "Можно добавить не более 12 противников.")
+        combatants = []
+        for hero in heroes:
+            dexterity = int(hero.get("dexterity", 10) or 10)
+            combatants.append({
+                "id": f"hero-{hero['user_id']}", "name": hero.get("name") or "Герой",
+                "kind": "hero", "user_id": hero["user_id"],
+                "initiative": secrets.randbelow(20) + 1 + (dexterity - 10) // 2,
+                "hp": int(hero.get("hp", 10) or 0), "max_hp": int(hero.get("max_hp", 10) or 10),
+            })
+        for index, raw in enumerate(monsters):
+            if not isinstance(raw, str) or not raw.strip() or len(raw.strip()) > 100:
+                raise APIError(HTTPStatus.BAD_REQUEST, "Название противника должно содержать от 1 до 100 символов.")
+            match = re.fullmatch(r"(.+?)(?::\s*(-?\d+))?", raw.strip())
+            combatants.append({
+                "id": f"monster-{index}-{secrets.token_hex(3)}", "name": match.group(1).strip(),
+                "kind": "monster", "initiative": int(match.group(2)) if match.group(2) is not None else secrets.randbelow(20) + 1,
+                "hp": None, "max_hp": None,
+            })
+        if not combatants:
+            raise APIError(HTTPStatus.BAD_REQUEST, "Нужен хотя бы один герой или противник для начала боя.")
+        combatants.sort(key=lambda item: (-item["initiative"], item["name"].casefold()))
+        return {"active": True, "round": 1, "current_index": 0, "combatants": combatants, "updated_at": utc_timestamp()}
+    if action == "next":
+        if not existing.get("active") or not existing.get("combatants"):
+            raise APIError(HTTPStatus.CONFLICT, "Сейчас нет активного боя.")
+        combatants = existing["combatants"]
+        index = int(existing.get("current_index", 0)) + 1
+        round_number = int(existing.get("round", 1))
+        if index >= len(combatants):
+            index = 0
+            round_number += 1
+        return {**existing, "round": round_number, "current_index": index, "updated_at": utc_timestamp()}
+    if action == "end":
+        return None
+    raise APIError(HTTPStatus.BAD_REQUEST, "Неизвестное действие боя.")
 
 
 def game_character_loadout(payload, existing=None):
@@ -1519,6 +1566,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
                     "description": game.get("description", ""),
                     "access": game.get("access", "public"),
                     "join_code": game.get("join_code", ""),
+                    "combat": game.get("combat_state") or None,
                     "created_at": game.get("created_at", utc_timestamp()),
                     "updated_at": game.get("updated_at", utc_timestamp()),
                     "member_count": member_count,
@@ -1701,13 +1749,20 @@ class BiblioHandler(BaseHTTPRequestHandler):
             updated_character = db.game_characters.find_one({"game_id": game_id, "user_id": target_user_id})
             return {"character": game_character_record(updated_character)}, HTTPStatus.OK, []
 
-        game_action_match = re.fullmatch(r"/api/games/(\d+)/(join|leave|characters|heroes|sessions|xp|join-code)", path)
+        game_action_match = re.fullmatch(r"/api/games/(\d+)/(join|leave|characters|heroes|sessions|xp|join-code|combat)", path)
         if method in {"POST", "DELETE"} and game_action_match:
             user = self.current_user_mongo(db, required=True)
             game_id = int(game_action_match.group(1))
             game = db.games.find_one({"id": game_id})
             if game is None:
                 raise APIError(HTTPStatus.NOT_FOUND, "Комната не найдена.")
+            if game_action_match.group(2) == "combat":
+                if game["owner_id"] != user["id"]:
+                    raise APIError(HTTPStatus.FORBIDDEN, "Управлять боем может только ведущий.")
+                payload = self.read_json()
+                combat = game_combat_transition(str(payload.get("action") or ""), payload, list(db.game_characters.find({"game_id": game_id})), game.get("combat_state"))
+                db.games.update_one({"id": game_id}, {"$set": {"combat_state": combat or {}, "updated_at": utc_timestamp()}})
+                return {"combat": combat}, HTTPStatus.OK, []
             if game_action_match.group(2) == "join-code":
                 if game["owner_id"] != user["id"]:
                     raise APIError(HTTPStatus.FORBIDDEN, "Только владелец комнаты может менять код доступа.")
@@ -2423,6 +2478,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
                     "description": game["description"],
                     "access": game["access"],
                     "join_code": game["join_code"],
+                    "combat": json.loads(game["combat_state"] or "{}") or None,
                     "created_at": game["created_at"],
                     "updated_at": game["updated_at"],
                     "member_count": member_count,
@@ -2634,7 +2690,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
             ).fetchone()
             return {"character": game_character_record(dict(updated_character))}, HTTPStatus.OK, []
 
-        game_action_match = re.fullmatch(r"/api/games/(\d+)/(join|leave|characters|heroes|sessions|xp|join-code)", path)
+        game_action_match = re.fullmatch(r"/api/games/(\d+)/(join|leave|characters|heroes|sessions|xp|join-code|combat)", path)
         if method in {"POST", "DELETE"} and game_action_match:
             user = self.current_user(db, required=True)
             game = db.execute("SELECT * FROM games WHERE id = ?", (int(game_action_match.group(1)),)).fetchone()
@@ -2642,6 +2698,18 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 raise APIError(HTTPStatus.NOT_FOUND, "Комната не найдена.")
             game_id = game["id"]
             action = game_action_match.group(2)
+            if action == "combat":
+                if game["owner_id"] != user["id"]:
+                    raise APIError(HTTPStatus.FORBIDDEN, "Управлять боем может только ведущий.")
+                payload = self.read_json()
+                heroes = [dict(row) for row in db.execute("SELECT * FROM game_characters WHERE game_id = ?", (game_id,)).fetchall()]
+                existing_combat = json.loads(game["combat_state"] or "{}")
+                combat = game_combat_transition(str(payload.get("action") or ""), payload, heroes, existing_combat)
+                db.execute(
+                    "UPDATE games SET combat_state = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?",
+                    (json.dumps(combat or {}, ensure_ascii=False), game_id),
+                )
+                return {"combat": combat}, HTTPStatus.OK, []
             if action == "join-code":
                 if game["owner_id"] != user["id"]:
                     raise APIError(HTTPStatus.FORBIDDEN, "Только владелец комнаты может менять код доступа.")
