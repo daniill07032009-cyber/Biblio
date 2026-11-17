@@ -1692,3 +1692,72 @@ html[data-reader-theme="dark"] .reader-dialog { --surface: #20231f; }
 
 /* Preserve the native hidden state when the detail layout is grid-based. */
 .game-catalog-detail[hidden]{display:none!important}
+
+
+/* DDO-inspired fantasy presentation: cinematic, high-contrast, original Biblio artwork. */
+.game-page__hero{
+  min-height:390px;
+  grid-template-columns:minmax(0,1.2fr) minmax(240px,.8fr);
+  border:1px solid rgba(216,190,139,.24);
+  border-radius:8px;
+  background:
+    radial-gradient(ellipse at 78% 45%,rgba(112,139,184,.34),transparent 25%),
+    radial-gradient(ellipse at 72% 82%,rgba(184,111,62,.26),transparent 34%),
+    linear-gradient(112deg,#101b2a 0%,#1b2b40 48%,#342c2a 100%);
+  box-shadow:0 22px 58px rgba(13,20,31,.24);
+}
+.game-page__hero:before{
+  position:absolute;inset:0;content:"";pointer-events:none;opacity:.42;
+  background:linear-gradient(90deg,rgba(7,13,23,.18),transparent 65%),repeating-linear-gradient(118deg,transparent 0 34px,rgba(233,211,171,.035) 35px 36px);
+}
+.game-page__hero:after{inset:12px;border:1px solid rgba(235,211,164,.24);border-radius:4px}
+.game-page__eyebrow{color:#d9b978;letter-spacing:.24em}
+.game-page__hero h2{max-width:620px;font-size:clamp(38px,5.3vw,66px);text-shadow:0 4px 24px #0008}
+.game-page__hero p{max-width:570px;color:#d0d3d8}
+.game-page__tags span{border-radius:3px;background:rgba(9,17,29,.28);border-color:rgba(224,195,139,.3);color:#e9d8b6}
+.game-page__hero-art{min-height:270px}
+.game-page__die{
+  width:174px;height:190px;clip-path:polygon(50% 0,88% 14%,100% 50%,75% 88%,25% 88%,0 50%,12% 14%);
+  background:linear-gradient(145deg,#f1d8a0 0%,#b68c51 43%,#70512f 100%);
+  color:#182438;font-size:52px;filter:drop-shadow(0 22px 22px #0009);transform:rotate(12deg);
+}
+.game-page__orbit{border-color:rgba(220,194,146,.35);box-shadow:0 0 35px rgba(133,158,195,.1)}
+.game-page__orbit--two{border-color:rgba(220,194,146,.2)}
+.game-page__hero-art small{color:#d6c29d;letter-spacing:.28em}
+.game-page__overview{border-radius:8px;background:linear-gradient(135deg,#fffdf8,#f1eee5);border-color:#ded5c2}
+.game-page__cover{border-radius:4px;background:
+  radial-gradient(circle at 50% 35%,rgba(220,180,105,.28),transparent 36%),
+  linear-gradient(155deg,#263d53,#111e30 78%);box-shadow:0 18px 36px #14203435}
+.game-page__cover:before,.game-page__cover:after{border-radius:2px;transform:rotate(45deg);border-color:rgba(226,196,137,.28)}
+.game-page__cover:after{transform:rotate(0);border-color:rgba(226,196,137,.15)}
+.game-page__cover-mark{color:#e5c17e}
+.game-page__feature{border-radius:5px;background:linear-gradient(145deg,#fffdf8,#f4f0e6);border-color:#e2dacb}
+.game-page__feature-icon{border-radius:4px;background:#e9e1d1;color:#735b35}
+.game-page__feature h3{font-size:21px}
+.game-page__world{display:grid;gap:22px}
+.game-page__world-heading{max-width:650px}
+.game-page__world-heading h2{margin:9px 0 7px;font:500 clamp(29px,3.5vw,40px)/1.1 var(--serif);letter-spacing:-.035em}
+.game-page__world-heading p{margin:0;color:var(--muted);font-size:12px;line-height:1.75}
+.game-page__world-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.game-page__world-card{position:relative;display:flex;min-height:230px;align-items:flex-end;overflow:hidden;padding:22px;border:1px solid rgba(220,201,165,.3);border-radius:5px;background:#1a2636;color:#f7f0e3;isolation:isolate}
+.game-page__world-card:before{position:absolute;z-index:-2;inset:0;content:"";background:radial-gradient(ellipse at 75% 25%,rgba(212,177,112,.38),transparent 24%),linear-gradient(145deg,#34485b,#111b2b 72%)}
+.game-page__world-card:after{position:absolute;z-index:-1;inset:0;content:"";opacity:.55;background:linear-gradient(0deg,rgba(8,13,21,.95),transparent 80%),repeating-linear-gradient(135deg,transparent 0 25px,rgba(231,211,174,.08) 26px 27px)}
+.game-page__world-card--ruins:before{background:radial-gradient(ellipse at 70% 30%,#b48a5d88,transparent 25%),linear-gradient(145deg,#5a5145,#172536 70%)}
+.game-page__world-card--battle:before{background:radial-gradient(ellipse at 70% 25%,#c76e4c99,transparent 27%),linear-gradient(145deg,#593c3b,#172536 72%)}
+.game-page__world-card--arcane:before{background:radial-gradient(ellipse at 70% 25%,#7772b899,transparent 27%),linear-gradient(145deg,#403b66,#172536 72%)}
+.game-page__world-number{position:absolute;top:17px;left:20px;color:#e3c58f;font:500 13px var(--serif);letter-spacing:.16em}
+.game-page__world-card-copy h3{margin:0 0 8px;font:500 23px var(--serif);color:#fff5df}
+.game-page__world-card-copy p{max-width:320px;margin:0;color:#d0d0d0;font-size:11px;line-height:1.7}
+.game-page__cta{border:1px solid #e2d4b8;border-radius:5px;background:linear-gradient(115deg,#e9dfcb,#f7f1e5)}
+.game-page__cta h2{color:#28364a}
+.game-page__cta .button--primary{border-radius:3px;background:#263c55}
+.game-page__cta .button--primary:hover{background:#182b41}
+.game-page__back-link{color:#52627a}
+@media(max-width:760px){
+  .game-page__hero{grid-template-columns:minmax(0,1fr) 100px;min-height:0}
+  .game-page__hero-art{min-height:145px}
+  .game-page__die{width:92px;height:104px;font-size:29px}
+  .game-page__world-grid{grid-template-columns:1fr}
+  .game-page__world-card{min-height:190px}
+}
+@media(max-width:420px){.game-page__hero{grid-template-columns:minmax(0,1fr) 70px}.game-page__die{width:66px;height:75px;font-size:21px}}
