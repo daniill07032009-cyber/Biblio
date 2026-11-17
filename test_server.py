@@ -1031,6 +1031,37 @@ class BiblioServerTests(unittest.TestCase):
             server._MONGO_CLIENTS.pop(uri, None)
             client.close()
 
+    def test_dnd_combat_tracks_monster_health_damage_healing_and_events(self):
+        state = server.game_combat_transition(
+            "start",
+            {"monsters": ["Гоблин | 14 | 7", "Орк | | 15/18", "Скелет"]},
+            [],
+        )
+        self.assertTrue(state["active"])
+        goblin = next(item for item in state["combatants"] if item["name"] == "Гоблин")
+        orc = next(item for item in state["combatants"] if item["name"] == "Орк")
+        skeleton = next(item for item in state["combatants"] if item["name"] == "Скелет")
+        self.assertEqual((goblin["initiative"], goblin["hp"], goblin["max_hp"]), (14, 7, 7))
+        self.assertEqual((orc["hp"], orc["max_hp"]), (15, 18))
+        self.assertIsNone(skeleton["hp"])
+
+        state = server.game_combat_transition("damage", {"target_id": goblin["id"], "amount": 9}, [], state)
+        self.assertEqual(goblin["hp"], 0)
+        self.assertIn("без сознания", state["events"][-1]["message"])
+        state = server.game_combat_transition("heal", {"target_id": goblin["id"], "amount": 3}, [], state)
+        self.assertEqual(goblin["hp"], 3)
+        self.assertIn("восстановил здоровье", state["events"][-1]["message"])
+        with self.assertRaises(server.APIError):
+            server.game_combat_transition("damage", {"target_id": skeleton["id"], "amount": 1}, [], state)
+        with self.assertRaises(server.APIError):
+            server.game_combat_transition("damage", {"target_id": goblin["id"], "amount": 0}, [], state)
+
+    def test_dnd_combat_rejects_invalid_monster_health(self):
+        with self.assertRaises(server.APIError):
+            server.game_combat_transition("start", {"monsters": ["Гоблин | 14 | 0/7"]}, [])
+        with self.assertRaises(server.APIError):
+            server.game_combat_transition("start", {"monsters": ["Гоблин | nope | 7"]}, [])
+
     def test_static_site_is_served_by_the_application_server(self):
         request = Request(self.base_url + "/", method="GET")
         with self.client.open(request) as response:
