@@ -1855,7 +1855,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
                     raise APIError(HTTPStatus.FORBIDDEN, "Управлять боем может только ведущий.")
                 payload = self.read_json()
                 combat = game_combat_transition(str(payload.get("action") or ""), payload, list(db.game_characters.find({"game_id": game_id})), game.get("combat_state"))
-                if combat and payload.get("action") in ("damage", "heal"):
+                if combat and payload.get("action") in ("damage", "heal", "attack"):
                     for fighter in combat.get("combatants", []):
                         if fighter.get("kind") == "hero" and fighter.get("hp") is not None:
                             db.game_characters.update_one(
