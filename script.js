@@ -1702,48 +1702,66 @@ function renderGameRoomsPage(game) {
 }
 
 function createGameRoomForm() {
-  const form = createElement("form", "games-form");
+  const form = createElement("form", "games-form game-room-create");
   form.id = "game-room-create-form";
   form.addEventListener("submit", createGameRoom);
-  form.append(
-    createElement("h4", "", "Создать комнату"),
-    createElement("label", "", "Название комнаты"),
+
+  const heading = createElement("div", "game-room-create__heading");
+  heading.append(
+    createElement("span", "game-room-create__eyebrow", "НОВАЯ ИГРА"),
+    createElement("h4", "", "Создай свою комнату"),
+    createElement("p", "", "Собери друзей, выбери формат доступа и начни собственное приключение."),
   );
+
+  const details = createElement("div", "game-room-create__details");
+  const nameLabel = createElement("label", "game-room-create__field", "Название комнаты");
   const nameInput = createElement("input");
   nameInput.name = "name";
   nameInput.maxLength = 80;
   nameInput.required = true;
   nameInput.placeholder = "Например, Кампания «Северный путь»";
-  form.querySelector("label").append(nameInput);
-  const descriptionLabel = createElement("label", "", "Описание");
+  nameInput.autocomplete = "off";
+  nameLabel.append(nameInput);
+
+  const descriptionLabel = createElement("label", "game-room-create__field game-room-create__field--wide", "О чём будет приключение?");
   const descriptionInput = createElement("textarea");
   descriptionInput.name = "description";
   descriptionInput.maxLength = 500;
-  descriptionInput.rows = 3;
-  descriptionInput.placeholder = "Опиши свою кампанию";
+  descriptionInput.rows = 4;
+  descriptionInput.placeholder = "Кратко опиши мир, сюжет или правила своей кампании…";
   descriptionLabel.append(descriptionInput);
-  const accessLabel = createElement("label", "", "Доступ");
+
+  const accessLabel = createElement("label", "game-room-create__field", "Кто сможет присоединиться?");
   const accessSelect = createElement("select");
   accessSelect.name = "access";
   [
-    ["public", "Публичная"],
-    ["private", "По коду"],
-    ["invite_only", "По приглашениям"],
+    ["public", "Публичная — открыта всем"],
+    ["private", "По коду — для тех, у кого есть код"],
+    ["invite_only", "По приглашениям — только выбранные игроки"],
   ].forEach(([value, label]) => {
     const option = createElement("option", "", label);
     option.value = value;
     accessSelect.append(option);
   });
   accessLabel.append(accessSelect);
-  const codeLabel = createElement("label", "", "Код доступа");
+
+  const codeLabel = createElement("label", "game-room-create__field", "Код доступа (необязательно)");
   const codeInput = createElement("input");
   codeInput.name = "join_code";
   codeInput.maxLength = 32;
-  codeInput.placeholder = "Оставь пустым для генерации";
+  codeInput.placeholder = "Придумай свой или оставь пустым";
+  codeInput.autocomplete = "off";
   codeLabel.append(codeInput);
-  const submit = createElement("button", "button button--primary", "Создать комнату");
+
+  details.append(nameLabel, descriptionLabel, accessLabel, codeLabel);
+
+  const footer = createElement("div", "game-room-create__footer");
+  const note = createElement("p", "game-room-create__note", "Настройки доступа можно будет сообщить игрокам после создания комнаты.");
+  const submit = createElement("button", "button button--primary game-room-create__submit", "✦  Создать комнату");
   submit.type = "submit";
-  form.append(descriptionLabel, accessLabel, codeLabel, submit);
+  footer.append(note, submit);
+
+  form.append(heading, details, footer);
   return form;
 }
 
