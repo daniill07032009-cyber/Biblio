@@ -1897,7 +1897,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
             updated_character = db.game_characters.find_one({"game_id": game_id, "user_id": target_user_id})
             return {"character": game_character_record(updated_character)}, HTTPStatus.OK, []
 
-        spell_action_match = re.fullmatch(r"/api/games/(\\d+)/characters/(\\d+)/(cast|rest)", path)
+        spell_action_match = re.fullmatch(r"/api/games/(\d+)/characters/(\d+)/(cast|rest)", path)
         if method == "POST" and spell_action_match:
             user = self.current_user_mongo(db, required=True)
             game_id, target_user_id = map(int, spell_action_match.groups()[:2])
@@ -1921,7 +1921,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
             updated = db.game_characters.find_one({"game_id": game_id, "user_id": target_user_id})
             return {"character": game_character_record(updated), "restored": True}, HTTPStatus.OK, []
 
-        spell_action_match = re.fullmatch(r"/api/games/(\\d+)/characters/(\\d+)/(cast|rest)", path)
+        spell_action_match = re.fullmatch(r"/api/games/(\d+)/characters/(\d+)/(cast|rest)", path)
         if method == "POST" and spell_action_match:
             user = self.current_user(db, required=True)
             game_id, target_user_id = map(int, spell_action_match.groups()[:2])
