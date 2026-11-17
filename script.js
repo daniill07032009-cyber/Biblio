@@ -2077,6 +2077,75 @@ function renderGameDetail(game) {
     `<span>${field.label}: ${Number(hero[field.key] ?? field.value)}</span>`
   ).join("");
 
+  const gmRosterMarkup = members
+    .filter((member) => Number(member.user_id) !== Number(game.owner_id))
+    .map((member) => {
+      const hero = heroes.find((item) => Number(item.user_id) === Number(member.user_id));
+      const status = member.status === "active" ? "В комнате" : (member.status || "Участник");
+      return `<li class="dnd-gm-roster__item">
+        <span class="dnd-gm-roster__avatar">${escapeHtml((hero?.name || "И").slice(0, 1).toUpperCase())}</span>
+        <span class="dnd-gm-roster__identity"><strong>${escapeHtml(hero?.name || ("Игрок #" + member.user_id))}</strong><small>${escapeHtml(hero ? [hero.class_name, hero.race].filter(Boolean).join(" · ") || "Класс не указан" : "Персонаж ещё не создан")} · ${escapeHtml(status)}</small></span>
+        ${hero ? `<span class="dnd-gm-roster__vitals">${Number(hero.hp || 0)}/${Number(hero.max_hp || 10)} HP · ур. ${Number(hero.level || 1)}</span>` : "<span class=\"dnd-gm-roster__vitals\">Ожидает героя</span>"}
+      </li>`;
+    }).join("");
+  const gmCombatants = game.combat?.active ? (game.combat.combatants || []) : [];
+  const gmCurrentFighter = gmCombatants[Number(game.combat?.current_index || 0)];
+  const gmNotesKey = "biblio-dnd-gm-notes-" + game.id;
+  const gmSceneKey = "biblio-dnd-gm-scene-" + game.id;
+  let gmPrivateNotes = "";
+  let gmSceneTitle = "";
+  try {
+    gmPrivateNotes = localStorage.getItem(gmNotesKey) || "";
+    gmSceneTitle = localStorage.getItem(gmSceneKey) || "";
+  } catch {}
+  const gmDashboardMarkup = isGameMaster ? `
+    <section class="game-detail__section dnd-gm-dashboard" aria-label="Панель ведущего">
+      <div class="dnd-gm-dashboard__heading">
+        <div><span class="eyebrow">DUNGEON MASTER</span><strong>Панель ведущего</strong><p>Управляй партией, сценой и ходом приключения из одного места</p></div>
+        <span class="dnd-gm-dashboard__role">♛ Ведущий</span>
+      </div>
+      <div class="dnd-gm-dashboard__stats">
+        <div><span>Игроки</span><strong>${Math.max(0, members.length - 1)}</strong><small>в комнате</small></div>
+        <div><span>Персонажи</span><strong>${heroes.length}</strong><small>создано героя</small></div>
+        <div><span>Сессии</span><strong>${sessions.length}</strong><small>проведено</small></div>
+        <div><span>Сражение</span><strong>${game.combat?.active ? "Идёт" : "Не начато"}</strong><small>${game.combat?.active ? "Раунд " + Number(game.combat.round || 1) : "Можно подготовить"}</small></div>
+      </div>
+      <div class="dnd-gm-dashboard__columns">
+        <section class="dnd-gm-box">
+          <div class="dnd-gm-box__heading"><strong>Твоя партия</strong><a href="#dnd-area-party">Все персонажи →</a></div>
+          ${gmRosterMarkup ? `<ul class="dnd-gm-roster">${gmRosterMarkup}</ul>` : "<p class=\"dnd-gm-empty\">Пока нет игроков. Отправь друзьям ссылку или код комнаты.</p>"}
+        </section>
+        <section class="dnd-gm-box dnd-gm-encounter">
+          <div class="dnd-gm-box__heading"><strong>Контроль игры</strong><a href="#dnd-area-combat">Боевая сцена →</a></div>
+          ${game.combat?.active ? `
+            <div class="dnd-gm-encounter__current"><span>Сейчас ходит</span><strong>${escapeHtml(gmCurrentFighter?.name || "—")}</strong><small>Раунд ${Number(game.combat.round || 1)} · ${gmCombatants.length} участников боя</small></div>
+            <div class="dnd-gm-quick-actions"><button class="button button--primary" type="button" data-combat-action="next">Следующий ход</button><button class="button button--secondary" type="button" data-combat-action="end">Завершить бой</button></div>
+          ` : `
+            <p class="dnd-gm-empty">Боевая сцена ещё не запущена. Добавь противников и определи инициативу.</p>
+            <a class="button button--primary" href="#dnd-area-combat">Подготовить бой</a>
+          `}
+          <div class="dnd-gm-shortcuts"><a href="#dnd-area-session">Записать сессию и XP</a><a href="#dnd-area-access">Настроить доступ к комнате</a></div>
+        </section>
+      </div>
+      <section class="dnd-gm-box dnd-gm-notes">
+        <div class="dnd-gm-box__heading"><strong>Заметки ведущего</strong><span>Личные · только в этом браузере</span></div>
+        <label>Текущая сцена<input type="text" maxlength="120" data-gm-scene value="${escapeHtml(gmSceneTitle)}" placeholder="Например: Заброшенная башня у Чёрного леса"></label>
+        <label>Сюжет, NPC, секреты и подсказки<textarea rows="4" maxlength="8000" data-gm-notes placeholder="Записывай здесь то, что не должны видеть игроки…">${escapeHtml(gmPrivateNotes)}</textarea></label>
+        <small data-gm-save-status>Заметки сохраняются автоматически на этом устройстве и не видны игрокам.</small>
+      </section>
+      <section class="dnd-gm-box dnd-gm-reward">
+        <div class="dnd-gm-box__heading"><strong>Быстрая награда</strong><a href="#dnd-area-session">Журнал сессий →</a></div>
+        <form class="games-form dnd-gm-reward__form" id="game-gm-xp-form">
+          <label>Кому<select name="user_id">${ownerOptions}</select></label>
+          <label>Количество XP<input type="number" name="amount" min="0" max="5000" value="25" required></label>
+          <label>За что<input type="text" name="reason" maxlength="200" value="Награда за приключение" required></label>
+          <button class="button button--primary" type="submit" ${heroes.length ? "" : "disabled"}>Выдать опыт</button>
+        </form>
+        ${heroes.length ? "" : "<small>Сначала игрокам нужно создать персонажей.</small>"}
+      </section>
+    </section>
+  ` : "";
+  
   panel.innerHTML = `
     <div class="game-detail__header">
       <div><span class="eyebrow">${isGameMaster ? "Ведущий" : "Игрок"} · Игровая комната</span><h3>${escapeHtml(title)}</h3></div>
@@ -2086,6 +2155,7 @@ function renderGameDetail(game) {
         <button class="button button--secondary" type="button" data-game-action="back">${/\/play\/?$/.test(location.pathname) ? "← К комнатам" : "← К игре"}</button>
       </div>
     </div>
+    ${gmDashboardMarkup}
     <p>${escapeHtml(game.description || "Без описания.")}</p>
     <ul class="game-detail-list">
       <li>Доступ: ${game.access === "public" ? "Публичная" : game.access === "private" ? "По коду" : "По приглашениям"}</li>
@@ -2282,6 +2352,7 @@ function renderGameDetail(game) {
   }
 
   const dndAreaSpecs = [
+    { key: "gm", label: "Панель ведущего", icon: "♛", match: /панель ведущего/i },
     { key: "progress", label: "Прогресс", icon: "✦", match: /лидерборд|прогресс|уровень/i },
     { key: "party", label: "Персонажи", icon: "♙", match: /герои|персонаж/i },
     { key: "dice", label: "Кубики", icon: "⚄", match: /кубик|бросок/i },
@@ -2349,6 +2420,44 @@ function renderGameDetail(game) {
     sectionEntries.forEach(({ section }) => panel._dndSectionObserver.observe(section));
   }
   wrapDndWorkspace(panel, title, "rooms");
+
+  if (isGameMaster) {
+    const sceneInput = panel.querySelector("[data-gm-scene]");
+    const notesInput = panel.querySelector("[data-gm-notes]");
+    const saveStatus = panel.querySelector("[data-gm-save-status]");
+    const savePrivateNotes = () => {
+      try {
+        localStorage.setItem(gmSceneKey, sceneInput?.value || "");
+        localStorage.setItem(gmNotesKey, notesInput?.value || "");
+        if (saveStatus) saveStatus.textContent = "Сохранено на этом устройстве · " + new Date().toLocaleTimeString("ru-RU", {hour:"2-digit",minute:"2-digit"});
+      } catch {
+        if (saveStatus) saveStatus.textContent = "Браузер не разрешил сохранить заметки. Скопируй их отдельно.";
+      }
+    };
+    sceneInput?.addEventListener("input", savePrivateNotes);
+    notesInput?.addEventListener("input", savePrivateNotes);
+    const xpForm = panel.querySelector("#game-gm-xp-form");
+    xpForm?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const data = new FormData(xpForm);
+      const amount = Number(data.get("amount"));
+      if (!Number.isInteger(amount) || amount < 0 || amount > 5000) {
+        showToast("Количество XP должно быть от 0 до 5000");
+        return;
+      }
+      try {
+        await api("/api/games/" + game.id + "/xp", {
+          method: "POST",
+          body: JSON.stringify({ user_id: Number(data.get("user_id")), amount, reason: String(data.get("reason") || "Награда").trim() }),
+        });
+        const refreshedGame = await api("/api/games/" + game.id);
+        renderGameDetail(refreshedGame.game);
+        showToast("Опыт выдан персонажу");
+      } catch (error) {
+        showToast(error.message);
+      }
+    });
+  }
 
     panel.querySelector('[data-game-action="back"]')?.addEventListener("click", () => {
     const gamePath = game.catalog_game_slug
