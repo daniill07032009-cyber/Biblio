@@ -1690,6 +1690,8 @@ class BiblioHandler(BaseHTTPRequestHandler):
             if character is None:
                 raise APIError(HTTPStatus.NOT_FOUND, "Герой участника не найден.")
             payload = self.read_json()
+            if game["owner_id"] != user["id"] and set(payload) - {"inventory", "spells"}:
+                raise APIError(HTTPStatus.FORBIDDEN, "Игрок может менять только свой инвентарь и список заклинаний.")
             stats = game_character_stats(payload, character)
             loadout = game_character_loadout(payload, character)
             db.game_characters.update_one(
@@ -2610,6 +2612,8 @@ class BiblioHandler(BaseHTTPRequestHandler):
             if character is None:
                 raise APIError(HTTPStatus.NOT_FOUND, "Герой участника не найден.")
             payload = self.read_json()
+            if game["owner_id"] != user["id"] and set(payload) - {"inventory", "spells"}:
+                raise APIError(HTTPStatus.FORBIDDEN, "Игрок может менять только свой инвентарь и список заклинаний.")
             stats = game_character_stats(payload, dict(character))
             loadout = game_character_loadout(payload, dict(character))
             db.execute(
