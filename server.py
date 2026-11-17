@@ -793,6 +793,8 @@ def game_character_cast(payload, character):
     known_spells = game_character_loadout({}, character)["spells"]
     if spell_name.casefold() not in {spell.casefold() for spell in known_spells}:
         raise APIError(HTTPStatus.FORBIDDEN, "Это заклинание не записано в листе персонажа.")
+    if spell_name.casefold() in {"лечение ран", "cure wounds", "лечебное слово", "healing word"} and level < 1:
+        raise APIError(HTTPStatus.BAD_REQUEST, "Это заклинание требует ячейку как минимум 1-го уровня.")
     slots = game_character_spell_slots({}, character)
     if level > 0:
         index = level - 1
