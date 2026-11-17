@@ -1613,3 +1613,17 @@ html[data-reader-theme="dark"] .reader-dialog { --surface: #20231f; }
 .game-combat__start label small { display:block; margin-top:4px; color:var(--muted); font-size:10px; font-weight:400; line-height:1.5; }
 .game-combat__start textarea { width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:var(--surface); color:var(--ink); font:inherit; font-size:12px; resize:vertical; }
 @media (max-width:560px) { .game-combat__actions > button { flex:1 1 100%; } .game-combat__order li { padding:9px; } }
+
+
+/* D&D combat controls and event history */
+.game-combat__hp-controls{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px}
+.game-combat__hp-controls input{width:64px;min-height:34px;padding:5px 8px;border:1px solid var(--border-color, #ddd);border-radius:8px;background:var(--surface, #fff);color:inherit}
+.game-combat__hp-controls .button{min-height:34px;padding:6px 10px;font-size:12px}
+.game-combat__order li.is-defeated{opacity:.62}
+.game-combat__order li.is-defeated .game-combat__fighter strong{text-decoration:line-through}
+.game-combat__log{margin-top:18px;padding:14px;border:1px solid var(--border-color, #ddd);border-radius:12px}
+.game-combat__log>strong{display:block;margin-bottom:8px}
+.game-combat__log ol{display:grid;gap:7px;margin:0;padding:0;list-style:none}
+.game-combat__log li{display:flex;justify-content:space-between;gap:12px;font-size:13px}
+.game-combat__log time{flex:none;opacity:.65;font-variant-numeric:tabular-nums}
+@media(max-width:600px){.game-combat__hp-controls{grid-column:1/-1}.game-combat__log li{align-items:flex-start;flex-direction:column;gap:2px}}
