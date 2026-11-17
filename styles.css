@@ -1565,3 +1565,23 @@ html[data-reader-theme="dark"] .reader-dialog { --surface: #20231f; }
   .game-catalog-card__cover { min-height:190px; padding:15px; }
   .game-catalog-card__cover-title { font-size:18px; }
 }
+
+
+/* D&D character vitality and encounter tools */
+.game-hero-card__vitals { display:grid; gap:10px; margin:14px 0; padding:14px; border:1px solid var(--line); border-radius:13px; background:var(--surface); }
+.game-hero-card__vitals-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; color:var(--muted); font-size:11px; }
+.game-hero-card__vitals-heading strong { color:var(--ink); font-size:12px; font-variant-numeric:tabular-nums; }
+.game-hero-card__hp-track { height:9px; overflow:hidden; border-radius:999px; background:rgba(166,91,76,.14); }
+.game-hero-card__hp-track span { display:block; height:100%; border-radius:inherit; background:linear-gradient(90deg,#a65b4c,#71936d); transition:width .25s ease; }
+.game-hero-card__hp-form { display:flex; align-items:end; flex-wrap:wrap; gap:10px; margin:12px 0; padding:12px; border:1px dashed var(--line); border-radius:12px; }
+.game-hero-card__hp-form label { display:grid; flex:1 1 130px; gap:6px; color:var(--muted); font-size:11px; }
+.game-hero-card__hp-form input { width:100%; min-height:40px; padding:8px 10px; border:1px solid var(--line); border-radius:9px; background:var(--surface); color:var(--ink); }
+.game-hero-card__hp-form button { min-height:40px; }
+.game-hero-card__stats { display:flex; flex-wrap:wrap; gap:7px; }
+.game-hero-card__stats span { padding:6px 8px; border-radius:8px; background:var(--surface-raised,var(--surface)); color:var(--muted); font-size:10px; }
+.game-detail__section > strong { display:block; margin-bottom:12px; }
+.game-leaderboard li { display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--line); }
+.game-leaderboard li:last-child { border-bottom:0; }
+.game-leaderboard li em { margin-left:auto; color:var(--muted); font-size:11px; font-style:normal; }
+.game-dice__result { min-height:22px; font-variant-numeric:tabular-nums; }
+.game-hero-card__hp-form button:focus-visible { outline:3px solid rgba(94,126,91,.25); outline-offset:2px; }
