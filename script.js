@@ -257,6 +257,9 @@ let activeReaderBook = null;
 let activeReaderChapter = 0;
 let gameCatalogGames = [];
 let activeCatalogGameSlug = "";
+let activeGameRoomId = "";
+let activeGameRoomSnapshot = "";
+let gameRoomSyncPending = false;
 let catalogPresenceTimer = 0;
 let catalogPresenceToken = "";
 let catalogPresenceRequestPending = false;
@@ -1986,6 +1989,33 @@ window.setInterval(() => {
   }
 }, GAME_CATALOG_PRESENCE_INTERVAL_MS);
 
+window.setInterval(async () => {
+  const panel = document.querySelector("#game-detail-panel");
+  if (!activeGameRoomId || document.hidden || !panel || panel.hidden || gameRoomSyncPending) return;
+  const focused = panel.querySelector(":focus");
+  if (focused && focused.matches("input, textarea, select, [contenteditable='true']")) return;
+  gameRoomSyncPending = true;
+  try {
+    const result = await api("/api/games/" + encodeURIComponent(activeGameRoomId));
+    if (String(result.game?.id) !== activeGameRoomId) return;
+    const snapshot = JSON.stringify(result.game);
+    if (snapshot !== activeGameRoomSnapshot) {
+      const scrollPosition = window.scrollY;
+      renderGameDetail(result.game);
+      window.scrollTo(0, scrollPosition);
+    }
+  } catch {
+    // A temporary network interruption must not interrupt the game.
+  } finally {
+    gameRoomSyncPending = false;
+  }
+}, 8000);
+
+window.addEventListener("pagehide", () => {
+  activeGameRoomId = "";
+  activeGameRoomSnapshot = "";
+});
+
 async function openGameRoom(gameId) {
   try {
     const result = await api(`/api/games/${gameId}`);
@@ -2007,6 +2037,8 @@ function escapeHtml(value) {
 function renderGameDetail(game) {
   const panel = document.querySelector("#game-detail-panel");
   if (!panel) return;
+  activeGameRoomId = String(game.id);
+  activeGameRoomSnapshot = JSON.stringify(game);
   panel._dndSectionObserver?.disconnect();
   panel._dndSectionObserver = null;
   document.querySelector("#game-catalog-layout").hidden = true;
@@ -2134,9 +2166,20 @@ function renderGameDetail(game) {
           `).join("")}
         </div>
         <div class="game-dice__roll">
+          <div class="game-dice__advanced-controls">
+            <label>Модификатор
+              <input type="number" min="-30" max="30" value="0" data-dice-modifier aria-label="Модификатор броска" />
+            </label>
+            <div class="game-dice__modes" role="group" aria-label="Режим броска">
+              <button type="button" class="is-selected" data-dice-mode="normal" aria-pressed="true">Обычный</button>
+              <button type="button" data-dice-mode="advantage" aria-pressed="false">Преимущество</button>
+              <button type="button" data-dice-mode="disadvantage" aria-pressed="false">Помеха</button>
+            </div>
+          </div>
           <div class="game-dice__face" aria-live="polite" aria-atomic="true">—</div>
           <div class="game-dice__result" role="status">Выбери кубик и брось его</div>
           <button type="button" class="button button--primary" data-dice-roll>Бросить d20</button>
+          <div class="game-dice__history-wrap"><strong>Последние броски</strong><div class="game-dice__history" data-dice-history></div></div>
         </div>
       </div>
     </div>
@@ -2594,10 +2637,42 @@ function renderGameDetail(game) {
   const dicePanel = panel.querySelector(".game-dice");
   if (dicePanel) {
     let selectedSides = 20;
+    let selectedMode = "normal";
     let rolling = false;
     const face = dicePanel.querySelector(".game-dice__face");
     const result = dicePanel.querySelector(".game-dice__result");
     const rollButton = dicePanel.querySelector("[data-dice-roll]");
+    const modifierInput = dicePanel.querySelector("[data-dice-modifier]");
+    const historyNode = dicePanel.querySelector("[data-dice-history]");
+    const historyKey = "biblio-dnd-roll-history-" + game.id;
+    let history = [];
+    try {
+      const saved = JSON.parse(localStorage.getItem(historyKey) || "[]");
+      if (Array.isArray(saved)) history = saved.slice(0, 12);
+    } catch { history = []; }
+    const randomDie = (sides) => {
+      if (globalThis.crypto?.getRandomValues) {
+        const limit = Math.floor(0x100000000 / sides) * sides;
+        const randomValue = new Uint32Array(1);
+        do { globalThis.crypto.getRandomValues(randomValue); } while (randomValue[0] >= limit);
+        return (randomValue[0] % sides) + 1;
+      }
+      return Math.floor(Math.random() * sides) + 1;
+    };
+    const renderHistory = () => {
+      if (!historyNode) return;
+      historyNode.replaceChildren();
+      if (!history.length) {
+        historyNode.append(createElement("p", "game-dice__history-empty", "Здесь появятся последние броски на этом устройстве."));
+        return;
+      }
+      history.forEach((entry) => {
+        const item = createElement("div", "game-dice__history-item");
+        item.append(createElement("span", "", entry.label), createElement("strong", "", String(entry.total)), createElement("small", "", entry.time));
+        historyNode.append(item);
+      });
+    };
+    renderHistory();
     dicePanel.querySelectorAll("[data-die-sides]").forEach((button) => {
       button.addEventListener("click", () => {
         selectedSides = Number(button.dataset.dieSides);
@@ -2606,35 +2681,49 @@ function renderGameDetail(game) {
           option.classList.toggle("is-selected", selected);
           option.setAttribute("aria-pressed", String(selected));
         });
-        rollButton.textContent = `Бросить d${selectedSides}`;
+        rollButton.textContent = "Бросить d" + selectedSides;
+      });
+    });
+    dicePanel.querySelectorAll("[data-dice-mode]").forEach((button) => {
+      button.addEventListener("click", () => {
+        selectedMode = button.dataset.diceMode;
+        dicePanel.querySelectorAll("[data-dice-mode]").forEach((option) => {
+          const selected = option === button;
+          option.classList.toggle("is-selected", selected);
+          option.setAttribute("aria-pressed", String(selected));
+        });
       });
     });
     rollButton.addEventListener("click", () => {
       if (rolling) return;
+      const modifier = Number(modifierInput?.value || 0);
+      if (!Number.isInteger(modifier) || modifier < -30 || modifier > 30) {
+        showToast("Модификатор должен быть от −30 до +30");
+        return;
+      }
       rolling = true;
       rollButton.disabled = true;
       result.textContent = "Кубик катится…";
       face.classList.remove("is-rolling");
       void face.offsetWidth;
       face.classList.add("is-rolling");
-      let value;
-      if (globalThis.crypto?.getRandomValues) {
-        const limit = Math.floor(0x100000000 / selectedSides) * selectedSides;
-        const randomValue = new Uint32Array(1);
-        do {
-          globalThis.crypto.getRandomValues(randomValue);
-        } while (randomValue[0] >= limit);
-        value = (randomValue[0] % selectedSides) + 1;
-      } else {
-        value = Math.floor(Math.random() * selectedSides) + 1;
-      }
+      const rolls = selectedMode === "normal" ? [randomDie(selectedSides)] : [randomDie(selectedSides), randomDie(selectedSides)];
+      const value = selectedMode === "advantage" ? Math.max(...rolls) : selectedMode === "disadvantage" ? Math.min(...rolls) : rolls[0];
+      const total = value + modifier;
+      const modifierLabel = modifier > 0 ? " + " + modifier : modifier < 0 ? " − " + Math.abs(modifier) : "";
+      const modeLabel = selectedMode === "advantage" ? " · преимущество" : selectedMode === "disadvantage" ? " · помеха" : "";
+      const rollLabel = "d" + selectedSides + (rolls.length > 1 ? " [" + rolls.join(", ") + "]" : "") + modifierLabel + modeLabel;
       window.setTimeout(() => {
         face.classList.remove("is-rolling");
-        face.textContent = String(value);
-        result.textContent = `Результат броска d${selectedSides}: ${value}`;
+        face.textContent = String(total);
+        result.textContent = "Бросок " + rollLabel + " = " + total + (selectedSides === 20 && value === 20 ? " · критический успех!" : selectedSides === 20 && value === 1 ? " · критический провал!" : "");
+        history.unshift({ label: rollLabel, total, time: new Date().toLocaleTimeString("ru-RU", {hour:"2-digit",minute:"2-digit"}) });
+        history = history.slice(0, 12);
+        try { localStorage.setItem(historyKey, JSON.stringify(history)); } catch {}
+        renderHistory();
         rolling = false;
         rollButton.disabled = false;
-      }, 850);
+      }, 650);
     });
   }
 

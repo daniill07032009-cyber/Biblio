@@ -2602,3 +2602,111 @@ body[data-game-site="true"] .game-room-create__field textarea {border-color:#4b5
     flex: 0 1 auto;
   }
 }
+
+
+/* D&D tabletop: fast, readable dice controls and a compact roll history. */
+.dnd-workspace-panel .game-dice__advanced-controls {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 12px;
+  width: 100%;
+  margin: 0 0 14px;
+}
+.dnd-workspace-panel .game-dice__advanced-controls > label {
+  display: grid;
+  gap: 6px;
+  min-width: 112px;
+  color: var(--muted, #77766f);
+  font-size: 12px;
+  font-weight: 600;
+}
+.dnd-workspace-panel .game-dice__advanced-controls input {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--line, #e9e6de);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink, #282722);
+}
+.dnd-workspace-panel .game-dice__modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.dnd-workspace-panel .game-dice__modes button {
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--line, #e9e6de);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink, #282722);
+  cursor: pointer;
+  font-size: 12px;
+}
+.dnd-workspace-panel .game-dice__modes button.is-selected {
+  border-color: var(--green, #355747);
+  background: var(--green, #355747);
+  color: #fff;
+}
+.dnd-workspace-panel .game-dice__history-wrap {
+  flex: 1 1 100%;
+  width: 100%;
+  margin-top: 12px;
+}
+.dnd-workspace-panel .game-dice__history-wrap > strong {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+.dnd-workspace-panel .game-dice__history {
+  display: grid;
+  gap: 6px;
+  max-height: 210px;
+  overflow: auto;
+}
+.dnd-workspace-panel .game-dice__history-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 11px;
+  border: 1px solid var(--line, #e9e6de);
+  border-radius: 8px;
+  background: rgba(255,255,255,.72);
+  font-size: 12px;
+}
+.dnd-workspace-panel .game-dice__history-item strong {
+  color: var(--green, #355747);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+.dnd-workspace-panel .game-dice__history-item small,
+.dnd-workspace-panel .game-dice__history-empty {
+  color: var(--muted, #77766f);
+  font-size: 11px;
+}
+@media (max-width: 620px) {
+  .dnd-workspace-panel .game-dice__advanced-controls {
+    align-items: stretch;
+  }
+  .dnd-workspace-panel .game-dice__advanced-controls > label {
+    flex: 1 1 100%;
+  }
+  .dnd-workspace-panel .game-dice__modes {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+  .dnd-workspace-panel .game-dice__modes button {
+    padding-inline: 6px;
+    font-size: 11px;
+  }
+  .dnd-workspace-panel .game-dice__history-item {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .dnd-workspace-panel .game-dice__history-item small {
+    grid-column: 1 / -1;
+  }
+}
