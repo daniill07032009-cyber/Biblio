@@ -2011,6 +2011,8 @@ function escapeHtml(value) {
 function renderGameDetail(game) {
   const panel = document.querySelector("#game-detail-panel");
   if (!panel) return;
+  panel._dndSectionObserver?.disconnect();
+  panel._dndSectionObserver = null;
   document.querySelector("#game-catalog-layout").hidden = true;
   document.querySelector("#game-catalog-detail-panel").hidden = true;
   panel.hidden = false;
@@ -2231,36 +2233,96 @@ function renderGameDetail(game) {
       ${currentUser && Number(game.owner_id) === Number(currentUser.id) ? `<button class="button button--secondary" type="button" data-game-action="refresh">Обновить</button>` : ""}
     </div>
   `;
+  const introText = panel.querySelector(":scope > p");
+  const detailList = panel.querySelector(":scope > .game-detail-list");
+  if (introText || detailList) {
+    const summary = createElement("section", "dnd-play-summary");
+    summary.setAttribute("aria-label", "Сводка игровой комнаты");
+    if (introText) summary.append(introText);
+    if (detailList) summary.append(detailList);
+    panel.insertBefore(summary, panel.querySelector(":scope > .game-detail__section"));
+  }
+
   const dndAreaSpecs = [
-    ["progress", "Прогресс", "✦"],
-    ["party", "Персонажи", "♙"],
-    ["dice", "Кубики", "⚄"],
-    ["combat", "Сражение", "⚔"],
-    ["journal", "Журнал", "▤"],
+    { key: "progress", label: "Прогресс", icon: "✦", match: /лидерборд|прогресс|уровень/i },
+    { key: "party", label: "Персонажи", icon: "♙", match: /герои|персонаж/i },
+    { key: "dice", label: "Кубики", icon: "⚄", match: /кубик|бросок/i },
+    { key: "combat", label: "Сражение", icon: "⚔", match: /боевая сцена|сражение|бой/i },
+    { key: "journal", label: "Журнал", icon: "▤", match: /сессии|журнал/i },
+    { key: "access", label: "Доступ", icon: "⌑", match: /код доступа|вступить в комнату/i },
+    { key: "hero", label: "Мой герой", icon: "♟", match: /мой персонаж|создать персонажа/i },
+    { key: "session", label: "Сессия", icon: "✎", match: /провести сессию/i },
+    { key: "actions", label: "Действия", icon: "⋯", match: /$^/ },
   ];
   const detailSections = [...panel.querySelectorAll(":scope > .game-detail__section")];
-  detailSections.forEach((section, index) => {
-    const spec = dndAreaSpecs[index] || ["extra-" + index, "Дополнительно", "·"];
-    section.id = "dnd-area-" + spec[0];
-    section.dataset.dndArea = spec[0];
+  const usedKeys = new Set();
+  const sectionEntries = detailSections.map((section, index) => {
+    const heading = section.querySelector(":scope > strong, :scope > .game-combat__heading strong");
+    const headingText = (heading?.textContent || "").trim();
+    let spec = dndAreaSpecs.find((item) => item.match.test(headingText));
+    if (!spec) spec = { key: "extra-" + index, label: headingText || "Дополнительно", icon: "·" };
+    let key = spec.key;
+    if (usedKeys.has(key)) key = key + "-" + index;
+    usedKeys.add(key);
+    const entry = { ...spec, key, section };
+    section.id = "dnd-area-" + key;
+    section.dataset.dndArea = key;
     section.classList.add("dnd-play-card");
-    if (spec[0] === "party" || spec[0] === "combat") section.classList.add("dnd-play-card--wide");
+    if (["party", "combat", "journal", "session"].includes(spec.key)) section.classList.add("dnd-play-card--wide");
+    return entry;
   });
+  const actionSection = detailSections.find((section) => section.classList.contains("game-detail__actions"));
+  if (actionSection) {
+    const entry = sectionEntries.find((item) => item.section === actionSection);
+    if (entry) {
+      entry.key = "actions";
+      entry.label = "Действия";
+      entry.icon = "⋯";
+      actionSection.id = "dnd-area-actions";
+      actionSection.dataset.dndArea = "actions";
+    }
+  }
+
   const playNav = createElement("nav", "dnd-play-nav");
   playNav.setAttribute("aria-label", "Разделы игрового стола");
-  dndAreaSpecs.forEach(([key, label, icon], index) => {
-    if (!detailSections[index]) return;
+  const navLinks = [];
+  sectionEntries.forEach(({ key, label, icon, section }, index) => {
     const link = createElement("a", index === 0 ? "is-active" : "");
     link.href = "#dnd-area-" + key;
+    link.setAttribute("aria-controls", section.id);
+    if (index === 0) link.setAttribute("aria-current", "location");
     link.append(createElement("span", "dnd-play-nav__icon", icon), createElement("span", "", label));
     link.addEventListener("click", () => {
-      playNav.querySelectorAll("a").forEach((item) => item.classList.toggle("is-active", item === link));
+      playNav.querySelectorAll("a").forEach((item) => {
+        const active = item === link;
+        item.classList.toggle("is-active", active);
+        if (active) item.setAttribute("aria-current", "location");
+        else item.removeAttribute("aria-current");
+      });
     });
+    navLinks.push(link);
     playNav.append(link);
   });
   const playGrid = createElement("div", "dnd-play-grid");
   detailSections.forEach((section) => playGrid.append(section));
   panel.append(playNav, playGrid);
+
+  if ("IntersectionObserver" in window && sectionEntries.length) {
+    panel._dndSectionObserver = new IntersectionObserver((entries) => {
+      const visible = entries
+        .filter((entry) => entry.isIntersecting)
+        .sort((first, second) => second.intersectionRatio - first.intersectionRatio)[0];
+      if (!visible) return;
+      const activeKey = visible.target.dataset.dndArea;
+      navLinks.forEach((link) => {
+        const active = link.getAttribute("href") === "#dnd-area-" + activeKey;
+        link.classList.toggle("is-active", active);
+        if (active) link.setAttribute("aria-current", "location");
+        else link.removeAttribute("aria-current");
+      });
+    }, { rootMargin: "-18% 0px -62% 0px", threshold: [0, 0.15, 0.35, 0.6] });
+    sectionEntries.forEach(({ section }) => panel._dndSectionObserver.observe(section));
+  }
   wrapDndWorkspace(panel, title, "rooms");
 
     panel.querySelector('[data-game-action="back"]')?.addEventListener("click", () => {
