@@ -1846,8 +1846,16 @@ function renderGameDetail(game) {
             <strong>${escapeHtml(hero.name)} · ${hero.level} ур. · ${hero.xp} XP</strong>
             <span>${escapeHtml([hero.class_name, hero.race].filter(Boolean).join(" · ") || "Класс и раса не указаны")}</span>
           </div>
-          <div class="game-hero-card__stats">${heroStats(hero)}</div>
+          <div class="game-hero-card__vitals">
+            <div class="game-hero-card__vitals-heading"><span>Здоровье</span><strong>${Number(hero.hp || 0)} / ${Number(hero.max_hp || 10)} HP</strong></div>
+            <div class="game-hero-card__hp-track" role="progressbar" aria-label="Здоровье персонажа" aria-valuemin="0" aria-valuemax="${Number(hero.max_hp || 10)}" aria-valuenow="${Number(hero.hp || 0)}"><span style="width:${Math.max(0, Math.min(100, Number(hero.hp || 0) / Math.max(1, Number(hero.max_hp || 10)) * 100))}%"></span></div>
+            <div class="game-hero-card__stats">${heroStats(hero)}</div>
+          </div>
           ${isGameMaster ? `
+            <form class="games-form game-hero-card__hp-form" data-hero-user-id="${Number(hero.user_id)}">
+              <label>Текущее HP<input type="number" name="hp" min="0" max="${Number(hero.max_hp || 10)}" value="${Number(hero.hp || 0)}" required /></label>
+              <button class="button button--secondary" type="submit">Обновить здоровье</button>
+            </form>
             <form class="games-form game-hero-card__form" data-hero-user-id="${Number(hero.user_id)}">
               <strong>Изменить параметры</strong>
               <div class="game-stat-grid">${statInputs(hero)}</div>
@@ -2043,6 +2051,29 @@ function renderGameDetail(game) {
       }
     });
   }
+
+  panel.querySelectorAll(".game-hero-card__hp-form").forEach((form) => {
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const hp = Number(new FormData(form).get("hp"));
+      const hero = heroes.find((item) => Number(item.user_id) === Number(form.dataset.heroUserId));
+      if (!hero || !Number.isInteger(hp) || hp < 0 || hp > Number(hero.max_hp || 10)) {
+        showToast("Проверь значение здоровья");
+        return;
+      }
+      try {
+        await api(`/api/games/${game.id}/characters/${form.dataset.heroUserId}`, {
+          method: "PATCH",
+          body: JSON.stringify({ hp }),
+        });
+        const refreshedGame = await api(`/api/games/${game.id}`);
+        renderGameDetail(refreshedGame.game);
+        showToast("Здоровье персонажа обновлено");
+      } catch (error) {
+        showToast(error.message);
+      }
+    });
+  });
 
   panel.querySelectorAll(".game-hero-card__form").forEach((form) => {
     form.addEventListener("submit", async (event) => {
