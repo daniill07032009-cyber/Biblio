@@ -1058,6 +1058,44 @@ class BiblioServerTests(unittest.TestCase):
         with self.assertRaises(server.APIError):
             server.game_combat_transition("damage", {"target_id": goblin["id"], "amount": 0}, [], state)
 
+    def test_dnd_combat_attack_roll_uses_armor_class_and_critical_damage(self):
+        heroes = [{
+            "user_id": 7, "name": "Следопыт", "dexterity": 14,
+            "hp": 12, "max_hp": 12, "armor_class": 15,
+        }]
+        state = server.game_combat_transition(
+            "start", {"monsters": ["Гоблин | 12 | 8 | 13"]}, heroes
+        )
+        hero = next(item for item in state["combatants"] if item["kind"] == "hero")
+        goblin = next(item for item in state["combatants"] if item["kind"] == "monster")
+        with patch("server.secrets.randbelow", return_value=19):
+            state = server.game_combat_transition(
+                "attack",
+                {"attacker_id": hero["id"], "target_id": goblin["id"], "attack_bonus": 4, "damage": 3},
+                heroes,
+                state,
+            )
+        goblin = next(item for item in state["combatants"] if item["id"] == goblin["id"])
+        self.assertEqual(goblin["hp"], 2)
+        self.assertIn("критическое попадание", state["events"][-1]["message"])
+        self.assertIn("6 HP", state["events"][-1]["message"])
+
+    def test_dnd_combat_attack_misses_when_roll_is_one(self):
+        state = server.game_combat_transition("start", {"monsters": ["Орк | 10 | 10 | 18"]}, [])
+        orc = state["combatants"][0]
+        attacker = {"id": "hero-test", "name": "Герой", "kind": "hero"}
+        state["combatants"].append(attacker)
+        with patch("server.secrets.randbelow", return_value=0):
+            state = server.game_combat_transition(
+                "attack",
+                {"attacker_id": attacker["id"], "target_id": orc["id"], "attack_bonus": 30, "damage": 5},
+                [],
+                state,
+            )
+        orc = next(item for item in state["combatants"] if item["id"] == orc["id"])
+        self.assertEqual(orc["hp"], 10)
+        self.assertIn("промах", state["events"][-1]["message"])
+
     def test_dnd_combat_rejects_invalid_monster_health(self):
         with self.assertRaises(server.APIError):
             server.game_combat_transition("start", {"monsters": ["Гоблин | 14 | 0/7"]}, [])
