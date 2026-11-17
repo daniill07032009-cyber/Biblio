@@ -2608,7 +2608,7 @@ function applyPageLayout() {
   const currentUserIsLoggedIn = Boolean(currentUser);
 
   document.body.dataset.page = page;
-  document.body.dataset.gameSite = /^\\/games\\/dnd(?:\\/play)?\\/?$/.test(path) ? "true" : "false";
+  document.body.dataset.gameSite = /^\/games\/dnd(?:\/play)?\/?$/.test(path) ? "true" : "false";
   if (page !== "games" && activeCatalogGameSlug) {
     stopCatalogPresence();
     activeCatalogGameSlug = "";
