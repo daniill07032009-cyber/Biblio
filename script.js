@@ -1421,7 +1421,7 @@ async function openCatalogGame(slug) {
 function renderCatalogGameDetail(game) {
   const panel = document.querySelector("#game-catalog-detail-panel");
   const catalogLayout = document.querySelector("#game-catalog-layout");
-  if (!panel) return;
+  if (!panel || !catalogLayout) return;
   stopCatalogPresence();
   activeCatalogGameSlug = game.slug;
   const listedGame = gameCatalogGames.find((item) => item.slug === game.slug);
@@ -1430,38 +1430,62 @@ function renderCatalogGameDetail(game) {
   document.querySelector("#game-detail-panel").hidden = true;
   panel.replaceChildren();
 
-  const header = createElement("div", "game-detail__header");
-  const heading = createElement("div");
-  heading.append(
-    createElement("span", "eyebrow", "Игра сообщества"),
-    createElement("h3", "", game.title),
+  const isDnd = game.slug === "dnd";
+  const title = game.title || "Игра сообщества";
+  const breadcrumb = createElement("nav", "game-page__breadcrumb");
+  breadcrumb.setAttribute("aria-label", "Навигация");
+  const backLink = createElement("a", "", "Игры");
+  backLink.href = "/games";
+  breadcrumb.append(backLink, createElement("span", "", "／"), createElement("span", "game-page__breadcrumb-current", title));
+
+  const hero = createElement("section", "game-page__hero");
+  hero.dataset.theme = game.cover_theme || "fantasy";
+  const copy = createElement("div", "game-page__hero-copy");
+  copy.append(
+    createElement("span", "game-page__eyebrow", isDnd ? "МИРЫ BIBLIO · НАСТОЛЬНЫЕ ПРИКЛЮЧЕНИЯ" : "МИРЫ BIBLIO · ИГРОВАЯ ЗОНА"),
+    createElement("h2", "", isDnd ? "История, которую вы создаёте вместе." : "Твоё следующее приключение начинается здесь."),
+    createElement("p", "", isDnd
+      ? "Собери друзей, придумай героя и отправляйся навстречу неизвестному. Здесь важны не только правила, но и решения, которые превращают игру в вашу общую историю."
+      : "Открой игровые комнаты, собери компанию и создай собственную историю вместе с сообществом Biblio."),
   );
-  const backButton = createElement("button", "button button--secondary", "← К каталогу");
-  backButton.type = "button";
-  backButton.addEventListener("click", () => window.location.assign("/games"));
-  header.append(heading, backButton);
+  const tags = createElement("div", "game-page__tags");
+  (isDnd ? ["Персонажи и кампании", "Броски кубиков", "Истории без границ"] : ["Игровые комнаты", "Сообщество", "Совместная игра"])
+    .forEach((tag) => tags.append(createElement("span", "", tag)));
+  copy.append(tags);
+  const art = createElement("div", "game-page__hero-art");
+  art.setAttribute("aria-hidden", "true");
+  art.append(
+    createElement("span", "game-page__orbit game-page__orbit--one", ""),
+    createElement("span", "game-page__orbit game-page__orbit--two", ""),
+    createElement("span", "game-page__die", game.cover_symbol || "✦"),
+    createElement("small", "", isDnd ? "ROLL · EXPLORE · CREATE" : "PLAY · CREATE · SHARE"),
+  );
+  hero.append(copy, art);
 
-  const content = createElement("div", "game-catalog-detail__content");
-  const cover = createElement("div", "game-catalog-detail__cover");
-  cover.dataset.theme = game.cover_theme;
-  cover.append(createElement("span", "", game.cover_symbol), createElement("strong", "", game.title));
-  const description = createElement("p", "game-catalog-detail__description", game.description);
-  content.append(cover, description);
-
-  const stats = createElement("div", "game-catalog-detail__stats");
-  stats.append(createElement(
-    "span",
-    "",
-    `★ ${game.rating_count ? Number(game.rating).toFixed(1) : "—"} · ${game.rating_count} оценок`,
-  ));
-  const online = createElement("span", "game-catalog-detail__online");
-  online.append(createElement("span", "game-catalog-card__online-dot", ""));
-  online.append(createElement("strong", "game-catalog-active-count", String(game.active_viewers || 0)));
-  online.append(document.createTextNode(" сейчас внутри блока D&D"));
-  stats.append(online);
-
-  const ratingSection = createElement("div", "game-catalog-detail__rating");
-  const ratingTitle = createElement("strong", "", "Оценка игры");
+  const overview = createElement("section", "game-page__overview");
+  const cover = createElement("div", "game-page__cover");
+  cover.dataset.theme = game.cover_theme || "fantasy";
+  cover.append(
+    createElement("span", "game-page__cover-mark", game.cover_symbol || "✦"),
+    createElement("strong", "", title),
+    createElement("small", "", isDnd ? "THE ADVENTURE BEGINS" : "BIBLIO COMMUNITY GAME"),
+  );
+  const intro = createElement("div", "game-page__intro");
+  intro.append(
+    createElement("span", "eyebrow", "ЗНАКОМСТВО С ИГРОЙ"),
+    createElement("h2", "", title),
+    createElement("p", "game-page__description", game.description || "Описание игры скоро появится."),
+  );
+  const stats = createElement("div", "game-page__stats");
+  const ratingStat = createElement("div");
+  ratingStat.append(createElement("strong", "", game.rating_count ? Number(game.rating).toFixed(1) : "—"));
+  ratingStat.append(createElement("span", "", `Рейтинг · ${Number(game.rating_count || 0)} оценок`));
+  const onlineStat = createElement("div");
+  onlineStat.append(createElement("strong", "game-catalog-active-count", String(Number(game.active_viewers || 0))));
+  onlineStat.append(createElement("span", "", "Сейчас изучают игру"));
+  stats.append(ratingStat, onlineStat);
+  const rating = createElement("div", "game-page__rating");
+  rating.append(createElement("strong", "", "Понравилась игра?"));
   const stars = createElement("div", "game-catalog-rating-stars");
   stars.setAttribute("role", "group");
   stars.setAttribute("aria-label", "Оценка игры");
@@ -1474,19 +1498,55 @@ function renderCatalogGameDetail(game) {
     button.addEventListener("click", () => rateCatalogGame(game.slug, value));
     stars.append(button);
   }
-  const ratingMessage = createElement(
-    "small",
-    "game-catalog-detail__rating-message",
-    currentUser ? "Оцени игру — оценку можно изменить." : "Войди, чтобы оставить оценку.",
-  );
-  ratingSection.append(ratingTitle, stars, ratingMessage);
+  rating.append(stars, createElement("small", "game-catalog-detail__rating-message", currentUser ? "Оцени игру — оценку можно изменить." : "Войди, чтобы оставить оценку."));
+  intro.append(stats, rating);
+  overview.append(cover, intro);
 
-  const playButton = createElement("a", "button button--primary game-catalog-play", "Начать игру");
+  const features = createElement("section", "game-page__features");
+  const sectionHeading = createElement("div", "game-page__section-heading");
+  sectionHeading.append(
+    createElement("span", "eyebrow", "КАК ЭТО УСТРОЕНО"),
+    createElement("h2", "", isDnd ? "Всё для вашей кампании" : "Играй вместе с Biblio"),
+    createElement("p", "", isDnd
+      ? "Основные инструменты уже собраны в одном месте — от первой идеи до большой игровой сессии."
+      : "Создавай комнаты и приглашай друзей в собственные игровые истории."),
+  );
+  const featureGrid = createElement("div", "game-page__feature-grid");
+  const featureItems = isDnd ? [
+    ["✧", "Создай героя", "Заполни лист персонажа, выбери класс и расу, следи за характеристиками, здоровьем и опытом."],
+    ["◇", "Собери партию", "Создай открытую или закрытую комнату, пригласи участников и играйте в одной кампании."],
+    ["⚄", "Играй по ходу истории", "Бросай кубики, веди инициативу, управляй боем и отмечай заклинания и снаряжение."],
+  ] : [
+    ["✧", "Открой комнату", "Создай пространство для своей игры и настрой доступ."],
+    ["◇", "Пригласи друзей", "Собери участников и начни совместную историю."],
+    ["⚄", "Продолжай вместе", "Возвращайся в комнату и развивай игру с сообществом."],
+  ];
+  featureItems.forEach(([icon, heading, description]) => {
+    const item = createElement("article", "game-page__feature");
+    item.append(createElement("span", "game-page__feature-icon", icon), createElement("h3", "", heading), createElement("p", "", description));
+    featureGrid.append(item);
+  });
+  features.append(sectionHeading, featureGrid);
+
+  const cta = createElement("section", "game-page__cta");
+  const ctaCopy = createElement("div");
+  ctaCopy.append(
+    createElement("span", "game-page__eyebrow", "ТВОЙ ХОД"),
+    createElement("h2", "", isDnd ? "Готов начать своё приключение?" : "Готов начать игру?"),
+    createElement("p", "", isDnd ? "Выбери комнату или создай новую — остальное зависит от вашей фантазии." : "Загляни в комнаты сообщества или создай собственную."),
+  );
+  const actions = createElement("div", "game-page__actions");
+  const playButton = createElement("a", "button button--primary game-page__primary-action", "Открыть игровые комнаты →");
   playButton.href = `/games/${encodeURIComponent(game.slug)}/play`;
-  panel.append(header, content, stats, ratingSection, playButton);
+  const catalogButton = createElement("a", "game-page__back-link", "← Вернуться ко всем играм");
+  catalogButton.href = "/games";
+  actions.append(playButton, catalogButton);
+  cta.append(ctaCopy, actions);
+
+  panel.append(breadcrumb, hero, overview, features, cta);
   panel.hidden = false;
   panel.focus();
-  document.title = `${game.title} — Игры | Biblio`;
+  document.title = `${title} — Игры | Biblio`;
   startCatalogPresence(game.slug);
 }
 
