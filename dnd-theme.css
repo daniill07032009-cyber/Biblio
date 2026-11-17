@@ -404,3 +404,99 @@ body[data-game-site="true"] .dnd-play-nav a { transition-duration: .14s; }
     scroll-behavior: auto !important;
   }
 }
+
+
+/* Dungeon Master console: remove the legacy ivory theme and match the unified D&D palette. */
+body[data-game-site="true"] .dnd-gm-dashboard {
+  border: 1px solid var(--dnd-line-strong);
+  background:
+    radial-gradient(ellipse at 95% 0%, #d8bd8310, transparent 34%),
+    linear-gradient(145deg, var(--dnd-surface), var(--dnd-bg-deep));
+  color: var(--dnd-text);
+  box-shadow: none;
+}
+body[data-game-site="true"] .dnd-gm-dashboard__heading strong,
+body[data-game-site="true"] .dnd-gm-box__heading strong,
+body[data-game-site="true"] .dnd-gm-roster__identity strong,
+body[data-game-site="true"] .dnd-gm-encounter__current strong,
+body[data-game-site="true"] .dnd-gm-dashboard__stats strong {
+  color: var(--dnd-text);
+}
+body[data-game-site="true"] .dnd-gm-dashboard__heading .eyebrow,
+body[data-game-site="true"] .dnd-gm-box__heading a,
+body[data-game-site="true"] .dnd-gm-shortcuts a {
+  color: var(--dnd-accent-strong);
+}
+body[data-game-site="true"] .dnd-gm-dashboard__heading p,
+body[data-game-site="true"] .dnd-gm-dashboard__stats span,
+body[data-game-site="true"] .dnd-gm-dashboard__stats small,
+body[data-game-site="true"] .dnd-gm-roster__identity small,
+body[data-game-site="true"] .dnd-gm-roster__vitals,
+body[data-game-site="true"] .dnd-gm-empty,
+body[data-game-site="true"] .dnd-gm-encounter__current span,
+body[data-game-site="true"] .dnd-gm-encounter__current small,
+body[data-game-site="true"] .dnd-gm-notes label,
+body[data-game-site="true"] .dnd-gm-reward__form label,
+body[data-game-site="true"] .dnd-gm-notes > small,
+body[data-game-site="true"] .dnd-gm-reward > small {
+  color: var(--dnd-muted);
+}
+body[data-game-site="true"] .dnd-gm-dashboard__role {
+  border-color: var(--dnd-line-strong);
+  background: var(--dnd-surface-raised);
+  color: var(--dnd-accent-strong);
+}
+body[data-game-site="true"] .dnd-gm-dashboard__stats > div,
+body[data-game-site="true"] .dnd-gm-box {
+  border-color: var(--dnd-line);
+  background: var(--dnd-surface-raised);
+  color: var(--dnd-text);
+  box-shadow: none;
+}
+body[data-game-site="true"] .dnd-gm-roster__item,
+body[data-game-site="true"] .dnd-gm-encounter__current {
+  border: 1px solid var(--dnd-line);
+  background: var(--dnd-surface-soft);
+  color: var(--dnd-text);
+}
+body[data-game-site="true"] .dnd-gm-roster__avatar {
+  border: 1px solid var(--dnd-line-strong);
+  background: var(--dnd-bg);
+  color: var(--dnd-accent-strong);
+}
+body[data-game-site="true"] .dnd-gm-encounter__current strong {
+  color: var(--dnd-accent-strong);
+}
+body[data-game-site="true"] .dnd-gm-notes input,
+body[data-game-site="true"] .dnd-gm-notes textarea,
+body[data-game-site="true"] .dnd-gm-reward__form input,
+body[data-game-site="true"] .dnd-gm-reward__form select {
+  border: 1px solid var(--dnd-line-strong);
+  background: var(--dnd-bg-deep);
+  color: var(--dnd-text);
+  caret-color: var(--dnd-accent);
+}
+body[data-game-site="true"] .dnd-gm-notes input::placeholder,
+body[data-game-site="true"] .dnd-gm-notes textarea::placeholder,
+body[data-game-site="true"] .dnd-gm-reward__form input::placeholder {
+  color: var(--dnd-subtle);
+  opacity: 1;
+}
+body[data-game-site="true"] .dnd-gm-notes input:focus,
+body[data-game-site="true"] .dnd-gm-notes textarea:focus,
+body[data-game-site="true"] .dnd-gm-reward__form input:focus,
+body[data-game-site="true"] .dnd-gm-reward__form select:focus {
+  border-color: var(--dnd-accent);
+  outline: 2px solid #d8bd8333;
+  outline-offset: 1px;
+  box-shadow: none;
+}
+body[data-game-site="true"] .dnd-gm-dashboard .button--secondary {
+  border-color: var(--dnd-line-strong);
+  background: var(--dnd-surface);
+  color: var(--dnd-text);
+}
+body[data-game-site="true"] .dnd-gm-dashboard .button--secondary:hover {
+  border-color: var(--dnd-accent);
+  background: var(--dnd-surface-raised);
+}
