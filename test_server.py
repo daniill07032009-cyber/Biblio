@@ -437,23 +437,26 @@ class BiblioServerTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(result["game_id"], game_id)
 
-        status, result = self.request(
-            "POST",
-            f"/api/games/{game_id}/characters",
-            {
-                "name": "Элин",
-                "class_name": "Воин",
-                "race": "Человек",
-                "strength": 16,
-                "hp": 18,
-                "max_hp": 22,
-                "armor_class": 15,
-            },
-        )
+        with patch("server.secrets.randbelow", return_value=5):
+            status, result = self.request(
+                "POST",
+                f"/api/games/{game_id}/characters",
+                {"name": "Элин", "race": "Человек"},
+            )
         self.assertEqual(status, 201)
         self.assertEqual(result["character"]["name"], "Элин")
-        self.assertEqual(result["character"]["strength"], 16)
-        self.assertEqual(result["character"]["hp"], 18)
+        self.assertEqual(result["character"]["class_name"], "")
+        self.assertEqual(result["character"]["strength"], 18)
+        self.assertEqual(result["character"]["hp"], 14)
+        original_stats = result["character"]["strength"]
+        status, updated = self.request(
+            "POST",
+            f"/api/games/{game_id}/characters",
+            {"name": "Элин Новая", "race": "Эльф"},
+        )
+        self.assertEqual(status, 201)
+        self.assertEqual(updated["character"]["strength"], original_stats)
+        self.assertEqual(updated["character"]["name"], "Элин Новая")
         status, result = self.request("GET", f"/api/games/{game_id}")
         self.assertEqual(status, 200)
         self.assertTrue(result["game"]["is_member"])
@@ -774,13 +777,15 @@ class BiblioServerTests(unittest.TestCase):
             )
             self.assertEqual(status, 200)
             self.assertEqual(result["game_id"], game_id)
-            status, result = self.request(
-                "POST",
-                f"/api/games/{game_id}/characters",
-                {"name": "Свет", "class_name": "Маг", "race": "Эльф", "wisdom": 14},
-            )
+            with patch("server.secrets.randbelow", return_value=5):
+                status, result = self.request(
+                    "POST",
+                    f"/api/games/{game_id}/characters",
+                    {"name": "Свет", "race": "Эльф"},
+                )
             self.assertEqual(status, 201)
-            self.assertEqual(result["character"]["wisdom"], 14)
+            self.assertEqual(result["character"]["wisdom"], 18)
+            self.assertEqual(result["character"]["hp"], 14)
 
             self.request("POST", "/api/logout", {})
             status, result = self.request(
