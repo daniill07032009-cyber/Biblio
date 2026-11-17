@@ -1096,6 +1096,32 @@ class BiblioServerTests(unittest.TestCase):
         self.assertEqual(orc["hp"], 10)
         self.assertIn("промах", state["events"][-1]["message"])
 
+    def test_dnd_spell_slots_are_validated_and_casts_consume_them(self):
+        character = {
+            "spells": ["Волшебная стрела", "Щит", "Свет"],
+            "spell_slots_max": [2, 1, 0, 0, 0, 0, 0, 0, 0],
+            "spell_slots": [2, 1, 0, 0, 0, 0, 0, 0, 0],
+        }
+        first = server.game_character_cast({"spell": "Волшебная стрела", "level": 1}, character)
+        self.assertEqual(first["spell_slots"][0], 1)
+        second = server.game_character_cast({"spell": "Щит", "level": 1}, {**character, "spell_slots": first["spell_slots"]})
+        self.assertEqual(second["spell_slots"][0], 0)
+        with self.assertRaises(server.APIError):
+            server.game_character_cast({"spell": "Щит", "level": 1}, {**character, "spell_slots": second["spell_slots"]})
+        cantrip = server.game_character_cast({"spell": "Свет", "level": 0}, {**character, "spell_slots": second["spell_slots"]})
+        self.assertEqual(cantrip["spell_slots"], second["spell_slots"])
+        with self.assertRaises(server.APIError):
+            server.game_character_cast({"spell": "Неизвестное заклинание", "level": 0}, character)
+
+    def test_dnd_spell_slot_configuration_rejects_invalid_counts(self):
+        valid = {"spell_slots_max": [2, 1, 0, 0, 0, 0, 0, 0, 0], "spell_slots": [1, 0, 0, 0, 0, 0, 0, 0, 0]}
+        result = server.game_character_spell_slots(valid)
+        self.assertEqual(result["spell_slots_max"][0], 2)
+        with self.assertRaises(server.APIError):
+            server.game_character_spell_slots({"spell_slots_max": [1], "spell_slots": [1]})
+        with self.assertRaises(server.APIError):
+            server.game_character_spell_slots({"spell_slots_max": [1] * 9, "spell_slots": [2] + [0] * 8})
+
     def test_dnd_combat_rejects_invalid_monster_health(self):
         with self.assertRaises(server.APIError):
             server.game_combat_transition("start", {"monsters": ["Гоблин | 14 | 0/7"]}, [])
