@@ -1640,6 +1640,57 @@ function renderCommunityGameDetail(game, panel) {
   startCatalogPresence(game.slug);
 }
 
+
+function wrapDndWorkspace(panel, title, active = "rooms") {
+  const existingContent = [...panel.childNodes];
+  const shell = createElement("div", "dnd-workspace");
+  const rail = createElement("aside", "dnd-workspace__rail");
+  const brand = createElement("a", "dnd-workspace__brand");
+  brand.href = "/games/dnd";
+  brand.setAttribute("aria-label", "Критический успех — главная D&D");
+  brand.append(createElement("span", "dnd-workspace__brand-mark", "✧"));
+  const brandCopy = createElement("span", "", "КРИТИЧЕСКИЙ УСПЕХ");
+  brandCopy.append(createElement("small", "", "DUNGEONS · DRAGONS · STORIES"));
+  brand.append(brandCopy);
+  const railLabel = createElement("span", "dnd-workspace__rail-label", "ТВОЙ МИР");
+  const nav = createElement("nav", "dnd-workspace__nav");
+  [
+    ["overview", "✦", "Обзор", "/games/dnd"],
+    ["rooms", "⚔", "Игровые комнаты", "/games/dnd/play"],
+  ].forEach(([key, icon, label, href]) => {
+    const link = createElement("a", active === key ? "is-active" : "");
+    link.href = href;
+    link.append(createElement("span", "dnd-workspace__nav-icon", icon), createElement("span", "", label));
+    if (active === key) link.setAttribute("aria-current", "page");
+    nav.append(link);
+  });
+  const railBottom = createElement("div", "dnd-workspace__rail-bottom");
+  railBottom.append(createElement("span", "dnd-workspace__rail-seal", "D20"), createElement("span", "", "ТВОЯ ИСТОРИЯ. ТВОИ ПРАВИЛА."));
+  const back = createElement("a", "dnd-workspace__back", "← Вернуться в Biblio");
+  back.href = "/games";
+  rail.append(brand, railLabel, nav, railBottom, back);
+
+  const main = createElement("main", "dnd-workspace__main");
+  const topbar = createElement("header", "dnd-workspace__topbar");
+  const crumbs = createElement("div", "dnd-workspace__crumbs");
+  const home = createElement("a", "", "D&D");
+  home.href = "/games/dnd";
+  crumbs.append(home, createElement("span", "", "／"), createElement("strong", "", title));
+  const topActions = createElement("div", "dnd-workspace__top-actions");
+  const badge = createElement("span", "dnd-workspace__world-badge", "✦ МИР ПРИКЛЮЧЕНИЙ");
+  const biblio = createElement("a", "dnd-workspace__top-back", "Biblio ↗");
+  biblio.href = "/games";
+  topActions.append(badge, biblio);
+  topbar.append(crumbs, topActions);
+
+  const body = createElement("div", "dnd-workspace__body");
+  existingContent.forEach((node) => body.append(node));
+  main.append(topbar, body);
+  shell.append(rail, main);
+  panel.replaceChildren(shell);
+  panel.classList.add("dnd-workspace-panel");
+}
+
 function renderGameRoomsPage(game) {
   const panel = document.querySelector("#game-catalog-detail-panel");
   if (!panel) return;
@@ -1695,6 +1746,7 @@ function renderGameRoomsPage(game) {
     roomsSection.append(loginButton);
   }
   panel.append(header, roomsSection);
+  wrapDndWorkspace(panel, "Игровые комнаты", "rooms");
   panel.hidden = false;
   panel.focus();
   document.title = `Игровые комнаты — ${game.title}`;
@@ -2180,6 +2232,7 @@ function renderGameDetail(game) {
       ${currentUser && Number(game.owner_id) === Number(currentUser.id) ? `<button class="button button--secondary" type="button" data-game-action="refresh">Обновить</button>` : ""}
     </div>
   `;
+  wrapDndWorkspace(panel, title, "rooms");
 
   panel.querySelector('[data-game-action="back"]')?.addEventListener("click", () => {
     const gamePath = game.catalog_game_slug
