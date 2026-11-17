@@ -575,6 +575,7 @@ def game_record_row(game, user_id=None):
     result["participants"] = game.get("participants", []) or []
     result["heroes"] = game.get("heroes", []) or []
     result["sessions"] = game.get("sessions", []) or []
+    result["combat"] = game.get("combat") or game.get("combat_state") or None
     return result
 
 
@@ -1785,6 +1786,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
                     "description": game.get("description", ""),
                     "access": game.get("access", "public"),
                     "join_code": game.get("join_code", ""),
+                    "combat_state": game.get("combat_state") or {},
                     "created_at": game.get("created_at", utc_timestamp()),
                     "updated_at": game.get("updated_at", utc_timestamp()),
                     "member_count": len(members),
