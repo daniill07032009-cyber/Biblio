@@ -738,3 +738,12 @@ body[data-game-site="true"] .dnd-workspace-panel .dnd-gm-empty {
 body[data-game-site="true"] .dnd-workspace-panel .dnd-gm-dashboard :is(p, small, span, label) {
   text-shadow: none;
 }
+
+
+/* Keep the full D&D workspace canvas in the same graphite tone as its panels. */
+body[data-game-site="true"] .dnd-workspace-panel,
+body[data-game-site="true"] .dnd-workspace-panel .dnd-workspace,
+body[data-game-site="true"] .dnd-workspace-panel .dnd-workspace__main,
+body[data-game-site="true"] .dnd-workspace-panel .dnd-workspace__body {
+  background: var(--dnd-surface) !important;
+}
