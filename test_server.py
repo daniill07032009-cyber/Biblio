@@ -1113,6 +1113,26 @@ class BiblioServerTests(unittest.TestCase):
         with self.assertRaises(server.APIError):
             server.game_character_cast({"spell": "Неизвестное заклинание", "level": 0}, character)
 
+    def test_dnd_healing_spells_restore_character_hp_without_exceeding_maximum(self):
+        character = {
+            "spells": ["Лечение ран", "Лечебное слово"],
+            "hp": 4, "max_hp": 10,
+            "spell_slots_max": [2, 0, 0, 0, 0, 0, 0, 0, 0],
+            "spell_slots": [2, 0, 0, 0, 0, 0, 0, 0, 0],
+        }
+        with patch("server.secrets.randbelow", return_value=7):
+            result = server.game_character_cast({"spell": "Лечение ран", "level": 1}, character)
+        self.assertEqual(result["effect"], "healing")
+        self.assertEqual(result["healing"], 6)
+        self.assertEqual(result["hp"], 10)
+        self.assertEqual(result["spell_slots"][0], 1)
+
+        full_health = {**character, "hp": 10, "spell_slots": [2, 0, 0, 0, 0, 0, 0, 0, 0]}
+        with patch("server.secrets.randbelow", return_value=0):
+            result = server.game_character_cast({"spell": "Лечебное слово", "level": 1}, full_health)
+        self.assertEqual(result["healing"], 0)
+        self.assertEqual(result["hp"], 10)
+
     def test_dnd_spell_slot_configuration_rejects_invalid_counts(self):
         valid = {"spell_slots_max": [2, 1, 0, 0, 0, 0, 0, 0, 0], "spell_slots": [1, 0, 0, 0, 0, 0, 0, 0, 0]}
         result = server.game_character_spell_slots(valid)
