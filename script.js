@@ -1665,9 +1665,7 @@ function wrapDndWorkspace(panel, title, active = "rooms") {
   });
   const railBottom = createElement("div", "dnd-workspace__rail-bottom");
   railBottom.append(createElement("span", "dnd-workspace__rail-seal", "D20"), createElement("span", "", "ТВОЯ ИСТОРИЯ. ТВОИ ПРАВИЛА."));
-  const back = createElement("a", "dnd-workspace__back", "← Вернуться в Biblio");
-  back.href = "/games";
-  rail.append(brand, railLabel, nav, railBottom, back);
+  rail.append(brand, railLabel, nav, railBottom);
 
   const main = createElement("div", "dnd-workspace__main");
   const topbar = createElement("header", "dnd-workspace__topbar");
@@ -1708,9 +1706,7 @@ function renderGameRoomsPage(game) {
   );
   const backButton = createElement("a", "button button--secondary", "← К игре");
   backButton.href = `/games/${encodeURIComponent(game.slug)}`;
-  const exitLink = createElement("a", "button button--secondary", "В Biblio");
-  exitLink.href = "/games";
-  header.append(heading, backButton, exitLink);
+  header.append(heading, backButton);
 
   const roomsSection = createElement("section", "game-catalog-rooms");
   const roomsHeading = createElement("div", "game-catalog-rooms__heading");
@@ -2052,8 +2048,11 @@ function renderGameDetail(game) {
   panel.innerHTML = `
     <div class="game-detail__header">
       <div><span class="eyebrow">${isGameMaster ? "Ведущий" : "Игрок"} · Игровая комната</span><h3>${escapeHtml(title)}</h3></div>
-      <button class="button button--secondary" type="button" data-game-action="back">${/\/play\/?$/.test(location.pathname) ? "← К комнатам" : "← К игре"}</button>
-      <a class="button button--secondary" href="/games">Вернуться в Biblio</a>
+      <div class="game-detail__header-actions">
+        ${canJoin && game.access === "public" ? `<button class="button button--primary" type="button" data-game-action="join">Вступить</button>` : ""}
+        ${canLeave ? `<button class="button button--secondary" type="button" data-game-action="leave">Покинуть</button>` : ""}
+        <button class="button button--secondary" type="button" data-game-action="back">${/\/play\/?$/.test(location.pathname) ? "← К комнатам" : "← К игре"}</button>
+      </div>
     </div>
     <p>${escapeHtml(game.description || "Без описания.")}</p>
     <ul class="game-detail-list">
@@ -2227,11 +2226,7 @@ function renderGameDetail(game) {
         </form>
       </div>
     ` : ""}
-    <div class="game-detail__section game-detail__actions">
-      ${canJoin && game.access === "public" ? `<button class="button button--primary" type="button" data-game-action="join">Вступить</button>` : ""}
-      ${canLeave ? `<button class="button button--secondary" type="button" data-game-action="leave">Покинуть</button>` : ""}
-      ${currentUser && Number(game.owner_id) === Number(currentUser.id) ? `<button class="button button--secondary" type="button" data-game-action="refresh">Обновить</button>` : ""}
-    </div>
+
   `;
   const introText = panel.querySelector(":scope > p");
   const detailList = panel.querySelector(":scope > .game-detail-list");
@@ -2252,7 +2247,6 @@ function renderGameDetail(game) {
     { key: "access", label: "Доступ", icon: "⌑", match: /код доступа|вступить в комнату/i },
     { key: "hero", label: "Мой герой", icon: "♟", match: /мой персонаж|создать персонажа/i },
     { key: "session", label: "Сессия", icon: "✎", match: /провести сессию/i },
-    { key: "actions", label: "Действия", icon: "⋯", match: /$^/ },
   ];
   const detailSections = [...panel.querySelectorAll(":scope > .game-detail__section")];
   const usedKeys = new Set();
@@ -2271,18 +2265,6 @@ function renderGameDetail(game) {
     if (["party", "combat", "journal", "session"].includes(spec.key)) section.classList.add("dnd-play-card--wide");
     return entry;
   });
-  const actionSection = detailSections.find((section) => section.classList.contains("game-detail__actions"));
-  if (actionSection) {
-    const entry = sectionEntries.find((item) => item.section === actionSection);
-    if (entry) {
-      entry.key = "actions";
-      entry.label = "Действия";
-      entry.icon = "⋯";
-      actionSection.id = "dnd-area-actions";
-      actionSection.dataset.dndArea = "actions";
-    }
-  }
-
   const playNav = createElement("nav", "dnd-play-nav");
   playNav.setAttribute("aria-label", "Разделы игрового стола");
   const navLinks = [];
@@ -2457,15 +2439,6 @@ function renderGameDetail(game) {
       } catch (error) {
         showToast(error.message);
       }
-    });
-  }
-
-  const refreshButton = panel.querySelector('[data-game-action="refresh"]');
-  if (refreshButton) {
-    refreshButton.addEventListener("click", async () => {
-      const refreshedGame = await api(`/api/games/${game.id}`);
-      renderGameDetail(refreshedGame.game);
-      showToast("Комната обновлена");
     });
   }
 
