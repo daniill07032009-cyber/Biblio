@@ -1388,7 +1388,7 @@ function createGameCatalogCard(game) {
   info.append(players);
   card.append(cover, info);
   card.addEventListener("click", () => {
-    window.location.assign(`/games/${encodeURIComponent(game.slug)}`);
+    window.location.assign(game.slug === "bunker-online" ? "/games/bunker-online.html" : `/games/${encodeURIComponent(game.slug)}`);
   });
   return card;
 }
