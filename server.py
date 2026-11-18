@@ -64,7 +64,7 @@ GAME_CATALOG_SEED = (
             "Социальная игра о выживании после глобальной катастрофы. Создавай сценарий, "
             "раскрывай досье участников, обсуждай кризисы, запускай события и голосуй "
             "за тех, кто покинет убежище. Включает таймер, локальный чат, достижения "
-            "и несколько режимов сложности. Текущая версия сохраняет сессию в браузере."
+            "и несколько режимов сложности. Многопользовательская игра для аккаунтов Biblio: комнаты, сценарии катастроф, приватные карты, чат и голосование."
         ),
         "cover_symbol": "☢",
         "cover_theme": "bunker",
@@ -3401,6 +3401,8 @@ def bunker_public_room(room, user_id):
         "players": room.get("players", []),
         "my_cards": (room.get("private_cards") or {}).get(str(user_id), []),
         "is_host": int(room["host_id"]) == int(user_id),
+        "my_user_id": int(user_id),
+        "my_ready": bool(next((m.get("ready") for m in members if int(m["user_id"]) == int(user_id)), False)),
     }
 
 def bunker_make_cards(difficulty):
