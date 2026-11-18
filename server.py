@@ -3468,6 +3468,16 @@ def dispatch_bunker_api(handler, db, method, path):
         if not any(int(m["user_id"]) == user_id for m in room.get("members", [])):
             raise APIError(HTTPStatus.CONFLICT, "Не удалось занять место. Обнови комнату и попробуй снова.")
         return {"room": bunker_public_room(room, user_id)}, HTTPStatus.OK, []
+    if method == "POST" and action == "leave":
+        if int(room["host_id"]) == user_id:
+            db.bunker_rooms.delete_one({"code": code, "host_id": user_id})
+        else:
+            db.bunker_rooms.update_one({"code": code}, {
+                "$pull": {"members": {"user_id": user_id}, "players": {"user_id": user_id}},
+                "$unset": {f"private_cards.{user_id}": ""},
+                "$set": {"updated_at": now},
+            })
+        return {"left": True}, HTTPStatus.OK, []
     if not member:
         raise APIError(HTTPStatus.FORBIDDEN, "Сначала войди в комнату по приглашению.")
     if method == "GET" and not action:
