@@ -380,6 +380,88 @@ class BiblioServerTests(unittest.TestCase):
             server._MONGO_CLIENTS.pop(uri, None)
             client.close()
 
+    def test_bunker_rooms_use_biblio_accounts_and_private_cards(self):
+        uri = "mongodb://bunker-test/"
+        mongo_client = mongomock.MongoClient()
+        original_uri = server.MONGODB_URI
+        original_client = self.client
+        server.MONGODB_URI = uri
+        server._MONGO_CLIENTS[uri] = mongo_client
+        try:
+            server.initialize_db()
+            host = self.register("bunker-host@example.com")
+            host_client = self.client
+            status, created = self.request("POST", "/api/bunker/rooms", {"max_players": 6})
+            self.assertEqual(status, 201)
+            code = created["room"]["code"]
+            self.assertEqual(len(created["room"]["members"]), 1)
+            self.assertEqual(created["room"]["members"][0]["user_id"], host["id"])
+
+            guest_jar = http.cookiejar.CookieJar()
+            guest_client = build_opener(HTTPCookieProcessor(guest_jar))
+            self.client = guest_client
+            guest = self.register("bunker-guest@example.com")
+            status, joined = self.request("POST", f"/api/bunker/rooms/{code}/join", {})
+            self.assertEqual(status, 200)
+            self.assertEqual(len(joined["room"]["members"]), 2)
+            self.assertEqual({m["user_id"] for m in joined["room"]["members"]}, {host["id"], guest["id"]})
+            self.assertFalse(joined["room"]["members"][1]["ready"])
+            status, ready = self.request("POST", f"/api/bunker/rooms/{code}/ready", {"ready": True})
+            self.assertEqual(status, 200)
+            self.assertTrue(ready["room"]["my_ready"])
+
+            self.client = host_client
+            status, lobby = self.request("GET", f"/api/bunker/rooms/{code}")
+            self.assertEqual(status, 200)
+            self.assertEqual(lobby["room"]["my_user_id"], host["id"])
+            status, started = self.request(
+                "POST", f"/api/bunker/rooms/{code}/start",
+                {"scenario": "nuclear", "difficulty": "extreme"},
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(started["room"]["status"], "started")
+            self.assertEqual(started["room"]["scenario"]["id"], "nuclear")
+            self.assertEqual(started["room"]["difficulty"]["negative_card_chance"], 0.68)
+            host_cards = started["room"]["my_cards"]
+            self.assertEqual(len(host_cards), 6)
+
+            self.client = guest_client
+            status, guest_state = self.request("GET", f"/api/bunker/rooms/{code}")
+            self.assertEqual(status, 200)
+            self.assertEqual(guest_state["room"]["my_user_id"], guest["id"])
+            guest_cards = guest_state["room"]["my_cards"]
+            self.assertEqual(len(guest_cards), 6)
+            self.assertNotEqual(
+                [(c["category"], c["value"]) for c in host_cards],
+                [(c["category"], c["value"]) for c in guest_cards],
+            )
+            status, revealed = self.request(
+                "POST", f"/api/bunker/rooms/{code}/action",
+                {"type": "reveal", "category": guest_cards[0]["category"]},
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(revealed["room"]["revealed_cards"][0]["user_id"], guest["id"])
+            self.assertEqual(len(revealed["room"]["my_cards"]), 6)
+
+            self.client = host_client
+            status, host_state = self.request("GET", f"/api/bunker/rooms/{code}")
+            self.assertEqual(status, 200)
+            self.assertEqual(len(host_state["room"]["revealed_cards"]), 1)
+            self.assertEqual(host_state["room"]["revealed_cards"][0]["value"], guest_cards[0]["value"])
+            self.assertEqual(host_state["room"]["my_cards"], host_cards)
+
+            self.client = guest_client
+            self.request("POST", f"/api/bunker/rooms/{code}/action", {"type": "chat", "message": "Всем привет!"})
+            self.client = host_client
+            status, host_state = self.request("GET", f"/api/bunker/rooms/{code}")
+            self.assertEqual(status, 200)
+            self.assertTrue(any(message["text"] == "Всем привет!" for message in host_state["room"]["chat"]))
+        finally:
+            self.client = original_client
+            server.MONGODB_URI = original_uri
+            server._MONGO_CLIENTS.pop(uri, None)
+            mongo_client.close()
+
     def test_game_room_flow_supports_private_access_and_xp(self):
         owner = self.register("owner-games@example.com")
         status, result = self.request(
