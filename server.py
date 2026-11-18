@@ -57,6 +57,18 @@ GAME_CATALOG_SEED = (
         "cover_symbol": "D20",
         "cover_theme": "fantasy",
     },
+    {
+        "slug": "bunker-online",
+        "title": "BunkerOnline",
+        "description": (
+            "Социальная игра о выживании после глобальной катастрофы. Создавай сценарий, "
+            "раскрывай досье участников, обсуждай кризисы, запускай события и голосуй "
+            "за тех, кто покинет убежище. Включает таймер, локальный чат, достижения "
+            "и несколько режимов сложности. Текущая версия сохраняет сессию в браузере."
+        ),
+        "cover_symbol": "☢",
+        "cover_theme": "bunker",
+    },
 )
 GAME_CATALOG_PRESENCE_SECONDS = 45
 
@@ -1531,6 +1543,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
             now = int(time.time())
             db.game_catalog_presence.delete_many({"expires_at": {"$lte": now}})
             games = list(db.game_catalog.find().sort("title", ASCENDING))
+            games.sort(key=lambda game: (game["slug"] != "dnd", game["title"].casefold()))
             game_ids = [game["slug"] for game in games]
             rating_stats = {}
             if game_ids:
@@ -2517,7 +2530,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
                     SELECT game_slug, AVG(rating) AS rating, COUNT(*) AS rating_count
                     FROM game_catalog_ratings GROUP BY game_slug
                 ) AS rating_stats ON rating_stats.game_slug = game_catalog.slug
-                ORDER BY title COLLATE NOCASE
+                ORDER BY CASE WHEN slug = 'dnd' THEN 0 ELSE 1 END, title COLLATE NOCASE
                 """,
                 (now, user["id"] if user else None),
             ).fetchall()
