@@ -1521,7 +1521,8 @@ class BiblioHandler(BaseHTTPRequestHandler):
             user = self.current_user_mongo(db)
             now = int(time.time())
             db.game_catalog_presence.delete_many({"expires_at": {"$lte": now}})
-            games = list(db.game_catalog.find().sort([("slug", ASCENDING)]))
+            games = list(db.game_catalog.find().sort("title", ASCENDING))
+            games.sort(key=lambda game: (game["slug"] != "dnd", game["title"].casefold()))
             game_ids = [game["slug"] for game in games]
             rating_stats = {}
             if game_ids:
