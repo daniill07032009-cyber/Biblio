@@ -431,10 +431,8 @@ class BiblioServerTests(unittest.TestCase):
             self.assertEqual(guest_state["room"]["my_user_id"], guest["id"])
             guest_cards = guest_state["room"]["my_cards"]
             self.assertEqual(len(guest_cards), 6)
-            self.assertNotEqual(
-                [(c["category"], c["value"]) for c in host_cards],
-                [(c["category"], c["value"]) for c in guest_cards],
-            )
+            self.assertNotIn("private_cards", guest_state["room"])
+            self.assertNotIn("private_cards", started["room"])
             status, revealed = self.request(
                 "POST", f"/api/bunker/rooms/{code}/action",
                 {"type": "reveal", "category": guest_cards[0]["category"]},
