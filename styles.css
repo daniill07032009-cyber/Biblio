@@ -2130,3 +2130,18 @@ body[data-game-site="true"] .game-detail-panel .game-room-tabs > button {
     font-size: 12px;
   }
 }
+
+
+/* BunkerOnline catalog cover */
+.game-catalog-card__cover[data-theme="bunker"] {
+  background: radial-gradient(ellipse at 50% 24%, rgba(198,226,122,.22), transparent 42%),
+    linear-gradient(155deg, #27372b 0%, #111a14 58%, #090e0b 100%);
+  border: 1px solid #43533e;
+  color: #e8eee7;
+}
+.game-catalog-card__cover[data-theme="bunker"] .game-catalog-card__cover-mark {
+  border-color: rgba(198,226,122,.55);
+  background: rgba(198,226,122,.1);
+  color: #c6e27a;
+}
+.game-catalog-card__cover[data-theme="bunker"] .game-catalog-card__cover-title { color: #e8eee7; }
