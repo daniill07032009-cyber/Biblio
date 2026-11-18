@@ -1387,11 +1387,11 @@ function createGameCatalogCard(game) {
   const players = createElement("span", "game-catalog-card__players");
   players.append(createElement("span", "game-catalog-card__online-dot", ""));
   players.append(createElement("span", "game-catalog-card__online-count", String(game.active_viewers || 0)));
-  players.append(document.createTextNode(" сейчас в блоке D&D"));
+  players.append(document.createTextNode(" сейчас в игре"));
   info.append(players);
   card.append(cover, info);
   card.addEventListener("click", () => {
-    window.location.assign(`/games/${encodeURIComponent(game.slug)}`);
+    window.location.assign(game.slug === "bunker-online" ? "/games/bunker-online.html" : `/games/${encodeURIComponent(game.slug)}`);
   });
   return card;
 }
