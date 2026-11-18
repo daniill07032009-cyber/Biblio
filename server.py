@@ -3539,9 +3539,19 @@ def dispatch_bunker_api(handler, db, method, path):
                 raise APIError(HTTPStatus.CONFLICT, "Карта уже раскрыта.")
             revealed = {"user_id": user_id, "name": name, "category": card["category"],
                         "label": card["label"], "value": card["value"], "negative": bool(card["negative"])}
-            db.bunker_rooms.update_one({"code": code, "status": "started"},
-                {"$push": {"revealed_cards": revealed}, "$inc": {"players.$[p].revealed_count": 1},
-                 "$set": {"updated_at": now}}, array_filters=[{"p.user_id": user_id}])
+            players = []
+            for player_item in room.get("players", []):
+                updated_player = dict(player_item)
+                if int(updated_player["user_id"]) == user_id:
+                    updated_player["revealed_count"] = int(updated_player.get("revealed_count", 0)) + 1
+                players.append(updated_player)
+            result = db.bunker_rooms.update_one(
+                {"code": code, "status": "started",
+                 "revealed_cards": {"$not": {"$elemMatch": {"user_id": user_id, "category": category}}}},
+                {"$push": {"revealed_cards": revealed},
+                 "$set": {"players": players, "updated_at": now}})
+            if result.matched_count == 0:
+                raise APIError(HTTPStatus.CONFLICT, "Эта карта уже раскрыта.")
         elif kind == "event":
             if int(room["host_id"]) != user_id:
                 raise APIError(HTTPStatus.FORBIDDEN, "События запускает ведущий.")
@@ -3577,12 +3587,14 @@ def dispatch_bunker_api(handler, db, method, path):
             player = next((p for p in room.get("players", []) if int(p["user_id"]) == eliminated), None)
             if not player:
                 raise APIError(HTTPStatus.CONFLICT, "Участник уже выбыл.")
-            db.bunker_rooms.update_one({"code": code}, {"$set": {
-                "voting.open": False, "result": f"{player['name']} покидает убежище. Голосов: {counts[str(eliminated)]}.",
-                "updated_at": now}, "$inc": {"round": 1}},
-                array_filters=[{"p.user_id": eliminated}])
-            db.bunker_rooms.update_one({"code": code, "players.user_id": eliminated},
-                {"$set": {"players.$.alive": False}})
+            players = [
+                {**item, "alive": False} if int(item["user_id"]) == eliminated else item
+                for item in room.get("players", [])
+            ]
+            db.bunker_rooms.update_one({"code": code, "voting.open": True}, {"$set": {
+                "voting.open": False, "players": players,
+                "result": f"{player['name']} покидает убежище. Голосов: {counts[str(eliminated)]}.",
+                "updated_at": now}, "$inc": {"round": 1}})
         else:
             raise APIError(HTTPStatus.BAD_REQUEST, "Неизвестное действие.")
         room = db.bunker_rooms.find_one({"code": code})
