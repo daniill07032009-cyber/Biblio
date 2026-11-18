@@ -31,8 +31,13 @@ jobs:
       - name: Install Python dependencies
         run: python -m pip install -r requirements-dev.txt
 
+      - name: Compile Python server
+        run: python -m py_compile server.py
+
       - name: Run Python tests
         run: python -m unittest -q
 
       - name: Check JavaScript syntax
-        run: node --check script.js
+        run: |
+          node --check script.js
+          node --check games/bunker-online.js
