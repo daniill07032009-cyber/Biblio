@@ -1521,7 +1521,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
             user = self.current_user_mongo(db)
             now = int(time.time())
             db.game_catalog_presence.delete_many({"expires_at": {"$lte": now}})
-            games = list(db.game_catalog.find().sort("title", ASCENDING))
+            games = list(db.game_catalog.find().sort([("slug", ASCENDING)]))
             game_ids = [game["slug"] for game in games]
             rating_stats = {}
             if game_ids:
@@ -2504,7 +2504,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
                     SELECT game_slug, AVG(rating) AS rating, COUNT(*) AS rating_count
                     FROM game_catalog_ratings GROUP BY game_slug
                 ) AS rating_stats ON rating_stats.game_slug = game_catalog.slug
-                ORDER BY title COLLATE NOCASE
+                ORDER BY CASE WHEN slug = 'dnd' THEN 0 ELSE 1 END, title COLLATE NOCASE
                 """,
                 (now, user["id"] if user else None),
             ).fetchall()
