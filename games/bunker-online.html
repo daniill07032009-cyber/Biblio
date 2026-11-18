@@ -53,7 +53,7 @@ main{max-width:1180px;margin:auto;padding:30px 20px 70px}.hero{text-align:center
  <div class="stat-row"><span class="pill" id="playersMetric"></span><span class="pill" id="capacityMetric"></span><span class="pill" id="revealedMetric"></span></div>
  <div class="game-grid">
   <div class="panel"><div class="room-head"><div><h3>Игроки и раскрытые карты</h3><p class="sub" style="margin:2px 0">Каждый участник раскрывает только собственные карты.</p></div><span class="pill">БЕЗ БОТОВ</span></div>
-   <div class="players" id="gamePlayers"></div>
+   <div class="players" id="gamePlayers"></div><h3 style="margin-top:18px">Открытые карты команды</h3><div class="cards" id="revealedCards"></div>
    <h3 style="margin-top:20px">Мои карты</h3><p class="sub">Остальные участники не видят их, пока ты сам не раскроешь карту.</p><div class="cards" id="myCards"></div>
    <div class="actions"><button class="btn secondary" id="eventBtn">СЛУЧАЙНОЕ СОБЫТИЕ</button><button class="btn danger" id="voteStartBtn">НАЧАТЬ ГОЛОСОВАНИЕ</button><button class="btn secondary" id="resolveVoteBtn">ПОДВЕСТИ ИТОГИ</button></div>
    <div class="panel hidden" id="votePanel" style="margin-top:12px"><h3>Голосование</h3><p class="sub">Выбери участника, который покинет убежище.</p><div class="vote-list" id="voteList"></div></div>
@@ -92,9 +92,10 @@ function renderLobby(){
  $("lobbyCode").textContent=room.code;$("lobbyCount").textContent=room.members.length+" / "+room.max_players+" ИГРОКОВ";
  $("lobbyPlayers").innerHTML=room.members.map(function(m){return '<div class="player">'+avatarHtml(m)+'<div class="player-info"><strong>'+escapeHtml(m.name)+'</strong><small>'+(m.role==="host"?"Ведущий":(m.online?"В сети":"Не в сети"))+'</small></div><span class="ready">'+(m.role==="host"?"★ ВЕДУЩИЙ":(m.ready?"✓ ГОТОВ":"ОЖИДАЕТ"))+'</span></div>';}).join("");
  var me=room.members.find(function(m){return m.user_id===room.members.find(function(x){return x.role==="host"&&room.is_host;})?.user_id;});
- $("readyBtn").textContent=room.members.some(function(m){return m.role!=="host"&&m.ready===false;})?"Я ГОТОВ":"ГОТОВНОСТЬ ПОДТВЕРЖДЕНА";
+ $("readyBtn").textContent=room.my_ready?"ОТМЕНИТЬ ГОТОВНОСТЬ":"Я ГОТОВ";
  $("readyBtn").disabled=room.is_host;
  $("startBtn").classList.toggle("hidden",!room.is_host);
+ $("startBtn").disabled=room.members.length<2||!room.members.every(function(m){return m.role==="host"||m.ready;});
  $("setupPanel").classList.toggle("hidden",!room.is_host);
  $("lobbyNotice").textContent=room.members.length<2?"Пока только ведущий. Пригласи друзей по коду комнаты. Минимум для старта — 2 реальных игрока.":(room.members.every(function(m){return m.role==="host"||m.ready;})?"Все участники готовы. Ведущий может выбрать сценарий.":"Ждём подтверждения готовности от остальных игроков.");
  renderChoices();
@@ -117,7 +118,8 @@ function renderGame(){
  $("revealedMetric").textContent="РАСКРЫТО КАРТ: "+room.revealed_cards.length;
  var list=room.players.map(function(p){var n=room.revealed_cards.filter(function(c){return c.user_id===p.user_id;});return '<div class="player">'+avatarHtml(p)+'<div class="player-info"><strong>'+escapeHtml(p.name)+'</strong><small>'+(p.alive?"В игре":"Покинул убежище")+" · "+n.length+" карт раскрыто</small></div></div>';}).join("");
  $("gamePlayers").innerHTML=list;$("sidePlayers").innerHTML=list;
- $("myCards").innerHTML=room.my_cards.map(function(card){var revealed=room.revealed_cards.some(function(x){return x.user_id===room.members.find(function(m){return m.user_id===x.user_id&&m.name===x.name;})?.user_id&&x.category===card.category&&x.name===room.members.find(function(m){return m.user_id===x.user_id;})?.name;});var mine=room.revealed_cards.some(function(x){return x.category===card.category&&x.name===room.members.find(function(m){return m.user_id===x.user_id;})?.name&&x.user_id===room.members.find(function(m){return m.user_id===x.user_id;})?.user_id&&x.user_id===room.members.find(function(m){return m.name===x.name;})?.user_id;});return '<div class="card '+(mine?"revealed":"")+'"><small>'+escapeHtml(card.label)+'</small><strong>'+(mine?escapeHtml(card.value):"СЕКРЕТНАЯ КАРТА")+'</strong>'+(mine?'<span class="'+(card.negative?"bad":"good")+'">'+(card.negative?"НЕГАТИВНАЯ КАРТА":"ПОЛЕЗНАЯ КАРТА")+'</span>':'<button class="btn secondary wide" data-reveal="'+card.category+'">РАСКРЫТЬ</button>')+'</div>';}).join("");
+ $("revealedCards").innerHTML=room.revealed_cards.map(function(card){return '<div class="card revealed"><small>'+escapeHtml(card.name)+' · '+escapeHtml(card.label)+'</small><strong>'+escapeHtml(card.value)+'</strong><span class="'+(card.negative?"bad":"good")+'">'+(card.negative?"НЕГАТИВНАЯ КАРТА":"ПОЛЕЗНАЯ КАРТА")+'</span></div>';}).join("")||'<p class="hint">Пока никто не раскрыл карты.</p>';
+ $("myCards").innerHTML=room.my_cards.map(function(card){var mine=room.revealed_cards.some(function(x){return x.user_id===room.my_user_id&&x.category===card.category;});return '<div class="card '+(mine?"revealed":"")+'"><small>'+escapeHtml(card.label)+'</small><strong>'+(mine?escapeHtml(card.value):"СЕКРЕТНАЯ КАРТА")+'</strong>'+(mine?'<span class="'+(card.negative?"bad":"good")+'">'+(card.negative?"НЕГАТИВНАЯ КАРТА":"ПОЛЕЗНАЯ КАРТА")+'</span>':'<button class="btn secondary wide" data-reveal="'+card.category+'">РАСКРЫТЬ</button>')+'</div>';}).join("");
  $("chatLog").innerHTML=room.chat.map(function(m){return '<div class="msg '+(m.system?"system":"")+'"><b>'+escapeHtml(m.name)+'</b>'+escapeHtml(m.text)+'</div>';}).join("");$("chatLog").scrollTop=$("chatLog").scrollHeight;
  $("eventBox").classList.toggle("hidden",!room.event);if(room.event)$("eventBox").innerHTML="<b>"+escapeHtml(room.event.title)+"</b>"+escapeHtml(room.event.description);
  $("resultBox").classList.toggle("hidden",!room.result);$("resultBox").textContent=room.result||"";
@@ -128,7 +130,7 @@ function renderGame(){
 }
 async function refresh(){if(!roomCode||busy)return;try{var r=await api("/api/bunker/rooms/"+encodeURIComponent(roomCode));room=r.room;render();}catch(e){if(e.message.indexOf("не найдена")>=0){clearInterval(pollTimer);toast(e.message);showSection("home");}}}
 async function sendAction(data){try{var r=await post("/api/bunker/rooms/"+roomCode+"/action",data);room=r.room;render();}catch(e){toast(e.message);}}
-async function ready(){try{var me=room.members.find(function(m){return m.role!=="host"&&!m.ready;});var r=await post("/api/bunker/rooms/"+roomCode+"/ready",{ready:true});room=r.room;render();}catch(e){toast(e.message);}}
+async function ready(){try{var r=await post("/api/bunker/rooms/"+roomCode+"/ready",{ready:!room.my_ready});room=r.room;render();}catch(e){toast(e.message);}}
 function copyCode(){if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(roomCode).then(function(){toast("Код скопирован: "+roomCode);}).catch(function(){toast("Код комнаты: "+roomCode);});}else{toast("Код комнаты: "+roomCode);}}
 function startPolling(){if(pollTimer)clearInterval(pollTimer);pollTimer=setInterval(refresh,2500);}
 function stop(){if(pollTimer)clearInterval(pollTimer);pollTimer=null;roomCode="";room=null;showSection("home");}
