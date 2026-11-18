@@ -406,6 +406,13 @@ class BiblioServerTests(unittest.TestCase):
             self.assertEqual(len(joined["room"]["members"]), 2)
             self.assertEqual({m["user_id"] for m in joined["room"]["members"]}, {host["id"], guest["id"]})
             self.assertFalse(joined["room"]["members"][1]["ready"])
+            self.client = host_client
+            status, blocked = self.request(
+                "POST", f"/api/bunker/rooms/{code}/start",
+                {"scenario": "nuclear", "difficulty": "extreme"},
+            )
+            self.assertEqual(status, 409)
+            self.client = guest_client
             status, ready = self.request("POST", f"/api/bunker/rooms/{code}/ready", {"ready": True})
             self.assertEqual(status, 200)
             self.assertTrue(ready["room"]["my_ready"])
@@ -454,6 +461,26 @@ class BiblioServerTests(unittest.TestCase):
             status, host_state = self.request("GET", f"/api/bunker/rooms/{code}")
             self.assertEqual(status, 200)
             self.assertTrue(any(message["text"] == "Всем привет!" for message in host_state["room"]["chat"]))
+
+            self.request("POST", f"/api/bunker/rooms/{code}/action", {"type": "vote_start"})
+            self.client = guest_client
+            status, vote = self.request(
+                "POST", f"/api/bunker/rooms/{code}/action",
+                {"type": "vote", "target_user_id": host["id"]},
+            )
+            self.assertEqual(status, 200)
+            self.client = host_client
+            status, vote = self.request(
+                "POST", f"/api/bunker/rooms/{code}/action",
+                {"type": "vote", "target_user_id": guest["id"]},
+            )
+            self.assertEqual(status, 200)
+            status, resolved = self.request(
+                "POST", f"/api/bunker/rooms/{code}/action", {"type": "resolve_vote"}
+            )
+            self.assertEqual(status, 200)
+            host_player = next(p for p in resolved["room"]["players"] if p["user_id"] == host["id"])
+            self.assertFalse(host_player["alive"])
         finally:
             self.client = original_client
             server.MONGODB_URI = original_uri
