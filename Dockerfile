@@ -16,6 +16,7 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY --chown=app:app server.py index.html script.js styles.css favicon.svg ./
+COPY --chown=app:app games/ ./games/
 
 USER app
 
