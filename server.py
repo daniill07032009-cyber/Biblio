@@ -140,6 +140,8 @@ def initialize_db():
             [("book_id", ASCENDING), ("user_id", ASCENDING)], unique=True
         )
         db.game_catalog.create_index([("slug", ASCENDING)], unique=True)
+        db.bunker_rooms.create_index([("code", ASCENDING)], unique=True)
+        db.bunker_rooms.create_index([("updated_at", DESCENDING)])
         db.game_catalog_ratings.create_index(
             [("game_slug", ASCENDING), ("user_id", ASCENDING)], unique=True
         )
@@ -3565,7 +3567,7 @@ def dispatch_bunker_api(handler, db, method, path):
                 raise APIError(HTTPStatus.CONFLICT, "Участник уже выбыл.")
             db.bunker_rooms.update_one({"code": code}, {"$set": {
                 "voting.open": False, "result": f"{player['name']} покидает убежище. Голосов: {counts[str(eliminated)]}.",
-                "updated_at": now}, "$inc": {"players.$[p].alive": -1, "round": 1}},
+                "updated_at": now}, "$inc": {"round": 1}},
                 array_filters=[{"p.user_id": eliminated}])
             db.bunker_rooms.update_one({"code": code, "players.user_id": eliminated},
                 {"$set": {"players.$.alive": False}})
