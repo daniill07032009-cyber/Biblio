@@ -1091,11 +1091,13 @@ class BiblioHandler(BaseHTTPRequestHandler):
             else:
                 with connect_db() as db:
                     result, status, headers = self.dispatch_api(db, method, path, parsed_query)
-            cache_control = (
-                "public, max-age=20, stale-while-revalidate=60"
-                if method == "GET" and path == "/api/books"
-                else "no-store"
-            )
+            cache_control = "no-store"
+            if method == "GET" and path == "/api/books":
+                cache_control = "public, max-age=20, stale-while-revalidate=60"
+            elif method == "GET" and path == "/api/stats":
+                # This endpoint contains only the public account total; a very
+                # short cache avoids recounting users on every homepage visit.
+                cache_control = "public, max-age=10, stale-while-revalidate=20"
             self.send_json(status, result, headers, cache_control=cache_control)
         except APIError as exc:
             self.send_json(exc.status, {"error": exc.message})

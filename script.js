@@ -1393,13 +1393,19 @@ function createGameCatalogCard(game) {
   return card;
 }
 
-async function refreshGameCatalog() {
+let gameCatalogRefreshPending = false;
+
+async function refreshGameCatalog({ silent = false } = {}) {
+  if (gameCatalogRefreshPending || document.hidden) return;
+  gameCatalogRefreshPending = true;
   try {
     const result = await api("/api/catalog/games");
     gameCatalogGames = Array.isArray(result.games) ? result.games : [];
     renderGameCatalogCards();
   } catch (error) {
-    showToast(error.message);
+    if (!silent) showToast(error.message);
+  } finally {
+    gameCatalogRefreshPending = false;
   }
 }
 
@@ -1935,7 +1941,7 @@ window.setInterval(() => {
     catalogLayout &&
     !catalogLayout.hidden
   ) {
-    refreshGameCatalog();
+    refreshGameCatalog({ silent: true });
   }
 }, GAME_CATALOG_PRESENCE_INTERVAL_MS);
 
@@ -3428,22 +3434,40 @@ window.setInterval(() => {
 }, HOURLY_PAGE_RELOAD_MS);
 
 async function initialize() {
-  loadRegisteredAccountCount();
   resetBookForm();
   readAppearance();
   searchInput.value = new URLSearchParams(location.search).get("q") || "";
   document.querySelector("#favorite-button").setAttribute("aria-pressed", String(favoritesOnly));
   applyPageLayout();
+  const page = document.body.dataset.page || "home";
+  if (page === "home") loadRegisteredAccountCount();
   updateFavoriteButtons();
+
   try {
     const result = await api("/api/me");
     currentUser = result.user;
     updateAccountUI();
-    await refreshPublishedBooks();
-    await refreshGameCatalog();
+
+    // Load only the data used by the current route. The shared document contains
+    // every page, but hidden sections should not trigger their API requests.
+    const requests = [];
+    if (["home", "catalog", "authors"].includes(page)) {
+      requests.push(refreshPublishedBooks());
+    }
+    if (page === "games") {
+      requests.push(refreshGameCatalog());
+    }
+    if (page === "library") {
+      renderReadingLibrary();
+      if (currentUser) requests.push(refreshMyBooks());
+    }
+    await Promise.all(requests);
+
     const gamePageMatch = location.pathname.match(/^\/games\/([a-z0-9-]+)(?:\/play)?\/?$/);
-    if (gamePageMatch) await openCatalogGame(decodeURIComponent(gamePageMatch[1]));
-    if (currentUser) await refreshMyBooks();
+    if (page === "games" && gamePageMatch) {
+      await openCatalogGame(decodeURIComponent(gamePageMatch[1]));
+    }
+
     const readerRoute = location.hash.match(/^#read\/([^/]+)$/);
     const bookRoute = location.hash.match(/^#book\/([^/]+)$/);
     if (readerRoute) {
