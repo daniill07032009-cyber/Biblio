@@ -3428,13 +3428,13 @@ window.setInterval(() => {
 }, HOURLY_PAGE_RELOAD_MS);
 
 async function initialize() {
-  const page = document.body.dataset.page || "home";
-  if (page === "home") loadRegisteredAccountCount();
   resetBookForm();
   readAppearance();
   searchInput.value = new URLSearchParams(location.search).get("q") || "";
   document.querySelector("#favorite-button").setAttribute("aria-pressed", String(favoritesOnly));
   applyPageLayout();
+  const page = document.body.dataset.page || "home";
+  if (page === "home") loadRegisteredAccountCount();
   updateFavoriteButtons();
 
   try {
