@@ -1393,13 +1393,19 @@ function createGameCatalogCard(game) {
   return card;
 }
 
-async function refreshGameCatalog() {
+let gameCatalogRefreshPending = false;
+
+async function refreshGameCatalog({ silent = false } = {}) {
+  if (gameCatalogRefreshPending || document.hidden) return;
+  gameCatalogRefreshPending = true;
   try {
     const result = await api("/api/catalog/games");
     gameCatalogGames = Array.isArray(result.games) ? result.games : [];
     renderGameCatalogCards();
   } catch (error) {
-    showToast(error.message);
+    if (!silent) showToast(error.message);
+  } finally {
+    gameCatalogRefreshPending = false;
   }
 }
 
@@ -1935,7 +1941,7 @@ window.setInterval(() => {
     catalogLayout &&
     !catalogLayout.hidden
   ) {
-    refreshGameCatalog();
+    refreshGameCatalog({ silent: true });
   }
 }, GAME_CATALOG_PRESENCE_INTERVAL_MS);
 
