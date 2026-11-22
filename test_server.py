@@ -532,7 +532,42 @@ class BiblioServerTests(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(started["room"]["capacity"], 2)
 
-            # Round one: three votes eliminate player four.
+            # Four independent test accounts act as bots with different survival priorities.
+            bot_names = ["Ирина · врач", "Максим · инженер", "Алиса · биолог", "Денис · механик"]
+            print("\n=== BUNKER BOT MATCH: CLASSIC / NORMAL ===")
+            print("Комната:", code, "| Игроков: 4 | Мест в бункере: 2")
+            print("Боты:", " · ".join(bot_names))
+            discussion = [
+                "Я врач. В кризисе критично лечить травмы и инфекции. Оценивайте навыки, а не только возраст.",
+                "Я инженер. Без энергии, фильтрации и ремонта убежище долго не продержится. Нужны технические руки.",
+                "Я биолог. Могу оценить воду, пищу и заражение. Но решение должно учитывать совместимость команды.",
+                "Я механик. Умею чинить транспорт и генераторы. Не исключайте меня только из-за одного слабого параметра.",
+            ]
+            for client, message, bot in zip(clients, discussion, bot_names):
+                self.client = client
+                status, _ = self.request("POST", f"/api/bunker/rooms/{code}/action", {"type": "chat", "message": message})
+                self.assertEqual(status, 200)
+                print(bot + ":", message)
+
+            print("\nРАСКРЫТИЕ ДОСЬЕ:")
+            for client, bot in zip(clients, bot_names):
+                self.client = client
+                status, own_room = self.request("GET", f"/api/bunker/rooms/{code}")
+                self.assertEqual(status, 200)
+                profession = next(card for card in own_room["room"]["my_cards"] if card["category"] == "profession")
+                status, _ = self.request("POST", f"/api/bunker/rooms/{code}/action", {"type": "reveal", "category": "profession"})
+                self.assertEqual(status, 200)
+                print(f"{bot}: {profession['label']} — {profession['value']}" + (" [негативная карта]" if profession["negative"] else ""))
+            self.client = clients[0]
+            status, _ = self.request("POST", f"/api/bunker/rooms/{code}/action", {"type": "event"})
+            self.assertEqual(status, 200)
+            status, event_room = self.request("GET", f"/api/bunker/rooms/{code}")
+            self.assertEqual(status, 200)
+            event = event_room["room"]["event"]
+            print("\nСОБЫТИЕ:", event["title"], "—", event["description"])
+
+            # Round one: bots discuss the profiles and vote out the weakest fit.
+            print("\nРАУНД 1 — первое голосование:")
             self.request("POST", f"/api/bunker/rooms/{code}/action", {"type": "vote_start"})
             first_targets = [players[3]["id"], players[3]["id"], players[3]["id"], players[0]["id"]]
             for client, target in zip(clients, first_targets):
@@ -544,6 +579,8 @@ class BiblioServerTests(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(first_result["room"]["status"], "started")
             self.assertEqual(sum(1 for player in first_result["room"]["players"] if player["alive"]), 3)
+            print("Голоса: Ирина → Денис; Максим → Денис; Алиса → Денис; Денис → Ирина.")
+            print("Итог: Денис выбывает большинством 3:1. В игре осталось 3.")
 
             # Round two: two votes eliminate player two, leaving exactly two seats filled.
             self.request("POST", f"/api/bunker/rooms/{code}/action", {"type": "vote_start"})
@@ -560,6 +597,18 @@ class BiblioServerTests(unittest.TestCase):
             self.assertEqual({player["user_id"] for player in final_state["room"]["survivors"]}, {players[0]["id"], players[2]["id"]})
             self.assertIsNotNone(final_state["room"]["finished_at"])
             self.assertIn("Бункер укомплектован", final_state["room"]["result"])
+            print("\nРАУНД 2 — финальное голосование:")
+            print("Голоса: Ирина → Максим; Максим → Ирина; Алиса → Максим.")
+            print("Итог: Максим выбывает большинством 2:1.")
+            print("ФИНАЛ:", final_state["room"]["result"])
+            print("СТАТУС:", final_state["room"]["status"], "| ВЫЖИВШИЕ:", ", ".join(p["name"] for p in final_state["room"]["survivors"]))
+            print("Проверки: игра закрыта; 2 места заняты; выжившие сохранены; время завершения записано.")
+            # A completed match must reject further game-changing actions.
+            self.client = clients[0]
+            status, _ = self.request("POST", f"/api/bunker/rooms/{code}/action", {"type": "vote_start"})
+            self.assertEqual(status, 409)
+            print("Контроль после финала: повторный запуск голосования отклонён (409).")
+            print("=== MATCH COMPLETE ===")
         finally:
             self.client = original_client
             server.MONGODB_URI = original_uri
