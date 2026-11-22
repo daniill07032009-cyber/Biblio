@@ -13,6 +13,25 @@ import server
 import mongomock
 
 
+class BunkerCardCatalogTests(unittest.TestCase):
+    def test_expanded_card_catalog_sizes_and_uniqueness(self):
+        self.assertEqual(server.BUNKER_CARD_COUNTS, server.EXPECTED_CARD_COUNTS)
+        for category, (positive, negative) in server.BUNKER_CARD_POOLS.items():
+            self.assertEqual(len(positive) + len(negative), server.EXPECTED_CARD_COUNTS[category])
+            self.assertEqual(len(set(positive + negative)), len(positive) + len(negative))
+            self.assertTrue(positive)
+            self.assertTrue(negative)
+
+    def test_age_generation_supports_normal_and_rare_ranges(self):
+        normal_age = server.bunker_random_age(negative=False, rare_roll=1, age_roll=0)
+        self.assertGreaterEqual(normal_age, 16)
+        self.assertLessEqual(normal_age, 79)
+        with patch("secrets.randbelow", side_effect=[2500]):
+            rare_age = server.bunker_random_age(negative=False, rare_roll=0)
+        self.assertGreaterEqual(rare_age, 500)
+        self.assertLessEqual(rare_age, 3000)
+
+
 class BiblioServerTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -479,8 +498,158 @@ class BiblioServerTests(unittest.TestCase):
                 "POST", f"/api/bunker/rooms/{code}/action", {"type": "resolve_vote"}
             )
             self.assertEqual(status, 200)
+            self.assertTrue(resolved["room"]["voting"]["open"])
+            self.assertEqual(set(resolved["room"]["voting"]["tied_targets"]), {host["id"], guest["id"]})
+            status, resolved = self.request("POST", f"/api/bunker/rooms/{code}/action", {"type": "tie_break", "target_user_id": guest["id"]})
+            self.assertEqual(status, 200)
+            self.assertEqual(resolved["room"]["status"], "finished")
             host_player = next(p for p in resolved["room"]["players"] if p["user_id"] == host["id"])
-            self.assertFalse(host_player["alive"])
+            guest_player = next(p for p in resolved["room"]["players"] if p["user_id"] == guest["id"])
+            self.assertTrue(host_player["alive"])
+            self.assertFalse(guest_player["alive"])
+            self.assertEqual(resolved["room"]["survivors"][0]["user_id"], host["id"])
+            self.assertIsNotNone(resolved["room"]["finished_at"])
+        finally:
+            self.client = original_client
+            server.MONGODB_URI = original_uri
+            server._MONGO_CLIENTS.pop(uri, None)
+            mongo_client.close()
+
+    def test_bunker_match_finishes_after_multiple_elimination_rounds(self):
+        uri = "mongodb://bunker-multi-round-test/"
+        mongo_client = mongomock.MongoClient()
+        original_uri = server.MONGODB_URI
+        original_client = self.client
+        server.MONGODB_URI = uri
+        server._MONGO_CLIENTS[uri] = mongo_client
+        try:
+            server.initialize_db()
+            players = []
+            clients = []
+            for index in range(4):
+                jar = http.cookiejar.CookieJar()
+                client = build_opener(HTTPCookieProcessor(jar))
+                self.client = client
+                user = self.register(f"bunker-round-{index}@example.com")
+                players.append(user)
+                clients.append(client)
+
+            self.client = clients[0]
+            status, created = self.request("POST", "/api/bunker/rooms", {"max_players": 4})
+            self.assertEqual(status, 201)
+            code = created["room"]["code"]
+
+            for index in range(1, 4):
+                self.client = clients[index]
+                status, joined = self.request("POST", f"/api/bunker/rooms/{code}/join", {})
+                self.assertEqual(status, 200)
+                status, ready = self.request("POST", f"/api/bunker/rooms/{code}/ready", {"ready": True})
+                self.assertEqual(status, 200)
+
+            self.client = clients[0]
+            categories = [
+                ("profession", "Профессия"), ("age", "Возраст"), ("health", "Здоровье"),
+                ("hobby", "Хобби"), ("baggage", "Багаж"), ("fact", "Особенность"),
+            ]
+            def bot_cards(profession, negative):
+                values = {
+                    "profession": profession, "age": "34 года", "health": "Полностью здоров",
+                    "hobby": "Ориентирование", "baggage": "Набор инструментов",
+                    "fact": "Сохраняет спокойствие в кризисе",
+                }
+                return [{"category": category, "label": label, "value": values[category],
+                         "negative": negative if category == "profession" else False,
+                         "revealed": False} for category, label in categories]
+            # Deterministic dossiers make the bot decisions reproducible and auditable.
+            prepared_cards = [
+                bot_cards("Врач с поддельным дипломом", True),
+                bot_cards("Инженер, уволенный за грубую ошибку", True),
+                bot_cards("Системный администратор", False),
+                bot_cards("Спасатель", False),
+            ]
+            with patch("server.bunker_make_cards", side_effect=prepared_cards):
+                status, started = self.request("POST", f"/api/bunker/rooms/{code}/start", {"scenario": "classic", "difficulty": "normal"})
+            self.assertEqual(status, 200)
+            self.assertEqual(started["room"]["capacity"], 2)
+
+            # Four independent test accounts act as bots with different survival priorities.
+            bot_names = ["Ирина · врач", "Максим · инженер", "Алиса · биолог", "Денис · механик"]
+            print("\n=== BUNKER BOT MATCH: CLASSIC / NORMAL ===")
+            print("Комната:", code, "| Игроков: 4 | Мест в бункере: 2")
+            print("Боты:", " · ".join(bot_names))
+            discussion = [
+                "Я врач. В кризисе критично лечить травмы и инфекции. Оценивайте навыки, а не только возраст.",
+                "Я инженер. Без энергии, фильтрации и ремонта убежище долго не продержится. Нужны технические руки.",
+                "Я биолог. Могу оценить воду, пищу и заражение. Но решение должно учитывать совместимость команды.",
+                "Я механик. Умею чинить транспорт и генераторы. Не исключайте меня только из-за одного слабого параметра.",
+            ]
+            for client, message, bot in zip(clients, discussion, bot_names):
+                self.client = client
+                status, _ = self.request("POST", f"/api/bunker/rooms/{code}/action", {"type": "chat", "message": message})
+                self.assertEqual(status, 200)
+                print(bot + ":", message)
+
+            print("\nРАСКРЫТИЕ ДОСЬЕ:")
+            for client, bot in zip(clients, bot_names):
+                self.client = client
+                status, own_room = self.request("GET", f"/api/bunker/rooms/{code}")
+                self.assertEqual(status, 200)
+                profession = next(card for card in own_room["room"]["my_cards"] if card["category"] == "profession")
+                status, _ = self.request("POST", f"/api/bunker/rooms/{code}/action", {"type": "reveal", "category": "profession"})
+                self.assertEqual(status, 200)
+                print(f"{bot}: {profession['label']} — {profession['value']}" + (" [негативная карта]" if profession["negative"] else ""))
+            self.client = clients[0]
+            with patch("server.secrets.choice", return_value=server.BUNKER_EVENTS[0]):
+                status, _ = self.request("POST", f"/api/bunker/rooms/{code}/action", {"type": "event"})
+            self.assertEqual(status, 200)
+            status, event_room = self.request("GET", f"/api/bunker/rooms/{code}")
+            self.assertEqual(status, 200)
+            event = event_room["room"]["event"]
+            print("\nСОБЫТИЕ:", event["title"], "—", event["description"])
+
+            # Round one: bots discuss the profiles and vote out the weakest fit.
+            print("\nРАУНД 1 — первое голосование:")
+            self.request("POST", f"/api/bunker/rooms/{code}/action", {"type": "vote_start"})
+            first_targets = [players[1]["id"], players[0]["id"], players[1]["id"], players[1]["id"]]
+            for client, target in zip(clients, first_targets):
+                self.client = client
+                status, vote = self.request("POST", f"/api/bunker/rooms/{code}/action", {"type": "vote", "target_user_id": target})
+                self.assertEqual(status, 200)
+            self.client = clients[0]
+            status, first_result = self.request("POST", f"/api/bunker/rooms/{code}/action", {"type": "resolve_vote"})
+            self.assertEqual(status, 200)
+            self.assertEqual(first_result["room"]["status"], "started")
+            self.assertEqual(sum(1 for player in first_result["room"]["players"] if player["alive"]), 3)
+            print("Голоса: Ирина → Максим; Максим → Ирина; Алиса → Максим; Денис → Максим.")
+            print("Итог: Максим выбывает большинством 3:1: инженерный навык есть, но раскрыта грубая профессиональная ошибка. В игре осталось 3.")
+
+            # Round two: two votes eliminate player two, leaving exactly two seats filled.
+            self.request("POST", f"/api/bunker/rooms/{code}/action", {"type": "vote_start"})
+            second_targets = [players[2]["id"], players[0]["id"], players[0]["id"]]
+            for index, target in zip((0, 2, 3), second_targets):
+                self.client = clients[index]
+                status, vote = self.request("POST", f"/api/bunker/rooms/{code}/action", {"type": "vote", "target_user_id": target})
+                self.assertEqual(status, 200)
+            self.client = clients[0]
+            status, final_state = self.request("POST", f"/api/bunker/rooms/{code}/action", {"type": "resolve_vote"})
+            self.assertEqual(status, 200)
+            self.assertEqual(final_state["room"]["status"], "finished")
+            self.assertEqual(len(final_state["room"]["survivors"]), 2)
+            self.assertEqual({player["user_id"] for player in final_state["room"]["survivors"]}, {players[2]["id"], players[3]["id"]})
+            self.assertIsNotNone(final_state["room"]["finished_at"])
+            self.assertIn("Бункер укомплектован", final_state["room"]["result"])
+            print("\nРАУНД 2 — финальное голосование:")
+            print("Голоса: Ирина → Алиса; Алиса → Ирина; Денис → Ирина.")
+            print("Итог: Ирина выбывает большинством 2:1: медицинская компетенция не подтверждена из-за поддельного диплома.")
+            print("ФИНАЛ:", final_state["room"]["result"])
+            print("СТАТУС:", final_state["room"]["status"], "| ВЫЖИВШИЕ: Алиса · системный администратор и Денис · спасатель")
+            print("Проверки: игра закрыта; 2 места заняты; выжившие сохранены; время завершения записано.")
+            # A completed match must reject further game-changing actions.
+            self.client = clients[0]
+            status, _ = self.request("POST", f"/api/bunker/rooms/{code}/action", {"type": "vote_start"})
+            self.assertEqual(status, 409)
+            print("Контроль после финала: повторный запуск голосования отклонён (409).")
+            print("=== MATCH COMPLETE ===")
         finally:
             self.client = original_client
             server.MONGODB_URI = original_uri
@@ -1304,6 +1473,17 @@ class BiblioServerTests(unittest.TestCase):
                 self.client.open(self.base_url + path)
             self.assertEqual(error.exception.code, 404)
             error.exception.close()
+
+ 
+class BunkerPresenceTests(unittest.TestCase):
+    def test_presence_write_is_throttled_to_ten_seconds(self):
+        self.assertFalse(server.bunker_presence_refresh_due({"last_seen": 100}, 109))
+        self.assertTrue(server.bunker_presence_refresh_due({"last_seen": 100}, 110))
+
+    def test_missing_presence_timestamp_is_refreshed(self):
+        self.assertTrue(server.bunker_presence_refresh_due({}, 110))
+
+
 
 
 if __name__ == "__main__":
