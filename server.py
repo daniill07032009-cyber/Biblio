@@ -3409,7 +3409,8 @@ def bunker_public_room(room, user_id):
         "disaster": room.get("disaster"), "revealed_cards": room.get("revealed_cards", []),
         "chat": room.get("chat", [])[-60:], "event": room.get("event"),
         "voting": room.get("voting"), "result": room.get("result"),
-        "players": room.get("players", []),
+        "players": room.get("players", []), "survivors": room.get("survivors", []),
+        "finished_at": room.get("finished_at"),
         "my_cards": (room.get("private_cards") or {}).get(str(user_id), []),
         "is_host": int(room["host_id"]) == int(user_id),
         "my_user_id": int(user_id),
@@ -3535,6 +3536,8 @@ def dispatch_bunker_api(handler, db, method, path):
     if method == "POST" and action == "action":
         data = handler.read_json()
         kind = str(data.get("type") or "")
+        if room.get("status") == "finished" and kind not in ("chat",):
+            raise APIError(HTTPStatus.CONFLICT, "Партия уже завершена. Можно посмотреть итоги, но нельзя менять ход игры.")
         if kind == "chat":
             message = str(data.get("message") or "").strip()
             if not message or len(message) > 500:
@@ -3543,6 +3546,8 @@ def dispatch_bunker_api(handler, db, method, path):
                 {"name": name, "text": message, "at": now}], "$slice": -60}}, "$set": {"updated_at": now}})
         elif kind == "reveal":
             category = str(data.get("category") or "")
+            if not any(int(p["user_id"]) == user_id and p.get("alive", True) for p in room.get("players", [])):
+                raise APIError(HTTPStatus.FORBIDDEN, "Выбывший игрок больше не раскрывает карты.")
             private = (room.get("private_cards") or {}).get(str(user_id), [])
             card = next((x for x in private if x.get("category") == category), None)
             if room.get("status") != "started" or not card:
@@ -3574,39 +3579,75 @@ def dispatch_bunker_api(handler, db, method, path):
         elif kind == "vote_start":
             if int(room["host_id"]) != user_id:
                 raise APIError(HTTPStatus.FORBIDDEN, "Голосование запускает ведущий.")
-            db.bunker_rooms.update_one({"code": code}, {"$set": {"voting": {"open": True, "votes": {}, "started_at": now}, "updated_at": now}})
+            if room.get("status") != "started":
+                raise APIError(HTTPStatus.CONFLICT, "Партия уже завершена.")
+            alive = [p for p in room.get("players", []) if p.get("alive", True)]
+            capacity = int(room.get("capacity", 1))
+            if len(alive) <= capacity:
+                raise APIError(HTTPStatus.CONFLICT, "Бункер уже укомплектован. Партия завершена.")
+            if (room.get("voting") or {}).get("open"):
+                raise APIError(HTTPStatus.CONFLICT, "Голосование уже идёт.")
+            db.bunker_rooms.update_one({"code": code, "status": "started"}, {"$set": {"voting": {"open": True, "votes": {}, "tied_targets": [], "started_at": now}, "updated_at": now}})
         elif kind == "vote":
             voting = room.get("voting") or {}
-            if not voting.get("open"):
+            if room.get("status") != "started" or not voting.get("open"):
                 raise APIError(HTTPStatus.CONFLICT, "Сейчас голосование не проводится.")
+            alive_ids = {int(p["user_id"]) for p in room.get("players", []) if p.get("alive", True)}
+            if user_id not in alive_ids:
+                raise APIError(HTTPStatus.FORBIDDEN, "Выбывшие игроки больше не голосуют.")
             target = int(data.get("target_user_id") or 0)
-            if target == user_id or not any(int(p["user_id"]) == target and p.get("alive", True) for p in room.get("players", [])):
+            if target == user_id or target not in alive_ids:
                 raise APIError(HTTPStatus.BAD_REQUEST, "Выбери другого активного участника.")
+            tied_targets = [int(value) for value in voting.get("tied_targets", [])]
+            if tied_targets and target not in tied_targets:
+                raise APIError(HTTPStatus.BAD_REQUEST, "После ничьей можно голосовать только за участников с равным числом голосов.")
             db.bunker_rooms.update_one({"code": code, "voting.open": True},
                 {"$set": {f"voting.votes.{user_id}": target, "updated_at": now}})
         elif kind == "resolve_vote":
             if int(room["host_id"]) != user_id:
                 raise APIError(HTTPStatus.FORBIDDEN, "Итоги голосования подводит ведущий.")
             voting = room.get("voting") or {}
-            if not voting.get("open"):
+            if room.get("status") != "started" or not voting.get("open"):
                 raise APIError(HTTPStatus.CONFLICT, "Голосование не открыто.")
+            alive = [p for p in room.get("players", []) if p.get("alive", True)]
+            votes = voting.get("votes") or {}
+            if len(votes) < len(alive) or any(str(p["user_id"]) not in votes for p in alive):
+                raise APIError(HTTPStatus.CONFLICT, "Дождись голосов всех участников, которые ещё в игре.")
             counts = {}
-            for target in (voting.get("votes") or {}).values():
+            for target in votes.values():
                 counts[str(target)] = counts.get(str(target), 0) + 1
             if not counts:
                 raise APIError(HTTPStatus.CONFLICT, "Пока нет голосов.")
-            eliminated = int(sorted(counts.items(), key=lambda x: (-x[1], int(x[0])))[0][0])
-            player = next((p for p in room.get("players", []) if int(p["user_id"]) == eliminated), None)
-            if not player:
-                raise APIError(HTTPStatus.CONFLICT, "Участник уже выбыл.")
-            players = [
-                {**item, "alive": False} if int(item["user_id"]) == eliminated else item
-                for item in room.get("players", [])
-            ]
-            db.bunker_rooms.update_one({"code": code, "voting.open": True}, {"$set": {
-                "voting.open": False, "players": players,
-                "result": f"{player['name']} покидает убежище. Голосов: {counts[str(eliminated)]}.",
-                "updated_at": now}, "$inc": {"round": 1}})
+            highest = max(counts.values())
+            tied = sorted(int(target) for target, count in counts.items() if count == highest)
+            if len(tied) > 1:
+                db.bunker_rooms.update_one({"code": code, "voting.open": True}, {"$set": {
+                    "voting.votes": {}, "voting.tied_targets": tied,
+                    "result": "Ничья! Проведите повторное голосование только между участниками с равным числом голосов.",
+                    "updated_at": now}})
+            else:
+                eliminated = tied[0]
+                player = next((p for p in room.get("players", []) if int(p["user_id"]) == eliminated), None)
+                if not player:
+                    raise APIError(HTTPStatus.CONFLICT, "Участник уже выбыл.")
+                players = [
+                    {**item, "alive": False} if int(item["user_id"]) == eliminated else item
+                    for item in room.get("players", [])
+                ]
+                remaining = [p for p in players if p.get("alive", True)]
+                finished = len(remaining) <= int(room.get("capacity", 1))
+                if finished:
+                    survivors = ", ".join(p.get("name", "Игрок") for p in remaining)
+                    final_result = f"Бункер укомплектован! Внутри: {survivors}. Выжили {len(remaining)} из {len(players)} игроков."
+                else:
+                    final_result = f"{player['name']} покидает убежище. Голосов: {counts[str(eliminated)]}. Осталось мест: {int(room.get('capacity', 1)) - len(remaining)}."
+                db.bunker_rooms.update_one({"code": code, "status": "started", "voting.open": True}, {"$set": {
+                    "status": "finished" if finished else "started",
+                    "voting.open": False, "players": players,
+                    "result": final_result,
+                    "survivors": [p for p in remaining],
+                    "finished_at": now if finished else None,
+                    "updated_at": now}, "$inc": {"round": 1}})
         else:
             raise APIError(HTTPStatus.BAD_REQUEST, "Неизвестное действие.")
         room = db.bunker_rooms.find_one({"code": code})
