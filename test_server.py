@@ -479,8 +479,17 @@ class BiblioServerTests(unittest.TestCase):
                 "POST", f"/api/bunker/rooms/{code}/action", {"type": "resolve_vote"}
             )
             self.assertEqual(status, 200)
+            self.assertTrue(resolved["room"]["voting"]["open"])
+            self.assertEqual(set(resolved["room"]["voting"]["tied_targets"]), {host["id"], guest["id"]})
+            status, resolved = self.request("POST", f"/api/bunker/rooms/{code}/action", {"type": "tie_break", "target_user_id": guest["id"]})
+            self.assertEqual(status, 200)
+            self.assertEqual(resolved["room"]["status"], "finished")
             host_player = next(p for p in resolved["room"]["players"] if p["user_id"] == host["id"])
-            self.assertFalse(host_player["alive"])
+            guest_player = next(p for p in resolved["room"]["players"] if p["user_id"] == guest["id"])
+            self.assertTrue(host_player["alive"])
+            self.assertFalse(guest_player["alive"])
+            self.assertEqual(resolved["room"]["survivors"][0]["user_id"], host["id"])
+            self.assertIsNotNone(resolved["room"]["finished_at"])
         finally:
             self.client = original_client
             server.MONGODB_URI = original_uri
