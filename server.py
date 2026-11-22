@@ -3603,6 +3603,28 @@ def dispatch_bunker_api(handler, db, method, path):
                 raise APIError(HTTPStatus.BAD_REQUEST, "После ничьей можно голосовать только за участников с равным числом голосов.")
             db.bunker_rooms.update_one({"code": code, "voting.open": True},
                 {"$set": {f"voting.votes.{user_id}": target, "updated_at": now}})
+        elif kind == "tie_break":
+            voting = room.get("voting") or {}
+            if int(room["host_id"]) != user_id:
+                raise APIError(HTTPStatus.FORBIDDEN, "Решающий голос отдаёт ведущий.")
+            tied = [int(value) for value in voting.get("tied_targets", [])]
+            eliminated = int(data.get("target_user_id") or 0)
+            if not voting.get("open") or len(tied) < 2 or eliminated not in tied:
+                raise APIError(HTTPStatus.CONFLICT, "Сейчас нет ничьей, требующей решающего голоса.")
+            player = next((p for p in room.get("players", []) if int(p["user_id"]) == eliminated and p.get("alive", True)), None)
+            if not player:
+                raise APIError(HTTPStatus.CONFLICT, "Участник уже выбыл.")
+            players = [{**item, "alive": False} if int(item["user_id"]) == eliminated else item for item in room.get("players", [])]
+            remaining = [p for p in players if p.get("alive", True)]
+            finished = len(remaining) <= int(room.get("capacity", 1))
+            if finished:
+                final_result = "Бункер укомплектован! Внутри: " + ", ".join(p.get("name", "Игрок") for p in remaining) + f". Выжили {len(remaining)} из {len(players)} игроков."
+            else:
+                final_result = f"После ничьей ведущий отдал решающий голос против {player['name']}. Осталось мест: {int(room.get('capacity', 1)) - len(remaining)}."
+            db.bunker_rooms.update_one({"code": code, "status": "started", "voting.open": True}, {"$set": {
+                "status": "finished" if finished else "started", "voting.open": False,
+                "players": players, "result": final_result, "survivors": remaining,
+                "finished_at": now if finished else None, "updated_at": now}, "$inc": {"round": 1}})
         elif kind == "resolve_vote":
             if int(room["host_id"]) != user_id:
                 raise APIError(HTTPStatus.FORBIDDEN, "Итоги голосования подводит ведущий.")
@@ -3623,7 +3645,7 @@ def dispatch_bunker_api(handler, db, method, path):
             if len(tied) > 1:
                 db.bunker_rooms.update_one({"code": code, "voting.open": True}, {"$set": {
                     "voting.votes": {}, "voting.tied_targets": tied,
-                    "result": "Ничья! Проведите повторное голосование только между участниками с равным числом голосов.",
+                    "result": "Ничья! Ведущий должен отдать решающий голос между участниками с равным числом голосов.",
                     "updated_at": now}})
             else:
                 eliminated = tied[0]
