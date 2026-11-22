@@ -3377,6 +3377,97 @@ BUNKER_EVENTS = [
 ]
 
 BUNKER_PRESENCE_WRITE_INTERVAL_SECONDS = 10
+BUNKER_BOT_PROFILES = [
+    ("Алексей", "инженер-прагматик"), ("Мира", "врач"), ("Роман", "спасатель"),
+    ("Лада", "биолог"), ("Тимур", "механик"), ("Ника", "психолог"),
+    ("Глеб", "геолог"), ("Соня", "агроном"), ("Марк", "связист"),
+    ("Вера", "фельдшер"), ("Денис", "электрик"), ("Ася", "учёный"),
+    ("Илья", "повар"), ("Кира", "пилот"), ("Павел", "строитель"),
+]
+BUNKER_BOT_LINES = {
+    "intro": ["Сначала проверим факты, потом будем паниковать.", "Не спешите с выводами — давайте посмотрим на факты.", "Я готов обсуждать и аргументировать свою пользу."],
+    "reveal": ["Это моя карта. Решайте сами, насколько она полезна.", "Раскрываю ещё одну деталь. Надеюсь, она поможет команде.", "Учитывайте весь набор навыков, а не одну карту."],
+    "vote": ["Я голосую по раскрытым фактам, а не наугад.", "Нам нужно оставить тех, кто даст команде больше шансов.", "Мой выбор основан на рисках для всей группы."],
+}
+
+
+def bunker_bot_line(member, stage):
+    return f"{member.get('bot_style', 'Участник')}: {secrets.choice(BUNKER_BOT_LINES[stage])}"
+
+
+def bunker_process_bots(db, room, now):
+    if room.get("status") != "started" or not any(m.get("is_bot") for m in room.get("members", [])):
+        return room
+    if now - int(room.get("bot_tick_at", 0) or 0) < 1:
+        return room
+    members = [dict(m) for m in room.get("members", [])]
+    players = [dict(p) for p in room.get("players", [])]
+    cards_by_user = room.get("private_cards") or {}
+    revealed = list(room.get("revealed_cards", []))
+    chat = list(room.get("chat", []))
+    voting = dict(room.get("voting") or {})
+    changed = False
+    alive_ids = {int(p["user_id"]) for p in players if p.get("alive", True)}
+    for member in members:
+        if not member.get("is_bot") or int(member["user_id"]) not in alive_ids:
+            continue
+        bot_id = int(member["user_id"])
+        private = cards_by_user.get(str(bot_id), [])
+        already = {item.get("category") for item in revealed if int(item.get("user_id", 0)) == bot_id}
+        due = int(member.get("bot_next_action_at", room.get("started_at", now)) or now)
+        if now >= due:
+            card = next((item for item in private if item.get("category") not in already), None)
+            if card:
+                revealed.append({"user_id": bot_id, "name": member.get("name", "Бот"),
+                    "category": card["category"], "label": card["label"], "value": card["value"],
+                    "negative": bool(card.get("negative")), "is_bot": True})
+                for player in players:
+                    if int(player["user_id"]) == bot_id:
+                        player["revealed_count"] = int(player.get("revealed_count", 0)) + 1
+                member["bot_next_action_at"] = now + 4 + secrets.randbelow(5)
+                if secrets.randbelow(100) < 70:
+                    chat.append({"name": member.get("name", "Бот"), "text": bunker_bot_line(member, "reveal"),
+                                 "at": now, "is_bot": True})
+                changed = True
+    if voting.get("open"):
+        votes = dict(voting.get("votes") or {})
+        due_map = dict(voting.get("bot_vote_after") or {})
+        tied = [int(value) for value in voting.get("tied_targets", [])]
+        for member in members:
+            if not member.get("is_bot"):
+                continue
+            bot_id = int(member["user_id"])
+            if bot_id not in alive_ids or str(bot_id) in votes:
+                continue
+            if now < int(due_map.get(str(bot_id), now + 3)):
+                continue
+            targets = [p for p in players if p.get("alive", True) and int(p["user_id"]) != bot_id
+                       and (not tied or int(p["user_id"]) in tied)]
+            if not targets:
+                continue
+            def risk_score(target):
+                own = [card for card in revealed if int(card.get("user_id", 0)) == int(target["user_id"])]
+                negatives = sum(1 for card in own if card.get("negative"))
+                positives = sum(1 for card in own if not card.get("negative"))
+                return negatives * 4 - positives + secrets.randbelow(3)
+            target = max(targets, key=risk_score)
+            votes[str(bot_id)] = int(target["user_id"])
+            chat.append({"name": member.get("name", "Бот"),
+                         "text": bunker_bot_line(member, "vote") + " Мой голос — против " + str(target.get("name", "участника")) + ".",
+                         "at": now, "is_bot": True})
+            changed = True
+        if votes != (voting.get("votes") or {}):
+            voting["votes"] = votes
+    if not changed:
+        return room
+    result = db.bunker_rooms.update_one(
+        {"code": room["code"], "status": "started", "bot_tick_at": room.get("bot_tick_at")},
+        {"$set": {"members": members, "players": players, "revealed_cards": revealed,
+                  "chat": chat[-60:], "voting": voting, "bot_tick_at": now, "updated_at": now}},
+    )
+    if not result.matched_count:
+        return db.bunker_rooms.find_one({"code": room["code"]}) or room
+    return db.bunker_rooms.find_one({"code": room["code"]}) or room
 
 
 def bunker_presence_refresh_due(member, now):
@@ -3396,7 +3487,8 @@ def bunker_public_room(room, user_id):
             "user_id": m["user_id"], "name": m.get("name", "Игрок"),
             "avatar_url": m.get("avatar_url", ""), "role": m.get("role", "player"),
             "ready": bool(m.get("ready")),
-            "online": int(time.time()) - int(m.get("last_seen", 0)) < 35,
+            "online": bool(m.get("is_bot")) or int(time.time()) - int(m.get("last_seen", 0)) < 35,
+            "is_bot": bool(m.get("is_bot")), "bot_style": m.get("bot_style", ""),
         } for m in members],
         "scenario": room.get("scenario"), "difficulty": room.get("difficulty"),
         "round": room.get("round", 0), "capacity": room.get("capacity"),
@@ -3404,6 +3496,7 @@ def bunker_public_room(room, user_id):
         "chat": room.get("chat", [])[-60:], "event": room.get("event"),
         "voting": room.get("voting"), "result": room.get("result"),
         "players": room.get("players", []), "survivors": room.get("survivors", []),
+        "bot_count": sum(1 for m in members if m.get("is_bot")),
         "finished_at": room.get("finished_at"),
         "my_cards": (room.get("private_cards") or {}).get(str(user_id), []),
         "is_host": int(room["host_id"]) == int(user_id),
@@ -3452,11 +3545,23 @@ def dispatch_bunker_api(handler, db, method, path):
         except (TypeError, ValueError):
             raise APIError(HTTPStatus.BAD_REQUEST, "Некорректное количество игроков.")
         if not 2 <= max_players <= 16:
-            raise APIError(HTTPStatus.BAD_REQUEST, "В комнате может быть от 2 до 16 игроков.")
+            raise APIError(HTTPStatus.BAD_REQUEST, "В комнате может быть от 2 до 16 участников.")
+        try:
+            bot_count = int(data.get("bot_count", 0))
+        except (TypeError, ValueError):
+            raise APIError(HTTPStatus.BAD_REQUEST, "Некорректное количество ботов.")
+        if not 0 <= bot_count <= min(15, max_players - 1):
+            raise APIError(HTTPStatus.BAD_REQUEST, "Количество ботов должно оставлять место ведущему.")
         code = "".join(secrets.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(6))
+        members = [{"user_id": user_id, "name": name, "avatar_url": avatar, "role": "host",
+                    "ready": True, "joined_at": now, "last_seen": now, "is_bot": False}]
+        for index in range(bot_count):
+            bot_name, bot_style = BUNKER_BOT_PROFILES[index]
+            members.append({"user_id": -(index + 1), "name": bot_name, "avatar_url": "",
+                            "role": "bot", "is_bot": True, "bot_style": bot_style,
+                            "ready": True, "joined_at": now, "last_seen": now})
         room = {"code": code, "host_id": user_id, "status": "lobby", "max_players": max_players,
-                "members": [{"user_id": user_id, "name": name, "avatar_url": avatar, "role": "host",
-                             "ready": True, "joined_at": now, "last_seen": now}],
+                "members": members,
                 "created_at": now, "updated_at": now, "chat": [], "revealed_cards": [],
                 "private_cards": {}, "round": 0}
         db.bunker_rooms.insert_one(room)
@@ -3504,6 +3609,7 @@ def dispatch_bunker_api(handler, db, method, path):
             db.bunker_rooms.update_one({"code": code, "members.user_id": user_id},
                 {"$set": {"members.$.last_seen": now}})
         room = db.bunker_rooms.find_one({"code": code})
+        room = bunker_process_bots(db, room, now)
         return {"room": bunker_public_room(room, user_id)}, HTTPStatus.OK, []
     if method == "POST" and action == "ready":
         data = handler.read_json()
@@ -3521,20 +3627,25 @@ def dispatch_bunker_api(handler, db, method, path):
             raise APIError(HTTPStatus.BAD_REQUEST, "Выбери доступный сценарий и сложность.")
         members = room.get("members", [])
         if len(members) < 2:
-            raise APIError(HTTPStatus.CONFLICT, "Нужно минимум два реальных игрока.")
+            raise APIError(HTTPStatus.CONFLICT, "Нужно минимум два участника: человек или бот.")
         if any(not m.get("ready") for m in members if int(m["user_id"]) != user_id):
-            raise APIError(HTTPStatus.CONFLICT, "Не все игроки подтвердили готовность.")
+            raise APIError(HTTPStatus.CONFLICT, "Не все реальные игроки подтвердили готовность.")
+        members = [dict(m) for m in members]
+        for index, item in enumerate(members):
+            if item.get("is_bot"):
+                item["bot_next_action_at"] = now + 3 + index * 2
         private_cards = {str(m["user_id"]): bunker_make_cards(difficulty) for m in members}
         public_players = [{"user_id": m["user_id"], "name": m.get("name"), "avatar_url": m.get("avatar_url"),
-                           "alive": True, "revealed_count": 0} for m in members]
+                           "is_bot": bool(m.get("is_bot")), "alive": True, "revealed_count": 0} for m in members]
         title, disaster = BUNKER_SCENARIOS[scenario]
         db.bunker_rooms.update_one({"code": code, "status": "lobby"}, {"$set": {
             "status": "started", "scenario": {"id": scenario, "title": title},
             "difficulty": {"id": difficulty, "title": BUNKER_DIFFICULTIES[difficulty][0],
                            "negative_card_chance": BUNKER_DIFFICULTIES[difficulty][1]},
             "capacity": max(1, (len(members) + 1) // 2), "disaster": disaster,
-            "private_cards": private_cards, "revealed_cards": [], "players": public_players,
-            "round": 1, "chat": [{"name": "Система", "text": "Партия началась. Карты доступны только владельцам.", "system": True, "at": now}],
+            "members": members, "private_cards": private_cards, "revealed_cards": [], "players": public_players,
+            "round": 1, "started_at": now, "bot_tick_at": 0,
+            "chat": [{"name": "Система", "text": "Партия началась. Карты доступны только владельцам. Боты действуют самостоятельно.", "system": True, "at": now}],
             "updated_at": now}})
         room = db.bunker_rooms.find_one({"code": code})
         if room.get("status") != "started":
@@ -3594,7 +3705,11 @@ def dispatch_bunker_api(handler, db, method, path):
                 raise APIError(HTTPStatus.CONFLICT, "Бункер уже укомплектован. Партия завершена.")
             if (room.get("voting") or {}).get("open"):
                 raise APIError(HTTPStatus.CONFLICT, "Голосование уже идёт.")
-            db.bunker_rooms.update_one({"code": code, "status": "started"}, {"$set": {"voting": {"open": True, "votes": {}, "tied_targets": [], "started_at": now}, "updated_at": now}})
+            bot_vote_after = {str(m["user_id"]): now + 2 + index * 2
+                              for index, m in enumerate(room.get("members", [])) if m.get("is_bot")}
+            db.bunker_rooms.update_one({"code": code, "status": "started"}, {"$set": {
+                "voting": {"open": True, "votes": {}, "tied_targets": [], "started_at": now,
+                           "bot_vote_after": bot_vote_after}, "updated_at": now}})
         elif kind == "vote":
             voting = room.get("voting") or {}
             if room.get("status") != "started" or not voting.get("open"):

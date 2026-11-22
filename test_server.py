@@ -399,6 +399,94 @@ class BiblioServerTests(unittest.TestCase):
             server._MONGO_CLIENTS.pop(uri, None)
             client.close()
 
+    def test_bunker_bots_play_alongside_real_biblio_accounts(self):
+        uri = "mongodb://bunker-bots-test/"
+        mongo_client = mongomock.MongoClient()
+        original_uri = server.MONGODB_URI
+        original_client = self.client
+        server.MONGODB_URI = uri
+        server._MONGO_CLIENTS[uri] = mongo_client
+        try:
+            server.initialize_db()
+            host = self.register("bunker-bot-host@example.com")
+            host_client = self.client
+            status, created = self.request(
+                "POST", "/api/bunker/rooms", {"max_players": 6, "bot_count": 1}
+            )
+            self.assertEqual(status, 201)
+            code = created["room"]["code"]
+            bot = next(member for member in created["room"]["members"] if member["is_bot"])
+            self.assertLess(bot["user_id"], 0)
+            self.assertTrue(bot["ready"])
+
+            guest_jar = http.cookiejar.CookieJar()
+            guest_client = build_opener(HTTPCookieProcessor(guest_jar))
+            self.client = guest_client
+            guest = self.register("bunker-bot-guest@example.com")
+            status, joined = self.request("POST", f"/api/bunker/rooms/{code}/join", {})
+            self.assertEqual(status, 200)
+            self.request("POST", f"/api/bunker/rooms/{code}/ready", {"ready": True})
+
+            self.client = host_client
+            status, started = self.request(
+                "POST", f"/api/bunker/rooms/{code}/start",
+                {"scenario": "classic", "difficulty": "normal"},
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(len(started["room"]["players"]), 3)
+            self.assertEqual(len(started["room"]["my_cards"]), 6)
+            self.assertTrue(any(player.get("is_bot") for player in started["room"]["players"]))
+
+            db = server.get_mongo_database()
+            stored = db.bunker_rooms.find_one({"code": code})
+            members = [dict(member) for member in stored["members"]]
+            for member in members:
+                if member.get("is_bot"):
+                    member["bot_next_action_at"] = 0
+            db.bunker_rooms.update_one(
+                {"code": code}, {"$set": {"members": members, "bot_tick_at": 0}}
+            )
+            status, bot_turn = self.request("GET", f"/api/bunker/rooms/{code}")
+            self.assertEqual(status, 200)
+            self.assertTrue(any(card.get("is_bot") for card in bot_turn["room"]["revealed_cards"]))
+
+            self.request("POST", f"/api/bunker/rooms/{code}/action", {"type": "vote_start"})
+            stored = db.bunker_rooms.find_one({"code": code})
+            bot_ids = [str(member["user_id"]) for member in stored["members"] if member.get("is_bot")]
+            db.bunker_rooms.update_one(
+                {"code": code},
+                {"$set": {"voting.bot_vote_after": {bot_id: 0 for bot_id in bot_ids}, "bot_tick_at": 0}},
+            )
+            status, bot_vote = self.request("GET", f"/api/bunker/rooms/{code}")
+            self.assertEqual(status, 200)
+            self.assertTrue(all(bot_id in bot_vote["room"]["voting"]["votes"] for bot_id in bot_ids))
+
+            bot_target = bot["user_id"]
+            self.client = guest_client
+            status, guest_vote = self.request(
+                "POST", f"/api/bunker/rooms/{code}/action",
+                {"type": "vote", "target_user_id": bot_target},
+            )
+            self.assertEqual(status, 200)
+            self.client = host_client
+            status, host_vote = self.request(
+                "POST", f"/api/bunker/rooms/{code}/action",
+                {"type": "vote", "target_user_id": bot_target},
+            )
+            self.assertEqual(status, 200)
+            status, resolved = self.request(
+                "POST", f"/api/bunker/rooms/{code}/action", {"type": "resolve_vote"}
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(resolved["room"]["status"], "finished")
+            self.assertFalse(any(player["alive"] for player in resolved["room"]["players"] if player["user_id"] == bot_target))
+            self.assertEqual(db.users.count_documents({"id": {"$lt": 0}}), 0)
+        finally:
+            self.client = original_client
+            server.MONGODB_URI = original_uri
+            server._MONGO_CLIENTS.pop(uri, None)
+            mongo_client.close()
+
     def test_bunker_rooms_use_biblio_accounts_and_private_cards(self):
         uri = "mongodb://bunker-test/"
         mongo_client = mongomock.MongoClient()
