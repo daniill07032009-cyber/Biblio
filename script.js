@@ -1136,6 +1136,8 @@ function renderPublishedAuthors() {
   });
 }
 
+let publishedBooksRequestId = 0;
+
 async function refreshPublishedBooks(page = serverPage) {
   const params = new URLSearchParams({
     page: String(page),
@@ -1145,7 +1147,9 @@ async function refreshPublishedBooks(page = serverPage) {
     genres: [...selectedGenres].join(","),
     sort: document.querySelector("#catalog-sort").value,
   });
+  const requestId = ++publishedBooksRequestId;
   const data = await api(`/api/books?${params.toString()}`);
+  if (requestId !== publishedBooksRequestId) return;
   const books = data.books || [];
   serverPage = Number(data.page) || 1;
   serverPageCount = Number(data.pages) || 1;
@@ -1420,14 +1424,22 @@ function createGameCatalogCard(game) {
   return card;
 }
 
+let gameCatalogRefreshPromise = null;
+
 async function refreshGameCatalog() {
-  try {
-    const result = await api("/api/catalog/games");
-    gameCatalogGames = Array.isArray(result.games) ? result.games : [];
-    renderGameCatalogCards();
-  } catch (error) {
-    showToast(error.message);
-  }
+  if (gameCatalogRefreshPromise) return gameCatalogRefreshPromise;
+  gameCatalogRefreshPromise = (async () => {
+    try {
+      const result = await api("/api/catalog/games");
+      gameCatalogGames = Array.isArray(result.games) ? result.games : [];
+      renderGameCatalogCards();
+    } catch (error) {
+      showToast(error.message);
+    } finally {
+      gameCatalogRefreshPromise = null;
+    }
+  })();
+  return gameCatalogRefreshPromise;
 }
 
 async function openCatalogGame(slug) {
