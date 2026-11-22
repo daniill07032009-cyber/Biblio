@@ -528,7 +528,28 @@ class BiblioServerTests(unittest.TestCase):
                 self.assertEqual(status, 200)
 
             self.client = clients[0]
-            status, started = self.request("POST", f"/api/bunker/rooms/{code}/start", {"scenario": "classic", "difficulty": "normal"})
+            categories = [
+                ("profession", "Профессия"), ("age", "Возраст"), ("health", "Здоровье"),
+                ("hobby", "Хобби"), ("baggage", "Багаж"), ("fact", "Особенность"),
+            ]
+            def bot_cards(profession, negative):
+                values = {
+                    "profession": profession, "age": "34 года", "health": "Полностью здоров",
+                    "hobby": "Ориентирование", "baggage": "Набор инструментов",
+                    "fact": "Сохраняет спокойствие в кризисе",
+                }
+                return [{"category": category, "label": label, "value": values[category],
+                         "negative": negative if category == "profession" else False,
+                         "revealed": False} for category, label in categories]
+            # Deterministic dossiers make the bot decisions reproducible and auditable.
+            prepared_cards = [
+                bot_cards("Врач с поддельным дипломом", True),
+                bot_cards("Инженер, уволенный за грубую ошибку", True),
+                bot_cards("Системный администратор", False),
+                bot_cards("Спасатель", False),
+            ]
+            with patch("server.bunker_make_cards", side_effect=prepared_cards):
+                status, started = self.request("POST", f"/api/bunker/rooms/{code}/start", {"scenario": "classic", "difficulty": "normal"})
             self.assertEqual(status, 200)
             self.assertEqual(started["room"]["capacity"], 2)
 
@@ -569,7 +590,7 @@ class BiblioServerTests(unittest.TestCase):
             # Round one: bots discuss the profiles and vote out the weakest fit.
             print("\nРАУНД 1 — первое голосование:")
             self.request("POST", f"/api/bunker/rooms/{code}/action", {"type": "vote_start"})
-            first_targets = [players[3]["id"], players[3]["id"], players[3]["id"], players[0]["id"]]
+            first_targets = [players[1]["id"], players[1]["id"], players[1]["id"], players[0]["id"]]
             for client, target in zip(clients, first_targets):
                 self.client = client
                 status, vote = self.request("POST", f"/api/bunker/rooms/{code}/action", {"type": "vote", "target_user_id": target})
@@ -579,13 +600,13 @@ class BiblioServerTests(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(first_result["room"]["status"], "started")
             self.assertEqual(sum(1 for player in first_result["room"]["players"] if player["alive"]), 3)
-            print("Голоса: Ирина → Денис; Максим → Денис; Алиса → Денис; Денис → Ирина.")
-            print("Итог: Денис выбывает большинством 3:1. В игре осталось 3.")
+            print("Голоса: Ирина → Максим; Максим → Ирина; Алиса → Максим; Денис → Максим.")
+            print("Итог: Максим выбывает большинством 3:1: инженерный навык есть, но раскрыта грубая профессиональная ошибка. В игре осталось 3.")
 
             # Round two: two votes eliminate player two, leaving exactly two seats filled.
             self.request("POST", f"/api/bunker/rooms/{code}/action", {"type": "vote_start"})
-            second_targets = [players[1]["id"], players[0]["id"], players[1]["id"]]
-            for index, target in zip((0, 1, 2), second_targets):
+            second_targets = [players[2]["id"], players[0]["id"], players[0]["id"]]
+            for index, target in zip((0, 2, 3), second_targets):
                 self.client = clients[index]
                 status, vote = self.request("POST", f"/api/bunker/rooms/{code}/action", {"type": "vote", "target_user_id": target})
                 self.assertEqual(status, 200)
@@ -594,12 +615,12 @@ class BiblioServerTests(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(final_state["room"]["status"], "finished")
             self.assertEqual(len(final_state["room"]["survivors"]), 2)
-            self.assertEqual({player["user_id"] for player in final_state["room"]["survivors"]}, {players[0]["id"], players[2]["id"]})
+            self.assertEqual({player["user_id"] for player in final_state["room"]["survivors"]}, {players[2]["id"], players[3]["id"]})
             self.assertIsNotNone(final_state["room"]["finished_at"])
             self.assertIn("Бункер укомплектован", final_state["room"]["result"])
             print("\nРАУНД 2 — финальное голосование:")
-            print("Голоса: Ирина → Максим; Максим → Ирина; Алиса → Максим.")
-            print("Итог: Максим выбывает большинством 2:1.")
+            print("Голоса: Ирина → Алиса; Алиса → Ирина; Денис → Ирина.")
+            print("Итог: Ирина выбывает большинством 2:1: медицинская компетенция не подтверждена из-за поддельного диплома.")
             print("ФИНАЛ:", final_state["room"]["result"])
             print("СТАТУС:", final_state["room"]["status"], "| ВЫЖИВШИЕ:", ", ".join(p["name"] for p in final_state["room"]["survivors"]))
             print("Проверки: игра закрыта; 2 места заняты; выжившие сохранены; время завершения записано.")
