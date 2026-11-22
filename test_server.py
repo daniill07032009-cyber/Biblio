@@ -496,6 +496,76 @@ class BiblioServerTests(unittest.TestCase):
             server._MONGO_CLIENTS.pop(uri, None)
             mongo_client.close()
 
+    def test_bunker_match_finishes_after_multiple_elimination_rounds(self):
+        uri = "mongodb://bunker-multi-round-test/"
+        mongo_client = mongomock.MongoClient()
+        original_uri = server.MONGODB_URI
+        original_client = self.client
+        server.MONGODB_URI = uri
+        server._MONGO_CLIENTS[uri] = mongo_client
+        try:
+            server.initialize_db()
+            players = []
+            clients = []
+            for index in range(4):
+                jar = http.cookiejar.CookieJar()
+                client = build_opener(HTTPCookieProcessor(jar))
+                self.client = client
+                user = self.register(f"bunker-round-{index}@example.com")
+                players.append(user)
+                clients.append(client)
+
+            self.client = clients[0]
+            status, created = self.request("POST", "/api/bunker/rooms", {"max_players": 4})
+            self.assertEqual(status, 201)
+            code = created["room"]["code"]
+
+            for index in range(1, 4):
+                self.client = clients[index]
+                status, joined = self.request("POST", f"/api/bunker/rooms/{code}/join", {})
+                self.assertEqual(status, 200)
+                status, ready = self.request("POST", f"/api/bunker/rooms/{code}/ready", {"ready": True})
+                self.assertEqual(status, 200)
+
+            self.client = clients[0]
+            status, started = self.request("POST", f"/api/bunker/rooms/{code}/start", {"scenario": "classic", "difficulty": "normal"})
+            self.assertEqual(status, 200)
+            self.assertEqual(started["room"]["capacity"], 2)
+
+            # Round one: three votes eliminate player four.
+            self.request("POST", f"/api/bunker/rooms/{code}/action", {"type": "vote_start"})
+            first_targets = [players[3]["id"], players[3]["id"], players[3]["id"], players[0]["id"]]
+            for client, target in zip(clients, first_targets):
+                self.client = client
+                status, vote = self.request("POST", f"/api/bunker/rooms/{code}/action", {"type": "vote", "target_user_id": target})
+                self.assertEqual(status, 200)
+            self.client = clients[0]
+            status, first_result = self.request("POST", f"/api/bunker/rooms/{code}/action", {"type": "resolve_vote"})
+            self.assertEqual(status, 200)
+            self.assertEqual(first_result["room"]["status"], "started")
+            self.assertEqual(sum(1 for player in first_result["room"]["players"] if player["alive"]), 3)
+
+            # Round two: two votes eliminate player two, leaving exactly two seats filled.
+            self.request("POST", f"/api/bunker/rooms/{code}/action", {"type": "vote_start"})
+            second_targets = [players[1]["id"], players[0]["id"], players[1]["id"]]
+            for index, target in zip((0, 1, 2), second_targets):
+                self.client = clients[index]
+                status, vote = self.request("POST", f"/api/bunker/rooms/{code}/action", {"type": "vote", "target_user_id": target})
+                self.assertEqual(status, 200)
+            self.client = clients[0]
+            status, final_state = self.request("POST", f"/api/bunker/rooms/{code}/action", {"type": "resolve_vote"})
+            self.assertEqual(status, 200)
+            self.assertEqual(final_state["room"]["status"], "finished")
+            self.assertEqual(len(final_state["room"]["survivors"]), 2)
+            self.assertEqual({player["user_id"] for player in final_state["room"]["survivors"]}, {players[0]["id"], players[2]["id"]})
+            self.assertIsNotNone(final_state["room"]["finished_at"])
+            self.assertIn("Бункер укомплектован", final_state["room"]["result"])
+        finally:
+            self.client = original_client
+            server.MONGODB_URI = original_uri
+            server._MONGO_CLIENTS.pop(uri, None)
+            mongo_client.close()
+
     def test_game_room_flow_supports_private_access_and_xp(self):
         owner = self.register("owner-games@example.com")
         status, result = self.request(
