@@ -24,6 +24,8 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from pymongo import ASCENDING, DESCENDING, MongoClient, ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
+from bunker_cards import BUNKER_CARD_POOLS, BUNKER_CARD_COUNTS, EXPECTED_CARD_COUNTS, bunker_random_age
+
 
 ROOT = Path(__file__).resolve().parent
 DATABASE_PATH = Path(os.environ.get("BIBLIO_DB_PATH", ROOT / "data" / "biblio.sqlite3"))
@@ -3365,14 +3367,6 @@ BUNKER_DIFFICULTIES = {
     "easy": ("Лёгкая", 0.18), "normal": ("Обычная", 0.32),
     "hard": ("Высокая", 0.50), "extreme": ("Экстремальная", 0.68),
 }
-BUNKER_CARD_POOLS = {
-    "profession": (["Врач-хирург", "Инженер-энергетик", "Агроном", "Психолог", "Химик-технолог", "Электрик", "Микробиолог", "Спасатель", "Повар", "Системный администратор"], ["Не имеет полезной профессии", "Уволен за грубую ошибку", "Подделал диплом", "Не способен работать в команде"]),
-    "age": (["22 года", "27 лет", "31 год", "36 лет", "41 год", "45 лет", "19 лет"], ["78 лет", "Тяжёлый возрастной риск: 83 года"]),
-    "health": (["Полностью здоров", "Отличное здоровье", "Хорошее зрение", "Высокая выносливость"], ["Тяжёлая астма", "Сахарный диабет без лекарств", "Хроническое заболевание", "Серьёзная аллергия", "Старый перелом мешает двигаться"]),
-    "hobby": (["Первая помощь", "Гидропоника", "Ремонт электроники", "Ориентирование", "Консервация продуктов", "Рыбалка"], ["Азартные игры", "Коллекционирование бесполезных предметов", "Не умеет плавать"]),
-    "baggage": (["Аптечка", "Набор инструментов", "Семена культур", "Рация с батареей", "Фильтр для воды", "Запас консервов"], ["Пустой чемодан", "Испорченные продукты", "Опасный химикат без маркировки"]),
-    "fact": (["Сохраняет спокойствие в кризисе", "Прирождённый лидер", "Быстро обучается", "Знает расположение склада", "Обладает редкой группой крови"], ["Скрывает опасную тайну", "Склонен к конфликтам", "Панически боится замкнутых пространств", "Когда-то нарушил карантин"]),
-}
 BUNKER_EVENTS = [
     ("АВАРИЯ ГЕНЕРАТОРА", "Энергии хватит только на один сектор. Кто сможет восстановить питание?"),
     ("ЗАПАСЫ НА ИСХОДЕ", "Часть продовольствия испорчена. Нужно пересмотреть распределение ресурсов."),
@@ -3419,14 +3413,27 @@ def bunker_public_room(room, user_id):
 
 def bunker_make_cards(difficulty):
     bad_probability = BUNKER_DIFFICULTIES[difficulty][1]
-    labels = {"profession":"Профессия", "age":"Возраст", "health":"Здоровье",
-              "hobby":"Хобби", "baggage":"Багаж", "fact":"Особенность"}
+    labels = {
+        "profession": "Профессия", "age": "Возраст", "health": "Здоровье",
+        "hobby": "Хобби", "baggage": "Багаж", "fact": "Особенность",
+    }
     cards = []
-    for category, (good, bad) in BUNKER_CARD_POOLS.items():
+    for category in ("profession", "age", "health", "hobby", "baggage", "fact"):
         is_bad = secrets.randbelow(10000) < int(bad_probability * 10000)
-        cards.append({"category": category, "label": labels[category],
-                      "value": secrets.choice(bad if is_bad else good),
-                      "negative": is_bad, "revealed": False})
+        if category == "age":
+            value = bunker_random_age(negative=is_bad)
+            # An anomalous age is always treated as a negative dossier card.
+            is_bad = is_bad or value > 120
+        else:
+            good, bad = BUNKER_CARD_POOLS[category]
+            value = secrets.choice(bad if is_bad else good)
+        cards.append({
+            "category": category,
+            "label": labels[category],
+            "value": value if category != "age" else f"{value} лет",
+            "negative": is_bad,
+            "revealed": False,
+        })
     return cards
 
 def dispatch_bunker_api(handler, db, method, path):
