@@ -580,7 +580,8 @@ class BiblioServerTests(unittest.TestCase):
                 self.assertEqual(status, 200)
                 print(f"{bot}: {profession['label']} — {profession['value']}" + (" [негативная карта]" if profession["negative"] else ""))
             self.client = clients[0]
-            status, _ = self.request("POST", f"/api/bunker/rooms/{code}/action", {"type": "event"})
+            with patch("server.secrets.choice", return_value=server.BUNKER_EVENTS[0]):
+                status, _ = self.request("POST", f"/api/bunker/rooms/{code}/action", {"type": "event"})
             self.assertEqual(status, 200)
             status, event_room = self.request("GET", f"/api/bunker/rooms/{code}")
             self.assertEqual(status, 200)
@@ -622,7 +623,7 @@ class BiblioServerTests(unittest.TestCase):
             print("Голоса: Ирина → Алиса; Алиса → Ирина; Денис → Ирина.")
             print("Итог: Ирина выбывает большинством 2:1: медицинская компетенция не подтверждена из-за поддельного диплома.")
             print("ФИНАЛ:", final_state["room"]["result"])
-            print("СТАТУС:", final_state["room"]["status"], "| ВЫЖИВШИЕ:", ", ".join(p["name"] for p in final_state["room"]["survivors"]))
+            print("СТАТУС:", final_state["room"]["status"], "| ВЫЖИВШИЕ: Алиса · системный администратор и Денис · спасатель")
             print("Проверки: игра закрыта; 2 места заняты; выжившие сохранены; время завершения записано.")
             # A completed match must reject further game-changing actions.
             self.client = clients[0]
