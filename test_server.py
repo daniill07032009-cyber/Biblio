@@ -13,6 +13,25 @@ import server
 import mongomock
 
 
+class BunkerCardCatalogTests(unittest.TestCase):
+    def test_expanded_card_catalog_sizes_and_uniqueness(self):
+        self.assertEqual(server.BUNKER_CARD_COUNTS, server.EXPECTED_CARD_COUNTS)
+        for category, (positive, negative) in server.BUNKER_CARD_POOLS.items():
+            self.assertEqual(len(positive) + len(negative), server.EXPECTED_CARD_COUNTS[category])
+            self.assertEqual(len(set(positive + negative)), len(positive) + len(negative))
+            self.assertTrue(positive)
+            self.assertTrue(negative)
+
+    def test_age_generation_supports_normal_and_rare_ranges(self):
+        normal_age = server.bunker_random_age(negative=False, rare_roll=1, age_roll=0)
+        self.assertGreaterEqual(normal_age, 16)
+        self.assertLessEqual(normal_age, 79)
+        with patch("secrets.randbelow", side_effect=[2500]):
+            rare_age = server.bunker_random_age(negative=False, rare_roll=0)
+        self.assertGreaterEqual(rare_age, 500)
+        self.assertLessEqual(rare_age, 3000)
+
+
 class BiblioServerTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
