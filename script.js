@@ -278,17 +278,41 @@ let followedAuthors = new Set(readStoredArray("biblio-followed-authors"));
 let pendingAuthorName = "";
 
 async function api(path, options = {}) {
-  const response = await fetch(path, {
-    credentials: "same-origin",
-    ...options,
-    headers: {
-      ...(options.body ? { "Content-Type": "application/json" } : {}),
-      ...options.headers,
-    },
-  });
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.error || "Не удалось выполнить запрос.");
-  return result;
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 15000);
+  const startedAt = performance.now();
+  try {
+    const response = await fetch(path, {
+      credentials: "same-origin",
+      ...options,
+      signal: options.signal || controller.signal,
+      headers: {
+        ...(options.body ? { "Content-Type": "application/json" } : {}),
+        ...options.headers,
+      },
+    });
+    const elapsed = performance.now() - startedAt;
+    if (elapsed >= 2000) {
+      console.warn("[Biblio] Медленный API-ответ:", path, Math.round(elapsed) + " мс");
+      if (elapsed >= 4000 && options.method && options.method !== "GET") {
+        showToast("Сервер отвечает медленно. Не нажимай повторно — запрос ещё обрабатывается.");
+      }
+    }
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(result.error || "Не удалось выполнить запрос.");
+      error.status = response.status;
+      throw error;
+    }
+    return result;
+  } catch (error) {
+    if (controller.signal.aborted && !options.signal) {
+      throw new Error("Сервер не ответил за 15 секунд. Проверь соединение и попробуй ещё раз.");
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
 }
 
 async function fetchBookDetails(bookId) {
@@ -2009,7 +2033,7 @@ window.setInterval(async () => {
   } finally {
     gameRoomSyncPending = false;
   }
-}, 8000);
+}, 3000);
 
 window.addEventListener("pagehide", () => {
   activeGameRoomId = "";
@@ -3751,22 +3775,27 @@ window.setInterval(() => {
 }, HOURLY_PAGE_RELOAD_MS);
 
 async function initialize() {
-  loadRegisteredAccountCount();
   resetBookForm();
   readAppearance();
   searchInput.value = new URLSearchParams(location.search).get("q") || "";
-  document.querySelector("#favorite-button").setAttribute("aria-pressed", String(favoritesOnly));
   applyPageLayout();
+  const page = document.body.dataset.page;
+  if (page === "home") loadRegisteredAccountCount();
+  document.querySelector("#favorite-button").setAttribute("aria-pressed", String(favoritesOnly));
   updateFavoriteButtons();
   try {
     const result = await api("/api/me");
     currentUser = result.user;
     updateAccountUI();
-    await refreshPublishedBooks();
-    await refreshGameCatalog();
-    const gamePageMatch = location.pathname.match(/^\/games\/([a-z0-9-]+)(?:\/play)?\/?$/);
-    if (gamePageMatch) await openCatalogGame(decodeURIComponent(gamePageMatch[1]));
-    if (currentUser) await refreshMyBooks();
+    if (["home", "catalog", "authors"].includes(page)) {
+      await refreshPublishedBooks();
+    }
+    if (page === "games") {
+      await refreshGameCatalog();
+      const gamePageMatch = location.pathname.match(/^\/games\/([a-z0-9-]+)(?:\/play)?\/?$/);
+      if (gamePageMatch) await openCatalogGame(decodeURIComponent(gamePageMatch[1]));
+    }
+    if (page === "library" && currentUser) await refreshMyBooks();
     const readerRoute = location.hash.match(/^#read\/([^/]+)$/);
     const bookRoute = location.hash.match(/^#book\/([^/]+)$/);
     if (readerRoute) {
@@ -3775,9 +3804,9 @@ async function initialize() {
       await showBookDetails(decodeURIComponent(bookRoute[1]), false);
     }
   } catch (error) {
-    showToast("Не удалось связаться с сервером. Запусти сайт командой python3 server.py.");
+    showToast(error.message || "Не удалось связаться с сервером. Проверь соединение и попробуй ещё раз.");
     applyPageLayout();
-    renderReadingLibrary();
+    if (page === "library") renderReadingLibrary();
   }
 }
 
