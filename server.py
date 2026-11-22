@@ -3488,7 +3488,7 @@ def bunker_public_room(room, user_id):
             "avatar_url": m.get("avatar_url", ""), "role": m.get("role", "player"),
             "ready": bool(m.get("ready")),
             "online": bool(m.get("is_bot")) or int(time.time()) - int(m.get("last_seen", 0)) < 35,
-            "is_bot": bool(m.get("is_bot")),
+            "is_bot": bool(m.get("is_bot")), "bot_style": m.get("bot_style", ""),
         } for m in members],
         "scenario": room.get("scenario"), "difficulty": room.get("difficulty"),
         "round": room.get("round", 0), "capacity": room.get("capacity"),
