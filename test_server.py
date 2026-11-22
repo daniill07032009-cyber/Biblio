@@ -591,7 +591,7 @@ class BiblioServerTests(unittest.TestCase):
             # Round one: bots discuss the profiles and vote out the weakest fit.
             print("\nРАУНД 1 — первое голосование:")
             self.request("POST", f"/api/bunker/rooms/{code}/action", {"type": "vote_start"})
-            first_targets = [players[1]["id"], players[1]["id"], players[1]["id"], players[0]["id"]]
+            first_targets = [players[1]["id"], players[0]["id"], players[1]["id"], players[1]["id"]]
             for client, target in zip(clients, first_targets):
                 self.client = client
                 status, vote = self.request("POST", f"/api/bunker/rooms/{code}/action", {"type": "vote", "target_user_id": target})
