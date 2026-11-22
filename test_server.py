@@ -1305,6 +1305,17 @@ class BiblioServerTests(unittest.TestCase):
             self.assertEqual(error.exception.code, 404)
             error.exception.close()
 
+ 
+class BunkerPresenceTests(unittest.TestCase):
+    def test_presence_write_is_throttled_to_ten_seconds(self):
+        self.assertFalse(server.bunker_presence_refresh_due({"last_seen": 100}, 109))
+        self.assertTrue(server.bunker_presence_refresh_due({"last_seen": 100}, 110))
+
+    def test_missing_presence_timestamp_is_refreshed(self):
+        self.assertTrue(server.bunker_presence_refresh_due({}, 110))
+
+
+
 
 if __name__ == "__main__":
     unittest.main()
