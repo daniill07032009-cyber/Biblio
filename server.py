@@ -3382,6 +3382,17 @@ BUNKER_EVENTS = [
     ("СБОЙ СВЯЗИ", "Внешняя связь нестабильна. Следующее сообщение может стать последним."),
 ]
 
+BUNKER_PRESENCE_WRITE_INTERVAL_SECONDS = 10
+
+
+def bunker_presence_refresh_due(member, now):
+    try:
+        last_seen = int(member.get("last_seen", 0) or 0)
+    except (TypeError, ValueError):
+        last_seen = 0
+    return now - last_seen >= BUNKER_PRESENCE_WRITE_INTERVAL_SECONDS
+
+
 def bunker_public_room(room, user_id):
     members = room.get("members", [])
     return {
@@ -3481,8 +3492,9 @@ def dispatch_bunker_api(handler, db, method, path):
     if not member:
         raise APIError(HTTPStatus.FORBIDDEN, "Сначала войди в комнату по приглашению.")
     if method == "GET" and not action:
-        db.bunker_rooms.update_one({"code": code, "members.user_id": user_id},
-            {"$set": {"members.$.last_seen": now}})
+        if bunker_presence_refresh_due(member, now):
+            db.bunker_rooms.update_one({"code": code, "members.user_id": user_id},
+                {"$set": {"members.$.last_seen": now}})
         room = db.bunker_rooms.find_one({"code": code})
         return {"room": bunker_public_room(room, user_id)}, HTTPStatus.OK, []
     if method == "POST" and action == "ready":
