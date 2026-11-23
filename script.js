@@ -250,6 +250,7 @@ let favoriteIds = new Set(readStoredArray("biblio-favorites"));
 let readingLibraryState = readReadingLibraryState();
 let searchHistory = readStoredArray("biblio-search-history");
 let currentUser = null;
+let readerLibrarySyncTimer = 0;
 let pendingAvatarData = null;
 let editingBookId = null;
 let authMode = "login";
@@ -656,9 +657,62 @@ function saveSearchQuery() {
   renderSearchSuggestions(query);
 }
 
+function scheduleReaderLibrarySync() {
+  if (!currentUser) return;
+  window.clearTimeout(readerLibrarySyncTimer);
+  readerLibrarySyncTimer = window.setTimeout(async () => {
+    try {
+      await api("/api/reader-library", {
+        method: "PUT",
+        body: JSON.stringify({
+          favorites: [...favoriteIds],
+          reading_state: readingLibraryState,
+        }),
+      });
+    } catch (error) {
+      console.warn("Не удалось синхронизировать читательскую библиотеку:", error);
+    }
+  }, 500);
+}
+
+async function syncReaderLibraryState() {
+  if (!currentUser) return;
+  try {
+    const remote = await api("/api/reader-library");
+    const mergedFavorites = new Set([
+      ...favoriteIds,
+      ...(Array.isArray(remote.favorites) ? remote.favorites.map(String) : []),
+    ]);
+    const mergedReading = { ...(remote.reading_state || {}) };
+    for (const [bookId, localEntry] of Object.entries(readingLibraryState)) {
+      const remoteEntry = mergedReading[bookId];
+      if (
+        !remoteEntry ||
+        String(localEntry.updatedAt || "") >= String(remoteEntry.updatedAt || "")
+      ) {
+        mergedReading[bookId] = localEntry;
+      }
+    }
+    favoriteIds = mergedFavorites;
+    readingLibraryState = mergedReading;
+    localStorage.setItem("biblio-favorites", JSON.stringify([...favoriteIds]));
+    localStorage.setItem("biblio-reading-state", JSON.stringify(readingLibraryState));
+    const progress = Object.fromEntries(
+      Object.entries(readingLibraryState).map(([bookId, entry]) => [bookId, entry.chapter]),
+    );
+    localStorage.setItem("biblio-reading-progress", JSON.stringify(progress));
+    updateFavoriteButtons();
+    renderReadingLibrary();
+    scheduleReaderLibrarySync();
+  } catch (error) {
+    console.warn("Не удалось загрузить читательскую библиотеку аккаунта:", error);
+  }
+}
+
 function persistFavorites() {
   try {
     localStorage.setItem("biblio-favorites", JSON.stringify([...favoriteIds]));
+    scheduleReaderLibrarySync();
   } catch (error) {
     console.warn("Не удалось сохранить избранное:", error);
   }
@@ -838,6 +892,7 @@ function persistReadingLibraryState(progress) {
   try {
     localStorage.setItem("biblio-reading-progress", JSON.stringify(progress));
     localStorage.setItem("biblio-reading-state", JSON.stringify(readingLibraryState));
+    scheduleReaderLibrarySync();
   } catch (error) {
     console.warn("Не удалось сохранить прогресс чтения:", error);
   }
@@ -3414,6 +3469,7 @@ authForm.addEventListener("submit", async (event) => {
       return;
     }
     currentUser = result.user;
+    await syncReaderLibraryState();
     updateAccountUI();
     closeDialog(authDialog);
     authForm.reset();
@@ -3439,6 +3495,7 @@ emailVerificationForm.addEventListener("submit", async (event) => {
       body: JSON.stringify({ email: pendingVerificationEmail, code }),
     });
     currentUser = result.user;
+    await syncReaderLibraryState();
     pendingVerificationEmail = "";
     closeDialog(emailVerificationDialog);
     updateAccountUI();
@@ -3659,6 +3716,7 @@ document.querySelector("#profile-form").addEventListener("submit", async (event)
       }),
     });
     currentUser = result.user;
+    await syncReaderLibraryState();
     pendingAvatarData = null;
     form.elements.avatar_file.value = "";
     form.elements.current_password.value = "";
@@ -3802,6 +3860,7 @@ async function initialize() {
   try {
     const result = await api("/api/me");
     currentUser = result.user;
+    await syncReaderLibraryState();
     updateAccountUI();
     if (["home", "catalog", "authors"].includes(page)) {
       await refreshPublishedBooks();
