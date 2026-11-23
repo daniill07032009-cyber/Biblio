@@ -42,3 +42,6 @@ jobs:
           node --check script.js
           node --check games/bunker-online.js
           node test_client.js
+
+      - name: Build Docker image
+        run: docker build -t biblio-ci .
