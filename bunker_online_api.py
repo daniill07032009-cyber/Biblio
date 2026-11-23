@@ -167,6 +167,8 @@ def dispatch_bunker_api(handler, db, method, path, api_error, mongodb_enabled):
         room = db.bunker_rooms.find_one({"code": code})
         return {"room": bunker_public_room(room, user_id)}, HTTPStatus.OK, []
     if method == "POST" and action == "start":
+        if room.get("status") != "lobby":
+            raise api_error(HTTPStatus.CONFLICT, "Эта комната уже не ожидает начала партии.")
         if int(room["host_id"]) != user_id:
             raise api_error(HTTPStatus.FORBIDDEN, "Только ведущий может начать игру.")
         data = handler.read_json()
