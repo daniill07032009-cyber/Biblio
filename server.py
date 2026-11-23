@@ -1535,7 +1535,6 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 db.books.delete_one(selector)
                 db.book_ratings.delete_many({"book_id": book_id})
                 return {"ok": True}, HTTPStatus.OK, []
-            raise APIError(HTTPStatus.METHOD_NOT_ALLOWED, "Метод не поддерживается.")
             book = self.valid_book(self.read_json())
             document = self.mongo_book_document(user["id"], book)
             document["created_at"] = existing["created_at"]
@@ -2263,6 +2262,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
                     (user["id"], json.dumps(state["favorites"]), json.dumps(state["reading_state"])),
                 )
                 return {"ok": True}, HTTPStatus.OK, []
+            raise APIError(HTTPStatus.METHOD_NOT_ALLOWED, "Метод не поддерживается.")
 
         if method == "GET" and path == "/api/stats":
             count = db.execute("SELECT COUNT(*) AS total FROM users").fetchone()["total"]
