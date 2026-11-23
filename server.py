@@ -149,6 +149,8 @@ def initialize_db():
             [("game_slug", ASCENDING), ("viewer_token", ASCENDING)], unique=True
         )
         db.game_catalog_presence.create_index([("expires_at", ASCENDING)])
+        db.bunker_rooms.create_index([("code", ASCENDING)], unique=True)
+        db.bunker_rooms.create_index([("status", ASCENDING), ("updated_at", DESCENDING)])
         for game in GAME_CATALOG_SEED:
             db.game_catalog.update_one(
                 {"slug": game["slug"]},
@@ -1087,6 +1089,11 @@ class BiblioHandler(BaseHTTPRequestHandler):
         try:
             if method in ("POST", "PUT", "PATCH", "DELETE"):
                 self.check_origin()
+            if path.startswith("/api/bunker/") and not MONGODB_URI:
+                raise APIError(
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    "Для сетевой игры требуется подключённая база данных Biblio.",
+                )
             if MONGODB_URI:
                 db = get_mongo_database()
                 result, status, headers = self.dispatch_mongo_api(db, method, path, parsed_query)
