@@ -63,10 +63,10 @@ GAME_CATALOG_SEED = (
         "slug": "bunker-online",
         "title": "BunkerOnline",
         "description": (
-            "Социальная игра о выживании после глобальной катастрофы. Создавай сценарий, "
-            "раскрывай досье участников, обсуждай кризисы, запускай события и голосуй "
-            "за тех, кто покинет убежище. Включает таймер, локальный чат, достижения "
-            "и несколько режимов сложности. Текущая версия сохраняет сессию в браузере."
+            "Многопользовательская игра о выживании после глобальной катастрофы. Собирай "
+            "комнату из реальных аккаунтов Biblio, выбирай сценарий и сложность, раскрывай "
+            "личные карты, обсуждай события и голосуй за место в убежище. Партия синхронизируется "
+            "через сервер и общую комнату MongoDB."
         ),
         "cover_symbol": "☢",
         "cover_theme": "bunker",
@@ -3284,7 +3284,10 @@ class BiblioHandler(BaseHTTPRequestHandler):
         path = unquote(request_path)
         if path in ("", "/"):
             path = "/index.html"
-        candidate = (ROOT / path.lstrip("/")).resolve()
+        if path.rstrip("/") in {"/games/bunker-online", "/games/bunker-online/play"}:
+            candidate = ROOT / "games" / "bunker-online.html"
+        else:
+            candidate = (ROOT / path.lstrip("/")).resolve()
         if not candidate.is_file() and (
             path.rstrip("/") in {
                 "/catalog",
