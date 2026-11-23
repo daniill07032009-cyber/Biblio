@@ -3291,7 +3291,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
         path = unquote(request_path)
         if path in ("", "/"):
             path = "/index.html"
-        if path.rstrip("/") in {"/games/bunker-online", "/games/bunker-online/play"}:
+        if path.rstrip("/") == "/games/bunker-online/play":
             candidate = ROOT / "games" / "bunker-online.html"
         else:
             candidate = (ROOT / path.lstrip("/")).resolve()
