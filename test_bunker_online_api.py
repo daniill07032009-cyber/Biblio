@@ -125,6 +125,13 @@ class BunkerOnlineAPITests(unittest.TestCase):
         self.assertEqual(1, len(room["my_cards"]))
         self.assertNotIn("private_cards", room)
 
+        persisted = self.db.bunker_rooms.find_one({"code": code})
+        self.assertEqual([101], [member["user_id"] for member in persisted["members"]])
+        self.assertEqual([101], [player["user_id"] for player in persisted["players"]])
+        self.assertEqual([101], [card["user_id"] for card in persisted["revealed_cards"]])
+        self.assertEqual(["Привет"], [message["text"] for message in persisted["chat"]])
+        self.assertEqual({"101"}, set(persisted["private_cards"]))
+
     def test_revealing_a_card_publishes_only_that_card(self):
         code = self.create_two_player_room()
         self.call_api(
