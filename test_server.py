@@ -56,6 +56,14 @@ class BiblioServerTests(unittest.TestCase):
         self.assertEqual(status, 201)
         return result["user"]
 
+    def test_public_account_stats_use_a_short_cache(self):
+        response = self.client.open(self.base_url + "/api/stats")
+        self.assertEqual(
+            response.headers.get("Cache-Control"),
+            "public, max-age=10, stale-while-revalidate=20",
+        )
+        self.assertEqual(json.loads(response.read())["registered_accounts"], 0)
+
     def test_registration_login_and_account_password_change(self):
         user = self.register()
         self.assertEqual(user["email"], "reader@example.com")
