@@ -203,6 +203,7 @@ def initialize_db():
             CREATE TABLE IF NOT EXISTS reader_library_state (
                 user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
                 favorites_json TEXT NOT NULL DEFAULT '[]',
+                favorites_updated_at TEXT NOT NULL DEFAULT '',
                 reading_json TEXT NOT NULL DEFAULT '{}',
                 updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
             );
@@ -556,7 +557,14 @@ def normalize_reader_library_state(data):
             "status": status,
             "updatedAt": updated_at,
         }
-    return {"favorites": normalized_favorites, "reading_state": normalized_reading}
+    favorites_updated_at = data.get("favorites_updated_at", "")
+    if not isinstance(favorites_updated_at, str) or len(favorites_updated_at) > 40:
+        raise APIError(HTTPStatus.BAD_REQUEST, "Некорректная дата изменения избранного.")
+    return {
+        "favorites": normalized_favorites,
+        "favorites_updated_at": favorites_updated_at,
+        "reading_state": normalized_reading,
+    }
 
 
 def normalize_game_access(value):
@@ -1248,6 +1256,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 stored = db.reader_library_state.find_one({"user_id": user["id"]}) or {}
                 return {
                     "favorites": stored.get("favorites", []),
+                    "favorites_updated_at": stored.get("favorites_updated_at", ""),
                     "reading_state": stored.get("reading_state", {}),
                 }, HTTPStatus.OK, []
             if method == "PUT":
@@ -2241,25 +2250,27 @@ class BiblioHandler(BaseHTTPRequestHandler):
             user = self.current_user(db, required=True)
             if method == "GET":
                 stored = db.execute(
-                    "SELECT favorites_json, reading_json FROM reader_library_state WHERE user_id = ?",
+                    "SELECT favorites_json, favorites_updated_at, reading_json FROM reader_library_state WHERE user_id = ?",
                     (user["id"],),
                 ).fetchone()
                 return {
                     "favorites": json.loads(stored["favorites_json"]) if stored else [],
+                    "favorites_updated_at": stored["favorites_updated_at"] if stored else "",
                     "reading_state": json.loads(stored["reading_json"]) if stored else {},
                 }, HTTPStatus.OK, []
             if method == "PUT":
                 state = normalize_reader_library_state(self.read_json())
                 db.execute(
                     """
-                    INSERT INTO reader_library_state (user_id, favorites_json, reading_json, updated_at)
-                    VALUES (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+                    INSERT INTO reader_library_state (user_id, favorites_json, favorites_updated_at, reading_json, updated_at)
+                    VALUES (?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
                     ON CONFLICT(user_id) DO UPDATE SET
                         favorites_json = excluded.favorites_json,
+                        favorites_updated_at = excluded.favorites_updated_at,
                         reading_json = excluded.reading_json,
                         updated_at = excluded.updated_at
                     """,
-                    (user["id"], json.dumps(state["favorites"]), json.dumps(state["reading_state"])),
+                    (user["id"], json.dumps(state["favorites"]), state["favorites_updated_at"], json.dumps(state["reading_state"])),
                 )
                 return {"ok": True}, HTTPStatus.OK, []
             raise APIError(HTTPStatus.METHOD_NOT_ALLOWED, "Метод не поддерживается.")
