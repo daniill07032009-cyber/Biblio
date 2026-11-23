@@ -75,6 +75,14 @@ class BiblioServerTests(unittest.TestCase):
         self.assertEqual(status, 201)
         return result["user"]
 
+    def test_head_request_returns_get_headers_without_a_body(self):
+        request = Request(self.base_url + "/", method="HEAD")
+        response = self.client.open(request)
+        self.assertEqual(response.status, 200)
+        self.assertTrue(int(response.headers["Content-Length"]) > 0)
+        self.assertEqual(response.read(), b"")
+        response.close()
+
     def test_registration_login_and_account_password_change(self):
         user = self.register()
         self.assertEqual(user["email"], "reader@example.com")
