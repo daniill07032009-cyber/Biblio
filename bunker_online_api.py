@@ -45,6 +45,26 @@ def bunker_presence_refresh_due(member, now):
         last_seen = 0
     return now - last_seen >= BUNKER_PRESENCE_WRITE_INTERVAL_SECONDS
 
+def human_voting(voting, human_ids):
+    if not isinstance(voting, dict):
+        return voting
+    safe = dict(voting)
+    votes = {}
+    for voter, target in (voting.get("votes") or {}).items():
+        try:
+            voter_id, target_id = int(voter), int(target)
+        except (TypeError, ValueError):
+            continue
+        if voter_id in human_ids and target_id in human_ids:
+            votes[str(voter_id)] = target_id
+    safe["votes"] = votes
+    safe["tied_targets"] = [
+        int(value) for value in voting.get("tied_targets", [])
+        if str(value).lstrip("-").isdigit() and int(value) in human_ids
+    ]
+    return safe
+
+
 def bunker_public_room(room, user_id):
     members = human_members(room.get("members", []))
     human_ids = {member["user_id"] for member in members}
@@ -82,7 +102,7 @@ def bunker_public_room(room, user_id):
         "round": room.get("round", 0), "capacity": room.get("capacity"),
         "disaster": room.get("disaster"), "revealed_cards": revealed_cards,
         "chat": chat[-60:], "event": room.get("event"),
-        "voting": room.get("voting"), "result": room.get("result"),
+        "voting": human_voting(room.get("voting"), human_ids), "result": room.get("result"),
         "players": players, "survivors": survivors,
         
         "finished_at": room.get("finished_at"),
@@ -155,6 +175,7 @@ def dispatch_bunker_api(handler, db, method, path, api_error, mongodb_enabled):
     room["revealed_cards"] = [c for c in room.get("revealed_cards", []) if belongs_to_human_id(c, human_ids)]
     room["chat"] = [m for m in room.get("chat", []) if isinstance(m, dict) and not m.get("is_bot")]
     room["survivors"] = [p for p in room.get("survivors", []) if belongs_to_human_id(p, human_ids)]
+    room["voting"] = human_voting(room.get("voting"), human_ids)
     room["private_cards"] = {key: value for key, value in (room.get("private_cards") or {}).items() if key in {str(uid) for uid in human_ids}}
     member = next((m for m in room.get("members", []) if int(m["user_id"]) == user_id), None)
     action = parts[4] if len(parts) > 4 else ""
