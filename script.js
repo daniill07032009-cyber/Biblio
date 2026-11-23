@@ -248,6 +248,7 @@ const bookDetailRequests = new Map();
 let activeDetailsBook = null;
 let favoriteIds = new Set(readStoredArray("biblio-favorites"));
 let favoritesUpdatedAt = localStorage.getItem("biblio-favorites-updated-at") || "";
+let readerLibraryOwnerId = localStorage.getItem("biblio-reader-library-owner") || "";
 let readingLibraryState = readReadingLibraryState();
 let searchHistory = readStoredArray("biblio-search-history");
 let currentUser = null;
@@ -681,26 +682,32 @@ async function syncReaderLibraryState() {
   if (!currentUser) return;
   try {
     const remote = await api("/api/reader-library");
+    const ownerId = String(currentUser.id);
+    const sameOwner = readerLibraryOwnerId === ownerId;
+    const migrateLegacyState = !readerLibraryOwnerId;
+    const localFavorites = sameOwner || migrateLegacyState ? [...favoriteIds] : [];
+    const localReading = sameOwner || migrateLegacyState ? readingLibraryState : {};
+    const localFavoritesUpdatedAt = sameOwner || migrateLegacyState ? favoritesUpdatedAt : "";
     const remoteFavorites = Array.isArray(remote.favorites) ? remote.favorites.map(String) : [];
     let mergedFavorites;
-    if (favoritesUpdatedAt && remote.favorites_updated_at) {
+    if (localFavoritesUpdatedAt && remote.favorites_updated_at) {
       mergedFavorites = new Set(
-        favoritesUpdatedAt >= remote.favorites_updated_at ? [...favoriteIds] : remoteFavorites,
+        localFavoritesUpdatedAt >= remote.favorites_updated_at ? localFavorites : remoteFavorites,
       );
-    } else if (favoritesUpdatedAt) {
-      mergedFavorites = new Set([...favoriteIds]);
+    } else if (localFavoritesUpdatedAt) {
+      mergedFavorites = new Set(localFavorites);
     } else if (remote.favorites_updated_at) {
       mergedFavorites = new Set(remoteFavorites);
     } else {
       // One-time migration for browsers with legacy localStorage-only favorites.
-      mergedFavorites = new Set([...favoriteIds, ...remoteFavorites]);
+      mergedFavorites = new Set([...localFavorites, ...remoteFavorites]);
     }
-    favoritesUpdatedAt = [favoritesUpdatedAt, remote.favorites_updated_at || ""]
+    favoritesUpdatedAt = [localFavoritesUpdatedAt, remote.favorites_updated_at || ""]
       .filter(Boolean)
       .sort()
       .at(-1) || new Date().toISOString();
     const mergedReading = { ...(remote.reading_state || {}) };
-    for (const [bookId, localEntry] of Object.entries(readingLibraryState)) {
+    for (const [bookId, localEntry] of Object.entries(localReading)) {
       const remoteEntry = mergedReading[bookId];
       if (
         !remoteEntry ||
@@ -711,6 +718,8 @@ async function syncReaderLibraryState() {
     }
     favoriteIds = mergedFavorites;
     readingLibraryState = mergedReading;
+    readerLibraryOwnerId = ownerId;
+    localStorage.setItem("biblio-reader-library-owner", readerLibraryOwnerId);
     localStorage.setItem("biblio-favorites", JSON.stringify([...favoriteIds]));
     localStorage.setItem("biblio-favorites-updated-at", favoritesUpdatedAt);
     localStorage.setItem("biblio-reading-state", JSON.stringify(readingLibraryState));
