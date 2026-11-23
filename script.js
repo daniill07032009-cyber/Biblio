@@ -661,15 +661,20 @@ function saveSearchQuery() {
 
 function scheduleReaderLibrarySync() {
   if (!currentUser) return;
+  const ownerId = String(currentUser.id);
+  const favoritesSnapshot = [...favoriteIds];
+  const favoritesUpdatedAtSnapshot = favoritesUpdatedAt;
+  const readingSnapshot = JSON.parse(JSON.stringify(readingLibraryState));
   window.clearTimeout(readerLibrarySyncTimer);
   readerLibrarySyncTimer = window.setTimeout(async () => {
+    if (!currentUser || String(currentUser.id) !== ownerId) return;
     try {
       await api("/api/reader-library", {
         method: "PUT",
         body: JSON.stringify({
-          favorites: [...favoriteIds],
-          favorites_updated_at: favoritesUpdatedAt,
-          reading_state: readingLibraryState,
+          favorites: favoritesSnapshot,
+          favorites_updated_at: favoritesUpdatedAtSnapshot,
+          reading_state: readingSnapshot,
         }),
       });
     } catch (error) {
@@ -680,11 +685,25 @@ function scheduleReaderLibrarySync() {
 
 async function syncReaderLibraryState() {
   if (!currentUser) return;
+  const ownerId = String(currentUser.id);
+  const sameOwner = readerLibraryOwnerId === ownerId;
+  const migrateLegacyState = !readerLibraryOwnerId;
+  if (!sameOwner && !migrateLegacyState) {
+    window.clearTimeout(readerLibrarySyncTimer);
+    readerLibrarySyncTimer = 0;
+    favoriteIds = new Set();
+    favoritesUpdatedAt = "";
+    readingLibraryState = {};
+    localStorage.setItem("biblio-favorites", "[]");
+    localStorage.setItem("biblio-favorites-updated-at", "");
+    localStorage.setItem("biblio-reading-state", "{}");
+    localStorage.setItem("biblio-reading-progress", "{}");
+    updateFavoriteButtons();
+    renderReadingLibrary();
+  }
   try {
     const remote = await api("/api/reader-library");
-    const ownerId = String(currentUser.id);
-    const sameOwner = readerLibraryOwnerId === ownerId;
-    const migrateLegacyState = !readerLibraryOwnerId;
+    if (!currentUser || String(currentUser.id) !== ownerId) return;
     const localFavorites = sameOwner || migrateLegacyState ? [...favoriteIds] : [];
     const localReading = sameOwner || migrateLegacyState ? readingLibraryState : {};
     const localFavoritesUpdatedAt = sameOwner || migrateLegacyState ? favoritesUpdatedAt : "";
@@ -3550,6 +3569,8 @@ async function logoutCurrentUser() {
     return;
   }
   try {
+    window.clearTimeout(readerLibrarySyncTimer);
+    readerLibrarySyncTimer = 0;
     await api("/api/logout", { method: "POST", body: "{}" });
     currentUser = null;
     updateAccountUI();
