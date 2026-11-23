@@ -137,10 +137,6 @@ def bunker_make_cards(difficulty):
         })
     return cards
 
-def db_room_value(room, field):
-    return room.get("_original_" + field, room.get(field))
-
-
 def dispatch_bunker_api(handler, db, method, path, api_error, mongodb_enabled):
     if not mongodb_enabled:
         raise api_error(HTTPStatus.SERVICE_UNAVAILABLE, "Для сетевой игры требуется подключённая база данных Biblio.")
