@@ -1549,6 +1549,7 @@ class BiblioServerTests(unittest.TestCase):
         user = self.register("reader-state@example.com")
         payload = {
             "favorites": ["12", "34", "12"],
+            "favorites_updated_at": "2026-11-23T10:00:00Z",
             "reading_state": {
                 "12": {"chapter": 3, "status": "reading", "updatedAt": "2026-11-23T10:00:00Z"},
                 "34": {"chapter": 7, "status": "completed", "updatedAt": "2026-11-23T11:00:00Z"},
@@ -1559,6 +1560,7 @@ class BiblioServerTests(unittest.TestCase):
         status, result = self.request("GET", "/api/reader-library")
         self.assertEqual(status, 200)
         self.assertEqual(result["favorites"], ["12", "34"])
+        self.assertEqual(result["favorites_updated_at"], payload["favorites_updated_at"])
         self.assertEqual(result["reading_state"], payload["reading_state"])
 
         status, result = self.request(
@@ -1589,6 +1591,7 @@ class BiblioServerTests(unittest.TestCase):
             self.register("mongo-reader-state@example.com")
             payload = {
                 "favorites": ["5"],
+                "favorites_updated_at": "2026-11-23T12:00:00Z",
                 "reading_state": {
                     "5": {"chapter": 2, "status": "reading", "updatedAt": "2026-11-23T12:00:00Z"}
                 },
