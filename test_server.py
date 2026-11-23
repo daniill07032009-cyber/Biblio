@@ -1573,7 +1573,7 @@ class BiblioServerTests(unittest.TestCase):
         self.register("another-reader@example.com")
         status, result = self.request("GET", "/api/reader-library")
         self.assertEqual(status, 200)
-        self.assertEqual(result, {"favorites": [], "reading_state": {}})
+        self.assertEqual(result, {"favorites": [], "favorites_updated_at": "", "reading_state": {}})
 
         self.request("POST", "/api/logout", {})
         status, result = self.request("GET", "/api/reader-library")
