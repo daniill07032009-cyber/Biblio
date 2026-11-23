@@ -1186,7 +1186,7 @@ class BiblioServerTests(unittest.TestCase):
             page = response.read().decode("utf-8")
         self.assertIn("BunkerOnline", page)
         self.assertIn("/games/bunker-online.js", page)
-        self.assertIn("только реальные аккаунты Biblio", page.lower())
+        self.assertIn("только реальные аккаунты biblio", page.lower())
         self.assertNotIn('id="botCount"', page)
         with self.client.open(self.base_url + "/games/bunker-online.js") as response:
             script = response.read().decode("utf-8")
