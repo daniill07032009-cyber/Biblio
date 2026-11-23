@@ -3464,5 +3464,19 @@ class BiblioHandler(BaseHTTPRequestHandler):
 
 
 
+def main():
+    initialize_db()
+    host = os.environ.get("BIBLIO_HOST", "127.0.0.1")
+    port = int(os.environ.get("PORT", "8000"))
+    server = ThreadingHTTPServer((host, port), BiblioHandler)
+    print(f"Biblio is running at http://{host}:{port}")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\\nStopping Biblio.")
+    finally:
+        server.server_close()
+
+
 if __name__ == "__main__":
     main()
