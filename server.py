@@ -548,7 +548,7 @@ def normalize_reader_library_state(data):
         updated_at = entry.get("updatedAt", "")
         if isinstance(chapter, bool) or not isinstance(chapter, int) or not 0 <= chapter <= 100000:
             raise APIError(HTTPStatus.BAD_REQUEST, "Некорректный номер главы.")
-        if status not in {"reading", "completed"}:
+        if not isinstance(status, str) or status not in {"reading", "completed"}:
             raise APIError(HTTPStatus.BAD_REQUEST, "Некорректный статус чтения.")
         if not isinstance(updated_at, str) or len(updated_at) > 40:
             raise APIError(HTTPStatus.BAD_REQUEST, "Некорректная дата прогресса чтения.")
