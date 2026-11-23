@@ -24,13 +24,13 @@ function setRoom(nextRoom){room=nextRoom;var snapshot=JSON.stringify(room);if(sn
 async function withAction(button,task){if(actionPending)return false;actionPending=true;if(button)button.disabled=true;try{return await task();}finally{actionPending=false;if(button&&button.isConnected)button.disabled=false;}}
 function renderLobby(){
  $("lobbyCode").textContent=room.code;$("lobbyCount").textContent=room.members.length+" / "+room.max_players+" ИГРОКОВ";
- $("lobbyPlayers").innerHTML=room.members.map(function(m){return '<div class="player">'+avatarHtml(m)+'<div class="player-info"><strong>'+escapeHtml(m.name)+'</strong><small>'+(m.role==="host"?"Ведущий":(m.online?"В сети":"Не в сети"))+'</small></div><span class="ready">'+(m.role==="host"?"★ ВЕДУЩИЙ":(m.is_bot?"🤖 БОТ":(m.ready?"✓ ГОТОВ":"ОЖИДАЕТ")))+'</span></div>';}).join("");
+ $("lobbyPlayers").innerHTML=room.members.map(function(m){return '<div class="player">'+avatarHtml(m)+'<div class="player-info"><strong>'+escapeHtml(m.name)+'</strong><small>'+(m.role==="host"?"Ведущий":(m.online?"В сети":"Не в сети"))+'</small></div><span class="ready">'+(m.role==="host"?"★ ВЕДУЩИЙ":(m.ready?"✓ ГОТОВ":"ОЖИДАЕТ"))+'</span></div>';}).join("");
  $("readyBtn").textContent=room.my_ready?"ОТМЕНИТЬ ГОТОВНОСТЬ":"Я ГОТОВ";
  $("readyBtn").disabled=room.is_host;
  $("startBtn").classList.toggle("hidden",!room.is_host);
  $("startBtn").disabled=room.members.length<2||!room.members.every(function(m){return m.role==="host"||m.ready;});
- $("setupPanel").classList.toggle("hidden",!room.is_host||room.members.length<2||!room.members.every(function(m){return m.role==="host"||m.is_bot||m.ready;}));
- $("lobbyNotice").textContent=room.members.length<2?"Пригласи друзей по коду комнаты. Для старта нужно минимум 2 реальных участника.":(room.members.every(function(m){return m.role==="host"||m.is_bot||m.ready;})?"Команда собрана. Ведущий может выбрать сценарий и сложность.":"Ждём подтверждения готовности от реальных игроков.");
+ $("setupPanel").classList.toggle("hidden",!room.is_host||room.members.length<2||!room.members.every(function(m){return m.role==="host"||m.ready;}));
+ $("lobbyNotice").textContent=room.members.length<2?"Пригласи друзей по коду комнаты. Для старта нужно минимум 2 реальных участника.":(room.members.every(function(m){return m.role==="host"||m.ready;})?"Команда собрана. Ведущий может выбрать сценарий и сложность.":"Ждём подтверждения готовности от реальных игроков.");
  renderChoices();
 }
 function renderChoices(){
@@ -53,7 +53,7 @@ function renderGame(){
  $("gamePlayers").innerHTML=list;$("sidePlayers").innerHTML=list;
  $("revealedCards").innerHTML=room.revealed_cards.map(function(card){return '<div class="card revealed"><small>'+escapeHtml(card.name)+' · '+escapeHtml(card.label)+'</small><strong>'+escapeHtml(card.value)+'</strong></div>';}).join("")||'<p class="hint">Пока никто не раскрыл карты.</p>';
  $("myCards").innerHTML=room.my_cards.map(function(card){var mine=room.revealed_cards.some(function(x){return x.user_id===room.my_user_id&&x.category===card.category;});return '<div class="card '+(mine?"revealed":"")+'"><small>'+escapeHtml(card.label)+'</small><strong>'+escapeHtml(card.value)+'</strong>'+(mine?'<small class="hint">УЖЕ РАСКРЫТА</small>':'<button class="btn secondary wide" data-reveal="'+card.category+'">РАСКРЫТЬ ЭТУ КАРТУ</button>')+'</div>';}).join("");
- var chatLog=$("chatLog"),wasAtBottom=chatLog.scrollHeight-chatLog.scrollTop-chatLog.clientHeight<40;chatLog.innerHTML=room.chat.map(function(m){return '<div class="msg '+(m.system?"system":"")+'"><b>'+escapeHtml(m.name)++'</b>'+escapeHtml(m.text)+'</div>';}).join("");if(wasAtBottom)chatLog.scrollTop=chatLog.scrollHeight;
+ var chatLog=$("chatLog"),wasAtBottom=chatLog.scrollHeight-chatLog.scrollTop-chatLog.clientHeight<40;chatLog.innerHTML=room.chat.map(function(m){return '<div class="msg '+(m.system?"system":"")+'"><b>'+escapeHtml(m.name)+'</b>'+escapeHtml(m.text)+'</div>';}).join("");if(wasAtBottom)chatLog.scrollTop=chatLog.scrollHeight;
  $("eventBox").classList.toggle("hidden",!room.event);if(room.event)$("eventBox").innerHTML="<b>"+escapeHtml(room.event.title)+"</b>"+escapeHtml(room.event.description);
  $("resultBox").classList.toggle("hidden",!room.result&&!room.status.includes("finished"));$("resultBox").textContent=room.result||"";
  var finished=room.status==="finished";$("eventBtn").classList.toggle("hidden",!room.is_host||finished);$("voteStartBtn").classList.toggle("hidden",!room.is_host||finished||!!(room.voting&&room.voting.open));$("resolveVoteBtn").classList.toggle("hidden",!room.is_host||finished||!room.voting||!room.voting.open);
