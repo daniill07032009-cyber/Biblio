@@ -131,6 +131,7 @@ def initialize_db():
         db.books.create_index([("owner_id", ASCENDING), ("updated_at", DESCENDING), ("id", DESCENDING)])
         db.sessions.create_index([("token_hash", ASCENDING)], unique=True)
         db.sessions.create_index([("expires_at", ASCENDING)])
+        db.reader_library_state.create_index([("user_id", ASCENDING)], unique=True)
         db.pending_email_verifications.create_index([("email", ASCENDING)], unique=True)
         db.pending_email_verifications.create_index([("expires_at", ASCENDING)], expireAfterSeconds=0)
         db.newsletter_subscribers.create_index([("email", ASCENDING)], unique=True)
@@ -199,6 +200,12 @@ def initialize_db():
                 expires_at INTEGER NOT NULL
             );
             CREATE INDEX IF NOT EXISTS sessions_expires_idx ON sessions(expires_at);
+            CREATE TABLE IF NOT EXISTS reader_library_state (
+                user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                favorites_json TEXT NOT NULL DEFAULT '[]',
+                reading_json TEXT NOT NULL DEFAULT '{}',
+                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+            );
             CREATE TABLE IF NOT EXISTS books (
                 id INTEGER PRIMARY KEY,
                 owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -512,6 +519,44 @@ def public_user(row):
         "bio": row.get("bio", "") if isinstance(row, dict) else (row["bio"] if "bio" in row.keys() else ""),
         "avatar_url": row.get("avatar_url", "") if isinstance(row, dict) else (row["avatar_url"] if "avatar_url" in row.keys() else ""),
     }
+
+
+def normalize_reader_library_state(data):
+    if not isinstance(data, dict):
+        raise APIError(HTTPStatus.BAD_REQUEST, "Некорректные данные читательской библиотеки.")
+    favorites = data.get("favorites", [])
+    reading_state = data.get("reading_state", {})
+    if not isinstance(favorites, list) or len(favorites) > 1000:
+        raise APIError(HTTPStatus.BAD_REQUEST, "Слишком много книг в избранном.")
+    normalized_favorites = []
+    for value in favorites:
+        book_id = str(value)
+        if not re.fullmatch(r"[1-9]\d{0,17}", book_id):
+            raise APIError(HTTPStatus.BAD_REQUEST, "Некорректный идентификатор книги.")
+        if book_id not in normalized_favorites:
+            normalized_favorites.append(book_id)
+    if not isinstance(reading_state, dict) or len(reading_state) > 1000:
+        raise APIError(HTTPStatus.BAD_REQUEST, "Некорректный список прогресса чтения.")
+    normalized_reading = {}
+    for raw_id, entry in reading_state.items():
+        book_id = str(raw_id)
+        if not re.fullmatch(r"[1-9]\d{0,17}", book_id) or not isinstance(entry, dict):
+            raise APIError(HTTPStatus.BAD_REQUEST, "Некорректная запись прогресса чтения.")
+        chapter = entry.get("chapter", 0)
+        status = entry.get("status")
+        updated_at = entry.get("updatedAt", "")
+        if isinstance(chapter, bool) or not isinstance(chapter, int) or not 0 <= chapter <= 100000:
+            raise APIError(HTTPStatus.BAD_REQUEST, "Некорректный номер главы.")
+        if status not in {"reading", "completed"}:
+            raise APIError(HTTPStatus.BAD_REQUEST, "Некорректный статус чтения.")
+        if not isinstance(updated_at, str) or len(updated_at) > 40:
+            raise APIError(HTTPStatus.BAD_REQUEST, "Некорректная дата прогресса чтения.")
+        normalized_reading[book_id] = {
+            "chapter": chapter,
+            "status": status,
+            "updatedAt": updated_at,
+        }
+    return {"favorites": normalized_favorites, "reading_state": normalized_reading}
 
 
 def normalize_game_access(value):
@@ -1196,6 +1241,24 @@ class BiblioHandler(BaseHTTPRequestHandler):
         if method == "GET" and path == "/api/me":
             user = self.current_user_mongo(db)
             return {"user": public_user(user) if user else None}, HTTPStatus.OK, []
+
+        if path == "/api/reader-library":
+            user = self.current_user_mongo(db, required=True)
+            if method == "GET":
+                stored = db.reader_library_state.find_one({"user_id": user["id"]}) or {}
+                return {
+                    "favorites": stored.get("favorites", []),
+                    "reading_state": stored.get("reading_state", {}),
+                }, HTTPStatus.OK, []
+            if method == "PUT":
+                state = normalize_reader_library_state(self.read_json())
+                db.reader_library_state.update_one(
+                    {"user_id": user["id"]},
+                    {"$set": {**state, "updated_at": utc_timestamp()},
+                     "$setOnInsert": {"user_id": user["id"]}},
+                    upsert=True,
+                )
+                return {"ok": True}, HTTPStatus.OK, []
 
         if method == "GET" and path == "/api/stats":
             return {"registered_accounts": db.users.count_documents({})}, HTTPStatus.OK, []
@@ -2172,6 +2235,32 @@ class BiblioHandler(BaseHTTPRequestHandler):
         if method == "GET" and path == "/api/me":
             user = self.current_user(db)
             return {"user": public_user(user) if user else None}, HTTPStatus.OK, []
+
+        if path == "/api/reader-library":
+            user = self.current_user(db, required=True)
+            if method == "GET":
+                stored = db.execute(
+                    "SELECT favorites_json, reading_json FROM reader_library_state WHERE user_id = ?",
+                    (user["id"],),
+                ).fetchone()
+                return {
+                    "favorites": json.loads(stored["favorites_json"]) if stored else [],
+                    "reading_state": json.loads(stored["reading_json"]) if stored else {},
+                }, HTTPStatus.OK, []
+            if method == "PUT":
+                state = normalize_reader_library_state(self.read_json())
+                db.execute(
+                    """
+                    INSERT INTO reader_library_state (user_id, favorites_json, reading_json, updated_at)
+                    VALUES (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+                    ON CONFLICT(user_id) DO UPDATE SET
+                        favorites_json = excluded.favorites_json,
+                        reading_json = excluded.reading_json,
+                        updated_at = excluded.updated_at
+                    """,
+                    (user["id"], json.dumps(state["favorites"]), json.dumps(state["reading_state"])),
+                )
+                return {"ok": True}, HTTPStatus.OK, []
 
         if method == "GET" and path == "/api/stats":
             count = db.execute("SELECT COUNT(*) AS total FROM users").fetchone()["total"]
