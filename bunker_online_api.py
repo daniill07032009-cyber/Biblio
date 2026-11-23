@@ -249,7 +249,6 @@ def dispatch_bunker_api(handler, db, method, path, api_error, mongodb_enabled):
                 raise api_error(HTTPStatus.CONFLICT, "Бункер уже укомплектован. Партия завершена.")
             if (room.get("voting") or {}).get("open"):
                 raise api_error(HTTPStatus.CONFLICT, "Голосование уже идёт.")
-                              for index, m in enumerate(room.get("members", [])) if m.get("is_bot")}
             db.bunker_rooms.update_one({"code": code, "status": "started"}, {"$set": {
                 "voting": {"open": True, "votes": {}, "tied_targets": [], "started_at": now}, "updated_at": now}})
         elif kind == "vote":
