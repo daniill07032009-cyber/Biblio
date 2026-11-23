@@ -3473,7 +3473,7 @@ def main():
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\\nStopping Biblio.")
+        print("\nStopping Biblio.")
     finally:
         server.server_close()
 
