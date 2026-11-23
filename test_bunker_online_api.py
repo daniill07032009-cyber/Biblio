@@ -154,5 +154,27 @@ class BunkerOnlineAPITests(unittest.TestCase):
         self.assertEqual(6, len(player_result["room"]["my_cards"]))
 
 
+    def test_join_succeeds_after_legacy_bot_is_purged_from_full_lobby(self):
+        code = "BOTFULL"
+        self.db.bunker_rooms.insert_one({
+            "code": code, "host_id": 101, "status": "lobby", "max_players": 2,
+            "members": [
+                {"user_id": 101, "name": "Ведущий", "role": "host", "ready": True},
+                {"user_id": -1, "name": "Старый бот", "role": "player", "ready": True, "is_bot": True},
+            ],
+            "players": [], "revealed_cards": [], "chat": [], "private_cards": {},
+        })
+
+        joined, status, _ = self.call_api(
+            self.player, "POST", f"/api/bunker/rooms/{code}/join", {}
+        )
+
+        self.assertEqual(HTTPStatus.OK, status)
+        self.assertEqual([101, 202], [m["user_id"] for m in joined["room"]["members"]])
+        persisted = self.db.bunker_rooms.find_one({"code": code})
+        self.assertEqual([101, 202], [m["user_id"] for m in persisted["members"]])
+        self.assertEqual(2, len(persisted["members"]))
+
+
 if __name__ == "__main__":
     unittest.main()
