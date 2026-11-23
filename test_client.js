@@ -5,7 +5,8 @@ const vm = require("node:vm");
 const source = fs.readFileSync("script.js", "utf8");
 const match = source.match(/function persistFavorites\(\)\s*\{[\s\S]*?\n\}/);
 assert.ok(match, "persistFavorites must exist");
-assert.doesNotMatch(match[0], /persistFavorites\s*\(/, "persistFavorites must not call itself");
+const functionBody = match[0].replace(/^function persistFavorites\(\)\s*\{/, "").replace(/\n\}$/, "");
+assert.doesNotMatch(functionBody, /\bpersistFavorites\s*\(/, "persistFavorites must not call itself");
 
 let savedKey = "";
 let savedValue = "";
@@ -22,4 +23,4 @@ vm.runInNewContext(match[0], {
 
 assert.equal(savedKey, "biblio-favorites");
 assert.deepEqual(JSON.parse(savedValue), ["book-12", "book-34"]);
-process.stdout.write("Favorite persistence test passed.\\n");
+process.stdout.write("Favorite persistence test passed.\n");
