@@ -3544,6 +3544,7 @@ emailVerificationForm.addEventListener("submit", async (event) => {
     });
     currentUser = result.user;
     await syncReaderLibraryState();
+    await refreshMyHeroes();
     pendingVerificationEmail = "";
     closeDialog(emailVerificationDialog);
     updateAccountUI();
@@ -3767,6 +3768,7 @@ document.querySelector("#profile-form").addEventListener("submit", async (event)
     });
     currentUser = result.user;
     await syncReaderLibraryState();
+    await refreshMyHeroes();
     pendingAvatarData = null;
     form.elements.avatar_file.value = "";
     form.elements.current_password.value = "";
