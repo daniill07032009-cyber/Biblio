@@ -18,12 +18,11 @@ main{max-width:1180px;margin:auto;padding:30px 20px 70px}.hero{text-align:center
 <header><div class="brand"><a href="/">BIBLIO <b>☢ BUNKER</b></a></div><div class="status"><span class="dot"></span>СЕТЕВАЯ СИСТЕМА</div></header>
 <main>
 <section id="home">
- <div class="hero"><div class="eyebrow">Biblio multiplayer protocol</div><h1>В убежище<br><span>не для всех.</span></h1><p>Собери команду из друзей Biblio и игровых ботов, выбери сценарий катастрофы и проверь, кто достоин места в убежище.</p></div>
+ <div class="hero"><div class="eyebrow">Biblio multiplayer protocol</div><h1>В убежище<br><span>не для всех.</span></h1><p>Собери команду из друзей Biblio, выбери сценарий катастрофы и проверь, кто достоин места в убежище.</p></div>
  <div class="grid">
-  <div class="panel"><h2>Создать комнату</h2><p class="sub">Ты станешь ведущим. Играй с друзьями, ботами или смешанной командой.</p>
-   <div class="field"><label>МАКСИМУМ УЧАСТНИКОВ</label><select id="maxPlayers"><option value="4">4 участника</option><option value="6">6 участников</option><option value="8" selected>8 участников</option><option value="10">10 участников</option><option value="12">12 участников</option><option value="16">16 участников</option></select></div><div class="field"><label>ИГРОВЫЕ БОТЫ</label><select id="botCount"><option value="0">Без ботов</option><option value="1">1 бот</option><option value="2">2 бота</option><option value="3" selected>3 бота</option><option value="4">4 бота</option><option value="6">6 ботов</option><option value="8">8 ботов</option></select><p class="hint">Боты — отдельные игровые персонажи, не аккаунты Biblio. Друзья могут присоединиться к комнате.</p></div>
-   <button class="btn primary wide" id="createRoom">☢ СОЗДАТЬ КОМНАТУ</button>
-   <div class="notice">В комнату входят реальные аккаунты Biblio и выбранные игровые боты. Боты не маскируются под людей.</div>
+  <div class="panel"><h2>Создать комнату</h2><p class="sub">Ты станешь ведущим. Приглашай друзей с аккаунтами Biblio.</p>
+   <div class="field"><label>МАКСИМУМ УЧАСТНИКОВ</label><select id="maxPlayers"><option value="4">4 участника</option><option value="6">6 участников</option><option value="8" selected>8 участников</option><option value="10">10 участников</option><option value="12">12 участников</option><option value="16">16 участников</option></select></div><button class="btn primary wide" id="createRoom">☢ СОЗДАТЬ КОМНАТУ</button>
+   <div class="notice">В комнату входят только реальные аккаунты Biblio.</div>
   </div>
   <div class="panel"><h2>Присоединиться</h2><p class="sub">Введи код, который отправил ведущий.</p>
    <div class="field"><label>КОД ПРИГЛАШЕНИЯ</label><input id="joinCode" maxlength="6" placeholder="Например, X7K2Q9" autocomplete="off" style="text-transform:uppercase;letter-spacing:.2em"></div>
@@ -34,7 +33,7 @@ main{max-width:1180px;margin:auto;padding:30px 20px 70px}.hero{text-align:center
 </section>
 <section id="lobby" class="hidden">
  <div class="room-head"><div><div class="eyebrow">Комната ожидания</div><h2 style="font:500 28px Oswald;margin:3px 0">Сбор команды</h2><div class="hint">Код комнаты: <span class="room-code" id="lobbyCode"></span></div></div><span class="pill" id="lobbyCount"></span></div>
- <div class="panel"><div class="room-head"><div><h3>Участники комнаты</h3><p class="sub" style="margin:2px 0">Здесь отображаются люди из Biblio и игровые боты.</p></div><button class="btn secondary" id="copyInvite">КОПИРОВАТЬ КОД</button></div>
+ <div class="panel"><div class="room-head"><div><h3>Участники комнаты</h3><p class="sub" style="margin:2px 0">Здесь отображаются участники с аккаунтами Biblio.</p></div><button class="btn secondary" id="copyInvite">КОПИРОВАТЬ КОД</button></div>
   <div class="players" id="lobbyPlayers"></div>
   <div class="actions"><button class="btn secondary" id="readyBtn">Я ГОТОВ</button><button class="btn primary" id="startBtn">ВЫБРАТЬ ИГРУ И НАЧАТЬ</button><button class="btn secondary" id="leaveBtn">ВЫЙТИ</button></div>
   <div class="notice" id="lobbyNotice">Ведущий выбирает сценарий после того, как все участники подключатся и подтвердят готовность.</div>
@@ -43,7 +42,7 @@ main{max-width:1180px;margin:auto;padding:30px 20px 70px}.hero{text-align:center
   <h2>Настройка партии</h2><p class="sub">Сначала выбери катастрофу, затем уровень сложности.</p>
   <h3>Сценарий</h3><div class="scenario-grid" id="scenarioGrid"></div>
   <h3 style="margin-top:20px">Сложность</h3><div class="difficulty" id="difficultyGrid"></div>
-  <div class="notice" id="difficultyNote">Чем выше сложность, тем чаще игрокам выпадают негативные карты.</div>
+  <div class="notice" id="difficultyNote">Чем выше сложность, тем чаще игрокам выпадают неблагоприятные характеристики.</div>
   <button class="btn primary wide" id="confirmStart">ЗАПУСТИТЬ ПАРТИЮ</button>
  </div>
 </section>
@@ -52,7 +51,7 @@ main{max-width:1180px;margin:auto;padding:30px 20px 70px}.hero{text-align:center
  <div class="notice" id="disasterText"></div>
  <div class="stat-row"><span class="pill" id="playersMetric"></span><span class="pill" id="capacityMetric"></span><span class="pill" id="revealedMetric"></span></div>
  <div class="game-grid">
-  <div class="panel"><div class="room-head"><div><h3>Игроки и раскрытые карты</h3><p class="sub" style="margin:2px 0">Каждый участник раскрывает только собственные карты.</p></div><span class="pill">ЛЮДИ + БОТЫ</span></div>
+  <div class="panel"><div class="room-head"><div><h3>Игроки и раскрытые карты</h3><p class="sub" style="margin:2px 0">Каждый участник раскрывает только собственные карты.</p></div><span class="pill">ИГРОКИ</span></div>
    <div class="players" id="gamePlayers"></div><h3 style="margin-top:18px">Открытые карты команды</h3><div class="cards" id="revealedCards"></div>
    <h3 style="margin-top:20px">Мои карты</h3><p class="sub">Остальные участники не видят их, пока ты сам не раскроешь карту.</p><div class="cards" id="myCards"></div>
    <div class="actions"><button class="btn secondary" id="eventBtn">СЛУЧАЙНОЕ СОБЫТИЕ</button><button class="btn danger" id="voteStartBtn">НАЧАТЬ ГОЛОСОВАНИЕ</button><button class="btn secondary" id="resolveVoteBtn">ПОДВЕСТИ ИТОГИ</button></div>
@@ -66,5 +65,5 @@ main{max-width:1180px;margin:auto;padding:30px 20px 70px}.hero{text-align:center
  </div>
 </section>
 </main>
-<script src="/games/bunker-online.js?v=6" defer></script>
+<script src="/games/bunker-online.js?v=8" defer></script>
 </body></html>
