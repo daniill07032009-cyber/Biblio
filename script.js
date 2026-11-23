@@ -3517,6 +3517,7 @@ authForm.addEventListener("submit", async (event) => {
     }
     currentUser = result.user;
     await syncReaderLibraryState();
+    await refreshMyHeroes();
     updateAccountUI();
     closeDialog(authDialog);
     authForm.reset();
@@ -3543,6 +3544,7 @@ emailVerificationForm.addEventListener("submit", async (event) => {
     });
     currentUser = result.user;
     await syncReaderLibraryState();
+    await refreshMyHeroes();
     pendingVerificationEmail = "";
     closeDialog(emailVerificationDialog);
     updateAccountUI();
@@ -3766,6 +3768,7 @@ document.querySelector("#profile-form").addEventListener("submit", async (event)
     });
     currentUser = result.user;
     await syncReaderLibraryState();
+    await refreshMyHeroes();
     pendingAvatarData = null;
     form.elements.avatar_file.value = "";
     form.elements.current_password.value = "";
@@ -3896,6 +3899,108 @@ const HOURLY_PAGE_RELOAD_MS = 60 * 60 * 1000;
 window.setInterval(() => {
   window.location.reload();
 }, HOURLY_PAGE_RELOAD_MS);
+
+async function refreshMyHeroes() {
+  const section = document.querySelector("#my-heroes-section");
+  const list = document.querySelector("#my-heroes-list");
+  if (!section || !list) return;
+  if (!currentUser) {
+    section.hidden = true;
+    return;
+  }
+
+  section.hidden = false;
+  list.replaceChildren(createElement("p", "my-heroes-state", "Загружаем твоих героев…"));
+  const ownerId = String(currentUser.id);
+  try {
+    const result = await api("/api/my/games");
+    if (!currentUser || String(currentUser.id) !== ownerId) return;
+    const dndGames = (Array.isArray(result.games) ? result.games : [])
+      .filter((game) => game.catalog_game_slug === "dnd");
+    const details = await Promise.all(
+      dndGames.map(async (game) => {
+        try {
+          return await api("/api/games/" + encodeURIComponent(game.id));
+        } catch (error) {
+          console.warn("Не удалось загрузить кампанию для списка героев:", error);
+          return null;
+        }
+      }),
+    );
+    if (!currentUser || String(currentUser.id) !== ownerId) return;
+
+    const heroes = details.flatMap((detail) => {
+      const game = detail && detail.game;
+      if (!game) return [];
+      return (Array.isArray(game.heroes) ? game.heroes : [])
+        .filter((hero) => Number(hero.user_id) === Number(ownerId))
+        .map((hero) => Object.assign({}, hero, {
+          campaign_title: game.title || game.name || "D&D-кампания",
+        }));
+    });
+
+    list.replaceChildren();
+    if (!heroes.length) {
+      const empty = createElement("div", "my-heroes-empty");
+      empty.append(
+        createElement("span", "my-heroes-empty__symbol", "D20"),
+        createElement("h3", "", "Твоя первая история ещё впереди"),
+        createElement("p", "", "Создай или присоединись к D&D-кампании, чтобы создать героя. Все твои персонажи появятся здесь."),
+      );
+      const link = createElement("a", "button button--primary", "Перейти к D&D");
+      link.href = "/games/dnd";
+      empty.append(link);
+      list.append(empty);
+      return;
+    }
+
+    heroes.sort((first, second) =>
+      Number(second.level || 1) - Number(first.level || 1) ||
+      Number(second.xp || 0) - Number(first.xp || 0) ||
+      String(first.name || "").localeCompare(String(second.name || ""), "ru"),
+    );
+
+    heroes.forEach((hero) => {
+      const card = createElement("article", "my-hero-card");
+      const top = createElement("div", "my-hero-card__top");
+      const emblem = createElement("span", "my-hero-card__emblem", String(hero.name || "Г").trim().charAt(0).toUpperCase() || "Г");
+      const identity = createElement("div", "my-hero-card__identity");
+      identity.append(
+        createElement("h3", "", hero.name || "Безымянный герой"),
+        createElement("p", "", [hero.race, hero.class_name || hero.archetype].filter(Boolean).join(" · ") || "Персонаж D&D"),
+      );
+      top.append(emblem, identity);
+      const stats = createElement("div", "my-hero-card__stats");
+      [
+        ["Уровень", String(hero.level || 1)],
+        ["Опыт", Number(hero.xp || 0).toLocaleString("ru-RU") + " XP"],
+        ["Здоровье", Number(hero.hp || 0) + " / " + Number(hero.max_hp || hero.hp || 0)],
+      ].forEach(([label, value]) => {
+        const stat = createElement("div", "my-hero-card__stat");
+        stat.append(createElement("span", "", label), createElement("strong", "", value));
+        stats.append(stat);
+      });
+      const footer = createElement("div", "my-hero-card__footer");
+      footer.append(createElement("span", "my-hero-card__campaign", hero.campaign_title));
+      const open = createElement("button", "button button--secondary", "Открыть кампанию");
+      open.type = "button";
+      open.addEventListener("click", () => openGameRoom(hero.game_id));
+      footer.append(open);
+      card.append(top, stats, footer);
+      list.append(card);
+    });
+  } catch (error) {
+    list.replaceChildren();
+    const state = createElement("div", "my-heroes-state");
+    state.append(createElement("p", "", "Не удалось загрузить список героев."));
+    const retry = createElement("button", "button button--secondary", "Повторить");
+    retry.type = "button";
+    retry.addEventListener("click", refreshMyHeroes);
+    state.append(retry);
+    list.append(state);
+    console.warn("Не удалось обновить список героев:", error);
+  }
+}
 
 async function initialize() {
   resetBookForm();
