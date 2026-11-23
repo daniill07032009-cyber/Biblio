@@ -1545,6 +1545,71 @@ class BiblioServerTests(unittest.TestCase):
         with self.assertRaises(server.APIError):
             server.game_combat_transition("start", {"monsters": ["Гоблин | nope | 7"]}, [])
 
+    def test_reader_library_state_is_private_and_persists_for_account(self):
+        user = self.register("reader-state@example.com")
+        payload = {
+            "favorites": ["12", "34", "12"],
+            "favorites_updated_at": "2026-11-23T10:00:00Z",
+            "reading_state": {
+                "12": {"chapter": 3, "status": "reading", "updatedAt": "2026-11-23T10:00:00Z"},
+                "34": {"chapter": 7, "status": "completed", "updatedAt": "2026-11-23T11:00:00Z"},
+            },
+        }
+        status, result = self.request("PUT", "/api/reader-library", payload)
+        self.assertEqual(status, 200)
+        status, result = self.request("GET", "/api/reader-library")
+        self.assertEqual(status, 200)
+        self.assertEqual(result["favorites"], ["12", "34"])
+        self.assertEqual(result["favorites_updated_at"], payload["favorites_updated_at"])
+        self.assertEqual(result["reading_state"], payload["reading_state"])
+
+        status, result = self.request(
+            "PUT", "/api/reader-library",
+            {"favorites": ["12"], "reading_state": {"12": {"chapter": -1, "status": "reading"}}},
+        )
+        self.assertEqual(status, 400)
+
+        self.request("POST", "/api/logout", {})
+        self.register("another-reader@example.com")
+        status, result = self.request("GET", "/api/reader-library")
+        self.assertEqual(status, 200)
+        self.assertEqual(result, {"favorites": [], "favorites_updated_at": "", "reading_state": {}})
+
+        self.request("POST", "/api/logout", {})
+        status, result = self.request("GET", "/api/reader-library")
+        self.assertEqual(status, 401)
+
+    def test_mongodb_reader_library_state_is_account_scoped(self):
+        uri = "mongodb://reader-library-test/"
+        mongo_client = mongomock.MongoClient()
+        original_uri = server.MONGODB_URI
+        original_client = self.client
+        server.MONGODB_URI = uri
+        server._MONGO_CLIENTS[uri] = mongo_client
+        try:
+            server.initialize_db()
+            self.register("mongo-reader-state@example.com")
+            payload = {
+                "favorites": ["5"],
+                "favorites_updated_at": "2026-11-23T12:00:00Z",
+                "reading_state": {
+                    "5": {"chapter": 2, "status": "reading", "updatedAt": "2026-11-23T12:00:00Z"}
+                },
+            }
+            status, result = self.request("PUT", "/api/reader-library", payload)
+            self.assertEqual(status, 200)
+            status, result = self.request("GET", "/api/reader-library")
+            self.assertEqual(status, 200)
+            self.assertEqual(result, payload)
+            db = server.get_mongo_database()
+            self.assertEqual(db.reader_library_state.count_documents({}), 1)
+            self.assertEqual(db.reader_library_state.count_documents({"user_id": -1}), 0)
+        finally:
+            self.client = original_client
+            server.MONGODB_URI = original_uri
+            server._MONGO_CLIENTS.pop(uri, None)
+            mongo_client.close()
+
     def test_static_site_is_served_by_the_application_server(self):
         request = Request(self.base_url + "/", method="GET")
         with self.client.open(request) as response:

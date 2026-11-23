@@ -247,9 +247,12 @@ let searchableTextById = new Map();
 const bookDetailRequests = new Map();
 let activeDetailsBook = null;
 let favoriteIds = new Set(readStoredArray("biblio-favorites"));
+let favoritesUpdatedAt = localStorage.getItem("biblio-favorites-updated-at") || "";
+let readerLibraryOwnerId = localStorage.getItem("biblio-reader-library-owner") || "";
 let readingLibraryState = readReadingLibraryState();
 let searchHistory = readStoredArray("biblio-search-history");
 let currentUser = null;
+let readerLibrarySyncTimer = 0;
 let pendingAvatarData = null;
 let editingBookId = null;
 let authMode = "login";
@@ -656,9 +659,88 @@ function saveSearchQuery() {
   renderSearchSuggestions(query);
 }
 
+function scheduleReaderLibrarySync() {
+  if (!currentUser) return;
+  window.clearTimeout(readerLibrarySyncTimer);
+  readerLibrarySyncTimer = window.setTimeout(async () => {
+    try {
+      await api("/api/reader-library", {
+        method: "PUT",
+        body: JSON.stringify({
+          favorites: [...favoriteIds],
+          favorites_updated_at: favoritesUpdatedAt,
+          reading_state: readingLibraryState,
+        }),
+      });
+    } catch (error) {
+      console.warn("Не удалось синхронизировать читательскую библиотеку:", error);
+    }
+  }, 500);
+}
+
+async function syncReaderLibraryState() {
+  if (!currentUser) return;
+  try {
+    const remote = await api("/api/reader-library");
+    const ownerId = String(currentUser.id);
+    const sameOwner = readerLibraryOwnerId === ownerId;
+    const migrateLegacyState = !readerLibraryOwnerId;
+    const localFavorites = sameOwner || migrateLegacyState ? [...favoriteIds] : [];
+    const localReading = sameOwner || migrateLegacyState ? readingLibraryState : {};
+    const localFavoritesUpdatedAt = sameOwner || migrateLegacyState ? favoritesUpdatedAt : "";
+    const remoteFavorites = Array.isArray(remote.favorites) ? remote.favorites.map(String) : [];
+    let mergedFavorites;
+    if (localFavoritesUpdatedAt && remote.favorites_updated_at) {
+      mergedFavorites = new Set(
+        localFavoritesUpdatedAt >= remote.favorites_updated_at ? localFavorites : remoteFavorites,
+      );
+    } else if (localFavoritesUpdatedAt) {
+      mergedFavorites = new Set(localFavorites);
+    } else if (remote.favorites_updated_at) {
+      mergedFavorites = new Set(remoteFavorites);
+    } else {
+      // One-time migration for browsers with legacy localStorage-only favorites.
+      mergedFavorites = new Set([...localFavorites, ...remoteFavorites]);
+    }
+    favoritesUpdatedAt = [localFavoritesUpdatedAt, remote.favorites_updated_at || ""]
+      .filter(Boolean)
+      .sort()
+      .at(-1) || new Date().toISOString();
+    const mergedReading = { ...(remote.reading_state || {}) };
+    for (const [bookId, localEntry] of Object.entries(localReading)) {
+      const remoteEntry = mergedReading[bookId];
+      if (
+        !remoteEntry ||
+        String(localEntry.updatedAt || "") >= String(remoteEntry.updatedAt || "")
+      ) {
+        mergedReading[bookId] = localEntry;
+      }
+    }
+    favoriteIds = mergedFavorites;
+    readingLibraryState = mergedReading;
+    readerLibraryOwnerId = ownerId;
+    localStorage.setItem("biblio-reader-library-owner", readerLibraryOwnerId);
+    localStorage.setItem("biblio-favorites", JSON.stringify([...favoriteIds]));
+    localStorage.setItem("biblio-favorites-updated-at", favoritesUpdatedAt);
+    localStorage.setItem("biblio-reading-state", JSON.stringify(readingLibraryState));
+    const progress = Object.fromEntries(
+      Object.entries(readingLibraryState).map(([bookId, entry]) => [bookId, entry.chapter]),
+    );
+    localStorage.setItem("biblio-reading-progress", JSON.stringify(progress));
+    updateFavoriteButtons();
+    renderReadingLibrary();
+    scheduleReaderLibrarySync();
+  } catch (error) {
+    console.warn("Не удалось загрузить читательскую библиотеку аккаунта:", error);
+  }
+}
+
 function persistFavorites() {
   try {
+    favoritesUpdatedAt = new Date().toISOString();
     localStorage.setItem("biblio-favorites", JSON.stringify([...favoriteIds]));
+    localStorage.setItem("biblio-favorites-updated-at", favoritesUpdatedAt);
+    scheduleReaderLibrarySync();
   } catch (error) {
     console.warn("Не удалось сохранить избранное:", error);
   }
@@ -838,6 +920,7 @@ function persistReadingLibraryState(progress) {
   try {
     localStorage.setItem("biblio-reading-progress", JSON.stringify(progress));
     localStorage.setItem("biblio-reading-state", JSON.stringify(readingLibraryState));
+    scheduleReaderLibrarySync();
   } catch (error) {
     console.warn("Не удалось сохранить прогресс чтения:", error);
   }
@@ -3414,6 +3497,7 @@ authForm.addEventListener("submit", async (event) => {
       return;
     }
     currentUser = result.user;
+    await syncReaderLibraryState();
     updateAccountUI();
     closeDialog(authDialog);
     authForm.reset();
@@ -3439,6 +3523,7 @@ emailVerificationForm.addEventListener("submit", async (event) => {
       body: JSON.stringify({ email: pendingVerificationEmail, code }),
     });
     currentUser = result.user;
+    await syncReaderLibraryState();
     pendingVerificationEmail = "";
     closeDialog(emailVerificationDialog);
     updateAccountUI();
@@ -3659,6 +3744,7 @@ document.querySelector("#profile-form").addEventListener("submit", async (event)
       }),
     });
     currentUser = result.user;
+    await syncReaderLibraryState();
     pendingAvatarData = null;
     form.elements.avatar_file.value = "";
     form.elements.current_password.value = "";
@@ -3802,6 +3888,7 @@ async function initialize() {
   try {
     const result = await api("/api/me");
     currentUser = result.user;
+    await syncReaderLibraryState();
     updateAccountUI();
     if (["home", "catalog", "authors"].includes(page)) {
       await refreshPublishedBooks();
