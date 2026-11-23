@@ -24,6 +24,8 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from pymongo import ASCENDING, DESCENDING, MongoClient, ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
+from bunker_online_api import dispatch_bunker_api
+
 
 ROOT = Path(__file__).resolve().parent
 DATABASE_PATH = Path(os.environ.get("BIBLIO_DB_PATH", ROOT / "data" / "biblio.sqlite3"))
@@ -1166,6 +1168,8 @@ class BiblioHandler(BaseHTTPRequestHandler):
 
     def dispatch_mongo_api(self, db, method, path, query=None):
         query = query or {}
+        if path.startswith("/api/bunker/"):
+            return dispatch_bunker_api(self, db, method, path, APIError, bool(MONGODB_URI))
         if method == "GET" and path == "/api/me":
             user = self.current_user_mongo(db)
             return {"user": public_user(user) if user else None}, HTTPStatus.OK, []
