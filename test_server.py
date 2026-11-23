@@ -1613,6 +1613,9 @@ class BiblioServerTests(unittest.TestCase):
         self.assertNotIn("is_bot", script)
         self.assertNotIn("botCount", script)
 
+    def test_application_entrypoint_is_defined(self):
+        self.assertTrue(callable(server.main))
+
 class BunkerPresenceTests(unittest.TestCase):
     def test_presence_write_is_throttled_to_ten_seconds(self):
         self.assertFalse(server.bunker_presence_refresh_due({"last_seen": 100}, 109))
