@@ -4019,7 +4019,6 @@ async function initialize() {
     }
     if (page === "games") {
       await refreshGameCatalog();
-      await refreshMyHeroes();
       const gamePageMatch = location.pathname.match(/^\/games\/([a-z0-9-]+)(?:\/play)?\/?$/);
       if (gamePageMatch) await openCatalogGame(decodeURIComponent(gamePageMatch[1]));
     }
