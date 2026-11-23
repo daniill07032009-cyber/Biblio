@@ -11,7 +11,7 @@ assert.doesNotMatch(functionBody, /\bpersistFavorites\s*\(/, "persistFavorites m
 let savedKey = "";
 let savedValue = "";
 const favoriteIds = new Set(["book-12", "book-34"]);
-vm.runInNewContext(match[0], {
+vm.runInNewContext(`${match[0]}\\npersistFavorites();`, {
   favoriteIds,
   localStorage: {
     setItem(key, value) {
