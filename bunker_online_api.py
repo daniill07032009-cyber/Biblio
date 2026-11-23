@@ -137,6 +137,10 @@ def bunker_make_cards(difficulty):
         })
     return cards
 
+def db_room_value(room, field):
+    return room.get("_original_" + field, room.get(field))
+
+
 def dispatch_bunker_api(handler, db, method, path, api_error, mongodb_enabled):
     if not mongodb_enabled:
         raise api_error(HTTPStatus.SERVICE_UNAVAILABLE, "Для сетевой игры требуется подключённая база данных Biblio.")
@@ -169,6 +173,8 @@ def dispatch_bunker_api(handler, db, method, path, api_error, mongodb_enabled):
     room = db.bunker_rooms.find_one({"code": code})
     if room is None:
         raise api_error(HTTPStatus.NOT_FOUND, "Комната не найдена. Проверь код приглашения.")
+    for field in ("members", "players", "revealed_cards", "chat", "survivors", "voting", "private_cards"):
+        room["_original_" + field] = room.get(field)
     room["members"] = human_members(room.get("members", []))
     human_ids = {m["user_id"] for m in room["members"]}
     room["players"] = [p for p in room.get("players", []) if belongs_to_human_id(p, human_ids)]
@@ -177,6 +183,14 @@ def dispatch_bunker_api(handler, db, method, path, api_error, mongodb_enabled):
     room["survivors"] = [p for p in room.get("survivors", []) if belongs_to_human_id(p, human_ids)]
     room["voting"] = human_voting(room.get("voting"), human_ids)
     room["private_cards"] = {key: value for key, value in (room.get("private_cards") or {}).items() if key in {str(uid) for uid in human_ids}}
+    clean_fields = ("members", "players", "revealed_cards", "chat", "survivors", "voting", "private_cards")
+    changed_fields = {
+        field: room.get(field)
+        for field in clean_fields
+        if room.get(field) != room.get("_original_" + field)
+    }
+    if changed_fields:
+        db.bunker_rooms.update_one({"_id": room["_id"]}, {"$set": changed_fields})
     member = next((m for m in room.get("members", []) if int(m["user_id"]) == user_id), None)
     action = parts[4] if len(parts) > 4 else ""
     if method == "POST" and action == "join":
