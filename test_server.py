@@ -1180,5 +1180,19 @@ class BiblioServerTests(unittest.TestCase):
             error.exception.close()
 
 
+    def test_bunker_online_play_route_serves_real_player_client(self):
+        with self.client.open(self.base_url + "/games/bunker-online/play") as response:
+            self.assertEqual(response.status, 200)
+            page = response.read().decode("utf-8")
+        self.assertIn("BunkerOnline", page)
+        self.assertIn("/games/bunker-online.js", page)
+        self.assertIn("только реальные аккаунты Biblio", page.lower())
+        self.assertNotIn('id="botCount"', page)
+        with self.client.open(self.base_url + "/games/bunker-online.js") as response:
+            script = response.read().decode("utf-8")
+        self.assertIn("room.my_cards.map", script)
+        self.assertNotIn("is_bot", script)
+        self.assertNotIn("botCount", script)
+
 if __name__ == "__main__":
     unittest.main()
