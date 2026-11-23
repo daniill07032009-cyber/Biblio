@@ -1600,17 +1600,6 @@ class BiblioServerTests(unittest.TestCase):
             error.exception.close()
 
  
-class BunkerPresenceTests(unittest.TestCase):
-    def test_presence_write_is_throttled_to_ten_seconds(self):
-        self.assertFalse(server.bunker_presence_refresh_due({"last_seen": 100}, 109))
-        self.assertTrue(server.bunker_presence_refresh_due({"last_seen": 100}, 110))
-
-    def test_missing_presence_timestamp_is_refreshed(self):
-        self.assertTrue(server.bunker_presence_refresh_due({}, 110))
-
-
-
-
     def test_bunker_online_play_route_serves_human_only_client(self):
         with self.client.open(self.base_url + "/games/bunker-online/play") as response:
             self.assertEqual(response.status, 200)
@@ -1623,6 +1612,18 @@ class BunkerPresenceTests(unittest.TestCase):
         self.assertIn("room.my_cards.map", script)
         self.assertNotIn("is_bot", script)
         self.assertNotIn("botCount", script)
+
+class BunkerPresenceTests(unittest.TestCase):
+    def test_presence_write_is_throttled_to_ten_seconds(self):
+        self.assertFalse(server.bunker_presence_refresh_due({"last_seen": 100}, 109))
+        self.assertTrue(server.bunker_presence_refresh_due({"last_seen": 100}, 110))
+
+    def test_missing_presence_timestamp_is_refreshed(self):
+        self.assertTrue(server.bunker_presence_refresh_due({}, 110))
+
+
+
+
 
 if __name__ == "__main__":
     unittest.main()
