@@ -657,7 +657,11 @@ function saveSearchQuery() {
 }
 
 function persistFavorites() {
-  persistFavorites();
+  try {
+    localStorage.setItem("biblio-favorites", JSON.stringify([...favoriteIds]));
+  } catch (error) {
+    console.warn("Не удалось сохранить избранное:", error);
+  }
 }
 
 function createElement(tag, className, text) {
