@@ -88,6 +88,43 @@ class BunkerOnlineAPITests(unittest.TestCase):
         self.assertTrue(all("is_bot" not in member for member in player_room["room"]["members"]))
         self.assertTrue(all("is_bot" not in player for player in player_room["room"]["players"]))
 
+    def test_legacy_bot_members_are_hidden_from_existing_rooms(self):
+        code = "LEGACY"
+        self.db.bunker_rooms.insert_one({
+            "code": code, "host_id": 101, "status": "started", "max_players": 4,
+            "members": [
+                {"user_id": 101, "name": "Ведущий", "role": "host", "ready": True},
+                {"user_id": -1, "name": "Старый бот", "role": "bot", "is_bot": True},
+            ],
+            "players": [
+                {"user_id": 101, "name": "Ведущий", "alive": True},
+                {"user_id": -1, "name": "Старый бот", "alive": True, "is_bot": True},
+            ],
+            "revealed_cards": [
+                {"user_id": 101, "name": "Ведущий", "category": "age", "value": "30 лет"},
+                {"user_id": -1, "name": "Старый бот", "category": "age", "value": "40 лет", "is_bot": True},
+            ],
+            "chat": [
+                {"name": "Ведущий", "text": "Привет"},
+                {"name": "Старый бот", "text": "Автоматическое сообщение", "is_bot": True},
+            ],
+            "voting": {"open": True, "votes": {"101": -1, "-1": 101}, "tied_targets": [-1]},
+            "private_cards": {"101": [{"category": "age", "label": "Возраст", "value": "30 лет"}],
+                              "-1": [{"category": "age", "label": "Возраст", "value": "40 лет"}]},
+            "capacity": 1, "round": 1,
+        })
+        result, status, _ = self.call_api(self.host, "GET", f"/api/bunker/rooms/{code}")
+        self.assertEqual(HTTPStatus.OK, status)
+        room = result["room"]
+        self.assertEqual([101], [member["user_id"] for member in room["members"]])
+        self.assertEqual([101], [player["user_id"] for player in room["players"]])
+        self.assertEqual([101], [card["user_id"] for card in room["revealed_cards"]])
+        self.assertEqual(["Привет"], [message["text"] for message in room["chat"]])
+        self.assertEqual({}, room["voting"]["votes"])
+        self.assertEqual([], room["voting"]["tied_targets"])
+        self.assertEqual(1, len(room["my_cards"]))
+        self.assertNotIn("private_cards", room)
+
     def test_revealing_a_card_publishes_only_that_card(self):
         code = self.create_two_player_room()
         self.call_api(
