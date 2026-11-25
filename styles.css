@@ -497,8 +497,7 @@ html[data-theme="dark"] .verification-form input { background: #20231f; color: v
 .reader-progress progress { width: 100%; height: 4px; overflow: hidden; border: 0; border-radius: 4px; background: #e8e5de; accent-color: var(--green); }
 .reader-progress progress::-webkit-progress-bar { border-radius: 4px; background: #e8e5de; }
 .reader-progress progress::-webkit-progress-value { border-radius: 4px; background: var(--green); }
-.reader-progress progress::-moz-progress-bar { border-radius: 4px; background: var(--green); }
-.reader-chapter-list { min-height: 220px; padding: 12px 0 20px; scroll-margin-top: 16px; }
+.reader-progress progress::-moz-progress-bar { border-radius: 4px; background: var(--green); }.reader-chapter-list { min-height: 220px; padding: 12px 0 20px; scroll-margin-top: 16px; }
 .reader-chapter { padding: 12px 0; border-top: 1px solid var(--line); }
 .reader-chapter h3 { margin: 0 0 15px; font: 500 24px var(--serif); }
 .reader-chapter p { margin: 0; color: var(--ink); font-size: var(--reader-font-size, 19px); line-height: var(--reader-line-height, 1.8); white-space: pre-wrap; }
@@ -997,8 +996,7 @@ button:disabled { cursor: not-allowed; }
 }
 .settings-card { padding: 28px; }
 .settings-card .dialog-form > label,
-.settings-form label,
-.book-fields label { font-size: 11px; }
+.settings-form label,.book-fields label { font-size: 11px; }
 .settings-card select,
 .settings-card input:not([type="checkbox"]):not([type="range"]),
 .settings-form input,
@@ -1497,8 +1495,7 @@ html[data-reader-theme="dark"] .reader-dialog { --surface: #20231f; }
 .games-welcome__die span { font:700 20px var(--serif); }
 .games-welcome__die strong { font:700 54px/.95 var(--serif); }
 .games-welcome__die small { margin-top:8px; font-size:7px; font-weight:800; letter-spacing:.2em; }
-.game-catalog-layout .games-panel { padding:clamp(18px,3vw,30px); border-radius:20px; }
-.game-catalog-layout .games-panel__header { margin-bottom:22px; }
+.game-catalog-layout .games-panel { padding:clamp(18px,3vw,30px); border-radius:20px; }.game-catalog-layout .games-panel__header { margin-bottom:22px; }
 .game-catalog-layout .games-panel__header h2 { font-size:26px; }
 .game-catalog-list { grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:20px; }
 .game-catalog-card { gap:12px; }
@@ -1997,8 +1994,7 @@ body[data-game-site="true"] #game-room-create-form.game-room-create {
   box-shadow: 0 20px 50px rgba(0,0,0,.2);
 }
 .game-room-create__heading { display:grid; gap:7px; }
-.game-room-create__eyebrow { color:#d7ad69; font-size:9px; font-weight:800; letter-spacing:2.4px; }
-body[data-game-site="true"] .game-room-create__heading h4 {
+.game-room-create__eyebrow { color:#d7ad69; font-size:9px; font-weight:800; letter-spacing:2.4px; }body[data-game-site="true"] .game-room-create__heading h4 {
   margin:0;
   color:#f4ecdf;
   font:600 clamp(24px,3vw,32px)/1.15 Georgia,serif;
@@ -2145,3 +2141,185 @@ body[data-game-site="true"] .game-detail-panel .game-room-tabs > button {
   color: #c6e27a;
 }
 .game-catalog-card__cover[data-theme="bunker"] .game-catalog-card__cover-title { color: #e8eee7; }
+
+/* Mobile-first finishing pass: consistent spacing, touch targets and no horizontal overflow. */
+html, body { max-width: 100%; overflow-x: clip; }
+img, video, canvas, svg { max-width: 100%; }
+button, a, select, input, textarea { touch-action: manipulation; }
+:where(button, a, select, input[type="checkbox"], input[type="radio"]) { scroll-margin-block: 90px; }
+
+@media (max-width: 760px) {
+  .site-header { gap: 8px; }
+  .header-actions { flex: 0 0 auto; }
+  .reading-settings-button, .site-settings-button, .header-actions > .cart-button { display: none !important; }
+  .main-nav { max-height: min(72dvh, 560px); overflow-y: auto; overscroll-behavior: contain; }
+  .main-nav a { min-height: 44px; display: flex; align-items: center; }
+  .search-box.is-open { z-index: 12; }
+  .announcement { min-height: 34px; text-align: center; line-height: 1.35; }
+  .hero__buttons { flex-wrap: wrap; }
+  .benefits { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .section-wrap, .benefits, .club-banner, .newsletter { width: auto; }
+  .section-heading { flex-wrap: wrap; }
+  .section-heading__actions { justify-content: flex-start; }
+  .catalog-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .catalog-toolbar label { min-width: 0; }
+  .catalog-toolbar select { min-width: 0; width: 100%; }
+  .book-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .book-card { min-width: 0; }
+  .book-cover { min-width: 0; }
+  .book-info > div:first-child { gap: 5px; }
+  .book-category, .book-rating { overflow-wrap: anywhere; }
+  .book-buy { gap: 8px; }
+  .book-buy > strong { min-width: 0; }
+  .book-details-button, .book-open-button { min-height: 40px; }
+  .club-banner { min-height: 470px; }
+  .author-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .author-card { min-width: 0; }
+  .author-card strong, .author-card small { overflow-wrap: anywhere; }
+  .newsletter-form { grid-template-columns: minmax(0, 1fr) auto; }
+  .newsletter-form input { min-width: 0; }
+  .site-footer { gap: 12px; }
+  .settings-page, .reading-library, .creator-section, .games-page { min-width: 0; }
+  .settings-grid, .account-settings__forms, .book-fields { grid-template-columns: minmax(0, 1fr); }
+  .settings-card, .book-editor, .games-panel, .game-detail-panel { min-width: 0; }
+  .settings-card--account { grid-column: auto; }
+  .settings-card--account > * { min-width: 0; }
+  .settings-form, .dialog-form, .games-form { min-width: 0; }
+  .settings-form input, .settings-form textarea, .settings-form select,
+  .book-fields input, .book-fields textarea, .book-fields select,
+  .games-form input, .games-form textarea, .games-form select { max-width: 100%; }
+  .account-settings__forms { gap: 20px; }
+  .my-book-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .my-book-row__title { min-width: 0; }
+  .my-book-row__title strong { overflow-wrap: anywhere; white-space: normal; }
+  .editor-actions { display: grid; grid-template-columns: 1fr; }
+  .editor-actions .button { width: 100%; }
+  .library-shelf-nav { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .library-shelf-nav a { justify-content: center; min-width: 0; padding-inline: 7px; font-size: 10px; }
+  .library-book__actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .library-book__actions .button { width: 100%; }
+  .reader-dialog { overscroll-behavior: contain; }
+  .reader-navigation { gap: 6px; }
+  .reader-navigation .button { min-width: 0; flex: 1 1 0; white-space: normal; }
+  .reader-navigation > span { flex: 0 0 auto; }
+  .book-details-layout { min-width: 0; }
+  .book-details-copy { min-width: 0; }
+  .dialog, .auth-dialog, .book-details-dialog, .profile-dialog, .chapter-editor-dialog {
+    max-width: calc(100vw - 24px);
+    max-height: calc(100dvh - 24px);
+    overscroll-behavior: contain;
+  }
+  .games-layout { grid-template-columns: minmax(0, 1fr); }
+  .games-panel { padding: 16px; }
+  .games-panel__header, .game-detail__header { align-items: flex-start; flex-wrap: wrap; }
+  .game-catalog-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .game-catalog-card__cover { min-width: 0; }
+  .game-catalog-room { align-items: flex-start; }
+  .game-room-card__top, .game-card__header { flex-wrap: wrap; }
+  .game-room-card__actions, .game-card__actions, .game-detail__actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .game-room-card__actions .button, .game-card__actions .button, .game-detail__actions .button { width: 100%; min-width: 0; }
+  .game-access-code { align-items: stretch; }
+  .game-access-code code { max-width: 100%; overflow-wrap: anywhere; }
+  .game-spellbook__slots { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .critical-dnd { max-width: 100%; }
+  .critical-dnd__content, .critical-dnd__top { min-width: 0; }
+  .game-page__hero { min-width: 0; }
+}
+
+@media (max-width: 480px) {
+  .site-header { padding-inline: 10px; }
+  .brand { gap: 5px; font-size: 20px; }
+  .brand__mark { width: 27px; height: 27px; }
+  .header-actions { gap: 1px; }
+  .search-box, .icon-button { width: 34px; height: 34px; }
+  .account-button { min-height: 34px; padding-inline: 9px; }
+  .menu-toggle { width: 35px; height: 35px; }
+  .hero__copy { padding: 39px 18px 24px; }
+  .hero h1 { font-size: clamp(39px, 11vw, 52px); }
+  .hero-art { min-height: 285px; }
+  .hero-book--back { left: calc(50% - 124px); width: 143px; height: 218px; }
+  .hero-book--front { left: calc(50% - 4px); width: 151px; height: 229px; }
+  .hero-sticker { right: 5%; transform: scale(.85) rotate(10deg); }
+  .benefits, .section-wrap, .club-banner, .newsletter { margin-inline: 12px; }
+  .benefits { gap: 7px; }
+  .benefit { min-width: 0; padding: 8px 5px; }
+  .benefit strong { font-size: 9px; line-height: 1.35; }
+  .benefit small { font-size: 7px; }
+  .section-heading h2, .newsletter h2 { font-size: 26px; }
+  .section-heading--compact h2 { font-size: 24px; }
+  .section-heading__actions { gap: 10px; }
+  .genre-chip { min-height: 38px; padding-inline: 12px; }
+  .catalog-toolbar { gap: 8px; padding: 9px; }
+  .catalog-toolbar select { height: 40px; padding-inline: 7px; font-size: 10px; }
+  .book-grid { gap: 14px 8px; }
+  .book-card { padding: 4px 4px 8px; }
+  .book-cover { height: clamp(174px, 58vw, 245px); }
+  .cover-title, .cover--orbit .cover-title { font-size: clamp(18px, 5.6vw, 24px); }
+  .cover--train .cover-title { font-size: clamp(17px, 5vw, 22px); }
+  .book-info h3 { font-size: 12px; line-height: 1.35; }
+  .book-info p { font-size: 9px; }
+  .book-details-button { padding-inline: 7px; font-size: 8px; }
+  .club-banner { min-height: 440px; }
+  .club-banner__copy { padding-inline: 18px; }
+  .author-list { gap: 7px; }
+  .author-card { padding: 8px 6px; }
+  .author-avatar { width: 30px; height: 30px; }
+  .author-card strong { font-size: 8px; }
+  .author-card small { font-size: 7px; }
+  .library-shelf-nav { grid-template-columns: 1fr; }
+  .library-shelf-nav a { justify-content: space-between; padding-inline: 13px; }
+  .library-book__actions { grid-template-columns: 1fr; }
+  .my-book-row { grid-template-columns: minmax(0, 1fr); }
+  .my-book-row__title { grid-column: auto; }
+  .my-book-row .book-status { justify-self: start; }
+  .my-book-row .row-button { min-height: 38px; }
+  .book-editor { padding: 13px; }
+  .book-editor__heading { align-items: flex-start; flex-direction: column; }
+  .settings-page__heading h1, .reading-library > .section-heading h1 { font-size: 29px; }
+  .settings-card { padding: 16px; }
+  .settings-card h2 { font-size: 22px; }
+  .profile-summary { align-items: flex-start; flex-direction: column; }
+  .profile-summary .profile-avatar { width: 64px; height: 64px; }
+  .games-page__header h1 { font-size: 34px; }
+  .games-welcome { gap: 8px; padding: 18px; }
+  .games-welcome__copy { min-width: 0; }
+  .games-welcome h2 { font-size: 25px; }
+  .games-welcome p { font-size: 11px; }
+  .games-welcome__die { display: none; }
+  .game-catalog-list { gap: 11px 8px; }
+  .game-catalog-card__cover { min-height: 176px; padding: 13px; }
+  .game-catalog-card__cover-mark { width: 58px; height: 58px; font-size: 17px; }
+  .game-catalog-card__cover-title { font-size: 17px; }
+  .game-catalog-card__title { font-size: 15px; }
+  .game-room-card, .game-card { padding: 13px; }
+  .game-room-card__actions, .game-card__actions, .game-detail__actions { grid-template-columns: 1fr; }
+  .game-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .game-spellbook__slots { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .game-combat__attack-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .critical-dnd__content { padding: 10px; }
+  .critical-dnd__top { padding-inline: 10px; }
+  .critical-dnd__crumb { font-size: 9px; }
+  .critical-dnd__hero h1 { font-size: 30px; }
+  .critical-dnd__actions { display: grid; grid-template-columns: 1fr; width: 100%; }
+  .critical-dnd__actions .button { width: 100%; }
+  .critical-dnd__nav button { min-width: 0; font-size: 7px; }
+  .critical-dnd__nav-icon { font-size: 14px; }
+  .game-page__hero { grid-template-columns: minmax(0, 1fr) 56px; padding: 18px; }
+  .game-page__hero-art { min-width: 0; }
+  .game-page__die { width: 54px; height: 62px; }
+  .toast { right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); left: 12px; text-align: center; }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .button, .account-button, .catalog-reset, .genre-chip, .book-details-button,
+  .row-button, .menu-toggle, .icon-button, .catalog-pagination button,
+  .game-room-card button, .game-card button, .game-detail-panel button {
+    min-height: 42px;
+  }
+  .book-cover, .author-card, .library-book, .game-catalog-card__cover { transition: none; }
+}
+
+@supports (padding: max(0px)) {
+  body { padding-bottom: env(safe-area-inset-bottom); }
+  .site-footer { padding-bottom: max(16px, env(safe-area-inset-bottom)); }
+}
