@@ -18,6 +18,9 @@
   function escapeHtml(value) {
     return String(value == null ? "" : value).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;");
   }
+  function prefersReducedMotion() {
+    return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  }
   function stop() { if (timer) window.clearInterval(timer); if (clockTimer) window.clearInterval(clockTimer); timer = 0; clockTimer = 0; clockState = null; }
   function panel(title) {
     var layout = $("#game-catalog-layout"), detail = $("#game-detail-panel"), target = $("#game-catalog-detail-panel");
@@ -200,7 +203,7 @@
   }
   function animateBoardChanges(previous, moveUci) {
     if (skipNextBoardAnimation) { skipNextBoardAnimation = false; return; }
-    if (!previous || !Object.keys(previous).length || !document.body.animate) return;
+    if (prefersReducedMotion() || !previous || !Object.keys(previous).length || !document.body.animate) return;
     var current = {}, usedFrom = {}, usedTo = {};
     document.querySelectorAll(".chess-square[data-chess-square]").forEach(function (square) {
       var piece = square.querySelector(".chess-square__piece");
@@ -261,7 +264,7 @@
     var source=document.querySelector('[data-chess-square="'+from+'"] .chess-square__piece');
     var destination=document.querySelector('[data-chess-square="'+to+'"] .chess-square__piece');
     var animation={finished:Promise.resolve(),cleanup:function(){}};
-    if(!source || !source.textContent.trim() || !destination) return animation;
+    if(prefersReducedMotion() || !source || !source.textContent.trim() || !destination) return animation;
     var a=source.getBoundingClientRect(), b=destination.getBoundingClientRect();
     if(!a.width || !a.height || !b.width || !b.height) return animation;
     var ghost=source.cloneNode(true);
