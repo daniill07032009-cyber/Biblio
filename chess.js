@@ -222,12 +222,38 @@
   function animateMoveImmediately(from,to) {
     var source=document.querySelector('[data-chess-square="'+from+'"] .chess-square__piece');
     var destination=document.querySelector('[data-chess-square="'+to+'"] .chess-square__piece');
-    if(!source || !source.textContent.trim() || !destination || !source.animate) return Promise.resolve();
-    var a=source.getBoundingClientRect(), b=destination.getBoundingClientRect(), ghost=source.cloneNode(true);
-    Object.assign(ghost.style,{position:"fixed",zIndex:"10000",pointerEvents:"none",left:a.left+"px",top:a.top+"px",width:a.width+"px",height:a.height+"px",margin:"0"});
+    var animation={finished:Promise.resolve(),cleanup:function(){}};
+    if(!source || !source.textContent.trim() || !destination) return animation;
+    var a=source.getBoundingClientRect(), b=destination.getBoundingClientRect();
+    if(!a.width || !a.height || !b.width || !b.height) return animation;
+    var ghost=source.cloneNode(true);
+    Object.assign(ghost.style,{
+      position:"fixed",zIndex:"10000",pointerEvents:"none",left:a.left+"px",top:a.top+"px",
+      width:a.width+"px",height:a.height+"px",margin:"0",display:"grid",placeItems:"center",
+      transform:"translate3d(0,0,0)",willChange:"transform"
+    });
     document.body.appendChild(ghost);
+    var oldVisibility=source.style.visibility;
     source.style.visibility="hidden";
-    return ghost.animate([{transform:"translate(0,0)"},{transform:"translate("+(b.left-a.left)+"px,"+(b.top-a.top)+"px)"}],{duration:220,easing:"cubic-bezier(.2,.75,.25,1)"}).finished.catch(function(){}).then(function(){ghost.remove();source.style.visibility="";});
+    animation.cleanup=function(){ghost.remove();source.style.visibility=oldVisibility;};
+    var dx=b.left-a.left, dy=b.top-a.top;
+    if(typeof ghost.animate==="function") {
+      animation.finished=ghost.animate(
+        [{transform:"translate3d(0,0,0)"},{transform:"translate3d("+dx+"px,"+dy+"px,0)"}],
+        {duration:260,easing:"cubic-bezier(.2,.75,.25,1)",fill:"forwards"}
+      ).finished.catch(function(){});
+    } else {
+      ghost.style.transition="transform 260ms cubic-bezier(.2,.75,.25,1)";
+      animation.finished=new Promise(function(resolve){
+        window.requestAnimationFrame(function(){
+          window.requestAnimationFrame(function(){
+            ghost.style.transform="translate3d("+dx+"px,"+dy+"px,0)";
+            window.setTimeout(resolve,280);
+          });
+        });
+      });
+    }
+    return animation;
   }
   function boardCells(fen) {
     var rows = String(fen || "").split(" ")[0].split("/"), cells = [];
@@ -392,12 +418,20 @@
     var code = currentCode, from = move.slice(0,2), to = move.slice(2,4);
     selected = "";
     movePending = true;
+    var animation = animateMoveImmediately(from,to);
+    var moveRequest = request("/api/chess/rooms/" + encodeURIComponent(code) + "/move", {
+      method:"POST", body:JSON.stringify({move:move})
+    });
     try {
-      await animateMoveImmediately(from,to);
-      await request("/api/chess/rooms/" + encodeURIComponent(code) + "/move", { method: "POST", body: JSON.stringify({ move: move }) });
-    } catch (error) { toast(error.message); }
-    finally { movePending = false; lastRoomSignature = ""; }
-    await refreshRoom(code, false);
+      await Promise.all([animation.finished,moveRequest]);
+    } catch (error) {
+      toast(error.message);
+    } finally {
+      animation.cleanup();
+      movePending = false;
+      lastRoomSignature = "";
+    }
+    await refreshRoom(code,false);
   }
   window.BiblioChess = { init: init, refresh: init, destroy: stop };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
