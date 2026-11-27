@@ -113,7 +113,8 @@ class ChessTwoPlayerIntegrationTests(unittest.TestCase):
             self.assertEqual(opponent_room["fen"], board.fen())
             self.assertTrue(actor_room["is_my_turn"])
             self.assertFalse(opponent_room["is_my_turn"])
-            self.assertEqual(actor_room["legal_moves"], opponent_room["legal_moves"] if False else actor_room["legal_moves"])
+            self.assertTrue(actor_room["legal_moves"])
+            self.assertEqual(opponent_room["legal_moves"], [])
 
             if ply < len(opening):
                 uci = opening[ply]
