@@ -17,7 +17,7 @@ TIME_CONTROLS = {"3+2": (180000, 2000), "5+0": (300000, 0), "10+0": (600000, 0),
 
 
 def _now():
-    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 def _user_name(db, user_id, mongodb_enabled):
@@ -93,6 +93,27 @@ def _game_result(board):
     if board.is_fivefold_repetition():
         return "Пятикратное повторение позиции. Ничья."
     return ""
+
+
+def _freeze_clock(room):
+    """Stop the active player's clock at the exact moment a game is ended."""
+    clock = room.get("clock") or {}
+    if room.get("status") != "active" or not clock.get("updated_at"):
+        return
+    try:
+        updated = datetime.fromisoformat(clock["updated_at"].replace("Z", "+00:00"))
+        elapsed = max(0, int((datetime.now(timezone.utc) - updated).total_seconds() * 1000))
+        board = chess.Board(room["fen"])
+        active_key = "white_ms" if board.turn == chess.WHITE else "black_ms"
+        clock[active_key] = max(0, int(clock.get(active_key, 0)) - elapsed)
+        clock["updated_at"] = _now()
+        room["clock"] = clock
+        if clock[active_key] <= 0:
+            winner = "чёрные" if board.turn == chess.WHITE else "белые"
+            room["status"] = "finished"
+            room["result"] = f"Время вышло. Победили {winner}."
+    except (TypeError, ValueError):
+        return
 
 
 def _public_room(room, user_id):
@@ -276,7 +297,7 @@ def dispatch_chess_api(handler, db, method, path, api_error, mongodb_enabled):
             room["clock"] = clock
         room.setdefault("moves", []).append({
             "uci": uci, "san": san, "by": user["id"],
-            "color": "white" if is_white else "black", "created_at": _now(), "fen_after": board.fen(), "fen_after": board.fen(),
+            "color": "white" if is_white else "black", "created_at": _now(), "fen_after": board.fen(),
         })
         room["result"] = _game_result(board)
         if room["result"]:
@@ -289,9 +310,11 @@ def dispatch_chess_api(handler, db, method, path, api_error, mongodb_enabled):
     if method == "POST" and action == "resign":
         if room["status"] != "active":
             _error(api_error, HTTPStatus.CONFLICT, "Сейчас нельзя сдаться.")
-        winner = "чёрные" if is_white else "белые"
-        room["status"] = "finished"
-        room["result"] = f"Сдача. Победили {winner}."
+        _freeze_clock(room)
+        if room["status"] != "finished":
+            winner = "чёрные" if is_white else "белые"
+            room["status"] = "finished"
+            room["result"] = f"Сдача. Победили {winner}."
         room["draw_offer_by"] = None
         _save_room(db, room, mongodb_enabled)
         return {"room": _public_room(_room_dict(_get_room(db, code, mongodb_enabled), mongodb_enabled), user["id"])}, HTTPStatus.OK, []
@@ -306,8 +329,10 @@ def dispatch_chess_api(handler, db, method, path, api_error, mongodb_enabled):
         elif draw_action == "accept":
             if room.get("draw_offer_by") in (None, user["id"]):
                 _error(api_error, HTTPStatus.BAD_REQUEST, "Сначала соперник должен предложить ничью.")
-            room["status"] = "finished"
-            room["result"] = "Ничья по соглашению игроков."
+            _freeze_clock(room)
+            if room["status"] != "finished":
+                room["status"] = "finished"
+                room["result"] = "Ничья по соглашению игроков."
             room["draw_offer_by"] = None
         elif draw_action == "decline":
             if room.get("draw_offer_by") in (None, user["id"]):
@@ -336,9 +361,11 @@ def dispatch_chess_api(handler, db, method, path, api_error, mongodb_enabled):
                 db.execute("DELETE FROM chess_rooms WHERE code=? AND white_id=? AND status='waiting'", (code, user["id"]))
             return {"left": True, "deleted": True}, HTTPStatus.OK, []
         if room["status"] == "active":
-            winner = "чёрные" if is_white else "белые"
-            room["status"] = "finished"
-            room["result"] = f"Игрок покинул партию. Победили {winner}."
+            _freeze_clock(room)
+            if room["status"] != "finished":
+                winner = "чёрные" if is_white else "белые"
+                room["status"] = "finished"
+                room["result"] = f"Игрок покинул партию. Победили {winner}."
             _save_room(db, room, mongodb_enabled)
         return {"left": True}, HTTPStatus.OK, []
 
