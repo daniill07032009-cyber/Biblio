@@ -916,7 +916,7 @@ class BiblioServerTests(unittest.TestCase):
 
     def test_chess_room_requires_two_real_players_and_enforces_legal_turns(self):
         white = self.register("chess-white@example.com")
-        status, created = self.request("POST", "/api/chess/rooms", {"name": "Вечерняя партия"})
+        status, created = self.request("POST", "/api/chess/rooms", {"name": "Вечерняя партия", "time_control": "3+2"})
         self.assertEqual(status, 201)
         code = created["room"]["code"]
         self.assertEqual(created["room"]["status"], "waiting")
@@ -932,6 +932,9 @@ class BiblioServerTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(joined["room"]["status"], "active")
         self.assertEqual(joined["room"]["black"]["id"], black["id"])
+        self.assertEqual(joined["room"]["time_control"], "3+2")
+        self.assertEqual(joined["room"]["clock"]["white_ms"], 180000)
+        self.assertEqual(joined["room"]["clock"]["black_ms"], 180000)
         self.assertEqual(joined["room"]["legal_moves"], [])
 
         self.request("POST", "/api/logout", {})
@@ -942,6 +945,7 @@ class BiblioServerTests(unittest.TestCase):
         status, moved = self.request("POST", f"/api/chess/rooms/{code}/move", {"move": "e2e4"})
         self.assertEqual(status, 200)
         self.assertEqual(moved["room"]["moves"][-1]["san"], "e4")
+        self.assertIn("fen_after", moved["room"]["moves"][-1])
         self.assertEqual(moved["room"]["turn"], "black")
 
         status, _ = self.request("POST", f"/api/chess/rooms/{code}/move", {"move": "e2e5"})
