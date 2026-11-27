@@ -47,6 +47,7 @@ def _room_dict(room, mongodb_enabled):
 
 def _save_room(db, room, mongodb_enabled, expected_fen=None):
     now = _now()
+    room["updated_at"] = now
     if mongodb_enabled:
         query = {"code": room["code"]}
         if expected_fen is not None:
@@ -304,8 +305,9 @@ def dispatch_chess_api(handler, db, method, path, api_error, mongodb_enabled):
             room["status"] = "finished"
         if not _save_room(db, room, mongodb_enabled, expected_fen=old_fen):
             _error(api_error, HTTPStatus.CONFLICT, "Позиция уже обновилась. Доска будет синхронизирована.")
-        updated = _get_room(db, code, mongodb_enabled)
-        return {"room": _public_room(_room_dict(updated, mongodb_enabled), user["id"])}, HTTPStatus.OK, []
+        # The compare-and-swap write succeeded, so the in-memory room is
+        # already the authoritative committed snapshot. Avoid a second DB read.
+        return {"room": _public_room(room, user["id"])}, HTTPStatus.OK, []
 
     if method == "POST" and action == "resign":
         if room["status"] != "active":

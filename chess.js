@@ -34,7 +34,7 @@
       return;
     }
     if (!currentCode) return;
-    if (!timer) timer = window.setInterval(function () { refreshRoom(currentCode, false); }, 1100);
+    if (!timer) timer = window.setInterval(function () { refreshRoom(currentCode, false); }, 700);
     if (!clockTimer) clockTimer = window.setInterval(updateClocks, 250);
     refreshRoom(currentCode, false);
     updateClocks();
@@ -79,7 +79,7 @@
     if (/\/play\/?$/.test(location.pathname) && code) {
       currentCode = code.toUpperCase();
       await refreshRoom(currentCode, true);
-      timer = window.setInterval(function () { refreshRoom(currentCode, false); }, 1100);
+      timer = window.setInterval(function () { refreshRoom(currentCode, false); }, 700);
       clockTimer = window.setInterval(updateClocks, 250);
     } else {
       currentCode = "";
@@ -559,31 +559,33 @@
     selected = "";
     movePending = true;
     roomRequestVersion += 1;
+    refreshQueued = false;
     updateBoardSelection();
     var animation = animateMoveImmediately(from,to);
-    var moveRequest = request("/api/chess/rooms/" + encodeURIComponent(code) + "/move", {
-      method:"POST", body:JSON.stringify({move:move})
-    });
     var moveAccepted = false;
     try {
-      var outcomes = await Promise.all([
-        animation.finished.catch(function () { return null; }),
-        moveRequest.then(
-          function (result) { return { ok: true, result: result }; },
-          function (error) { return { ok: false, error: error }; }
-        )
-      ]);
-      if (!outcomes[1].ok) throw outcomes[1].error;
+      // The server response already contains the authoritative room snapshot.
+      // Render it immediately instead of waiting for the animation and issuing
+      // a second GET request after every successful move.
+      var result = await request("/api/chess/rooms/" + encodeURIComponent(code) + "/move", {
+        method:"POST", body:JSON.stringify({move:move})
+      });
       moveAccepted = true;
+      skipNextBoardAnimation = true;
+      lastRoomSignature = JSON.stringify(result.room);
+      renderRoom(result.room);
     } catch (error) {
+      animation.cleanup();
       toast(error.message);
     } finally {
-      animation.cleanup();
       movePending = false;
-      lastRoomSignature = "";
+      refreshQueued = false;
     }
-    skipNextBoardAnimation = moveAccepted;
-    await refreshRoom(code,false);
+    if (moveAccepted) {
+      animation.finished.then(animation.cleanup, animation.cleanup);
+    } else {
+      await refreshRoom(code,false);
+    }
   }
   window.BiblioChess = { init: init, refresh: init, destroy: stop };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
