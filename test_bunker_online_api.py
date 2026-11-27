@@ -154,6 +154,44 @@ class BunkerOnlineAPITests(unittest.TestCase):
         self.assertEqual(6, len(player_result["room"]["my_cards"]))
 
 
+    def test_leaving_started_game_removes_all_player_state(self):
+        code = "LEAVE01"
+        self.db.bunker_rooms.insert_one({
+            "code": code, "host_id": 101, "status": "started", "max_players": 4,
+            "members": [
+                {"user_id": 101, "name": "Ведущий", "role": "host", "ready": True},
+                {"user_id": 202, "name": "Игрок", "role": "player", "ready": True},
+            ],
+            "players": [
+                {"user_id": 101, "name": "Ведущий", "alive": True},
+                {"user_id": 202, "name": "Игрок", "alive": True},
+            ],
+            "revealed_cards": [
+                {"user_id": 202, "name": "Игрок", "category": "age", "value": "30 лет"},
+            ],
+            "survivors": [{"user_id": 202, "name": "Игрок", "alive": True}],
+            "private_cards": {
+                "101": [{"category": "age", "value": "40 лет"}],
+                "202": [{"category": "age", "value": "30 лет"}],
+            },
+            "voting": {"open": True, "votes": {"101": 202, "202": 101}, "tied_targets": [202]},
+        })
+
+        result, status, _ = self.call_api(
+            self.player, "POST", f"/api/bunker/rooms/{code}/leave", {}
+        )
+
+        self.assertEqual(HTTPStatus.OK, status)
+        self.assertTrue(result["left"])
+        persisted = self.db.bunker_rooms.find_one({"code": code})
+        self.assertEqual([101], [member["user_id"] for member in persisted["members"]])
+        self.assertEqual([101], [player["user_id"] for player in persisted["players"]])
+        self.assertEqual([], persisted["revealed_cards"])
+        self.assertEqual([], persisted["survivors"])
+        self.assertEqual({"101"}, set(persisted["private_cards"]))
+        self.assertEqual({}, persisted["voting"]["votes"])
+        self.assertEqual([], persisted["voting"]["tied_targets"])
+
     def test_join_succeeds_after_legacy_bot_is_purged_from_full_lobby(self):
         code = "BOTFULL"
         self.db.bunker_rooms.insert_one({
