@@ -25,6 +25,7 @@ from pymongo import ASCENDING, DESCENDING, MongoClient, ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
 from bunker_cards import BUNKER_CARD_POOLS, BUNKER_CARD_COUNTS, EXPECTED_CARD_COUNTS, bunker_random_age
+from dnd_solo import DND_SOLO_SCENARIOS, dnd_solo_initial_state, dnd_solo_transition
 from bunker_online_api import (
     BUNKER_DIFFICULTIES, BUNKER_EVENTS, BUNKER_PRESENCE_WRITE_INTERVAL_SECONDS,
     BUNKER_SCENARIOS, bunker_make_cards, bunker_presence_refresh_due,
@@ -260,6 +261,9 @@ def initialize_db():
                 access TEXT NOT NULL DEFAULT 'public' CHECK (access IN ('public', 'private', 'invite_only')),
                 join_code TEXT NOT NULL DEFAULT '',
                 combat_state TEXT NOT NULL DEFAULT '{}',
+                game_mode TEXT NOT NULL DEFAULT 'gm',
+                scenario_id TEXT NOT NULL DEFAULT 'ashfall',
+                story_state TEXT NOT NULL DEFAULT '{}',
                 created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
                 updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
             );
@@ -403,6 +407,13 @@ def initialize_db():
         game_columns = {row["name"] for row in db.execute("PRAGMA table_info(games)").fetchall()}
         if "combat_state" not in game_columns:
             db.execute("ALTER TABLE games ADD COLUMN combat_state TEXT NOT NULL DEFAULT '{}'")
+        for name, declaration in (
+            ("game_mode", "TEXT NOT NULL DEFAULT 'gm'"),
+            ("scenario_id", "TEXT NOT NULL DEFAULT 'ashfall'"),
+            ("story_state", "TEXT NOT NULL DEFAULT '{}'"),
+        ):
+            if name not in game_columns:
+                db.execute(f"ALTER TABLE games ADD COLUMN {name} {declaration}")
         db.execute(
             "UPDATE games SET catalog_game_slug = 'dnd' WHERE catalog_game_slug IS NULL"
         )
@@ -644,6 +655,66 @@ def game_character_stats(payload, existing=None):
     return stats
 
 
+
+def normalize_dnd_game_setup(data, catalog_game_slug):
+    if catalog_game_slug != "dnd":
+        return "gm", "ashfall", {}
+    mode = str(data.get("game_mode") or "gm").strip().lower()
+    if mode not in {"gm", "solo"}:
+        raise APIError(HTTPStatus.BAD_REQUEST, "Выбери режим с ведущим или без ведущего.")
+    scenario_id = str(data.get("scenario_id") or "ashfall").strip()
+    if scenario_id not in DND_SOLO_SCENARIOS:
+        raise APIError(HTTPStatus.BAD_REQUEST, "Выбранный сценарий не найден.")
+    story_state = dnd_solo_initial_state(scenario_id) if mode == "solo" else {}
+    return mode, scenario_id, story_state
+
+
+def dispatch_dnd_solo_story(handler, db, method, path, api_error, mongodb_enabled):
+    match = re.fullmatch(r"/api/games/(\d+)/story", path)
+    if not match:
+        raise api_error(HTTPStatus.NOT_FOUND, "Приключение не найдено.")
+    if method != "POST":
+        raise api_error(HTTPStatus.METHOD_NOT_ALLOWED, "Метод не поддерживается.")
+    user = handler.current_user_mongo(db, required=True) if mongodb_enabled else handler.current_user(db, required=True)
+    game_id = int(match.group(1))
+    game = db.games.find_one({"id": game_id}) if mongodb_enabled else db.execute("SELECT * FROM games WHERE id = ?", (game_id,)).fetchone()
+    if game is None:
+        raise api_error(HTTPStatus.NOT_FOUND, "Комната не найдена.")
+    mode = game.get("game_mode", "gm") if mongodb_enabled else game["game_mode"]
+    owner_id = game["owner_id"]
+    if mode != "solo":
+        raise api_error(HTTPStatus.BAD_REQUEST, "Автоматический сценарий доступен только в режиме без ведущего.")
+    if owner_id != user["id"]:
+        raise api_error(HTTPStatus.FORBIDDEN, "Управлять одиночным приключением может только его создатель.")
+    hero = db.game_characters.find_one({"game_id": game_id, "user_id": user["id"]}) if mongodb_enabled else db.execute(
+        "SELECT * FROM game_characters WHERE game_id = ? AND user_id = ?", (game_id, user["id"])
+    ).fetchone()
+    if hero is None:
+        raise api_error(HTTPStatus.CONFLICT, "Сначала создай персонажа.")
+    if not mongodb_enabled:
+        hero = dict(hero)
+    payload = handler.read_json()
+    choice_id = str(payload.get("choice_id") or "").strip()
+    if not choice_id:
+        raise api_error(HTTPStatus.BAD_REQUEST, "Выбери действие для продолжения сцены.")
+    try:
+        raw_state = game.get("story_state") if mongodb_enabled else game["story_state"]
+        state = raw_state if isinstance(raw_state, dict) else json.loads(raw_state or "{}")
+        if not state:
+            scenario_id = game.get("scenario_id", "ashfall") if mongodb_enabled else game["scenario_id"]
+            state = dnd_solo_initial_state(scenario_id)
+        updated = dnd_solo_transition(state, choice_id, hero)
+    except (ValueError, TypeError, KeyError) as error:
+        raise api_error(HTTPStatus.BAD_REQUEST, str(error) or "Не удалось продолжить приключение.")
+    now = utc_timestamp()
+    if mongodb_enabled:
+        db.games.update_one({"id": game_id, "owner_id": user["id"]}, {"$set": {"story_state": updated, "updated_at": now}})
+    else:
+        db.execute("UPDATE games SET story_state = ?, updated_at = ? WHERE id = ? AND owner_id = ?",
+                   (json.dumps(updated, ensure_ascii=False), now, game_id, user["id"]))
+    return {"story_state": updated}, HTTPStatus.OK, []
+
+
 def game_record_row(game, user_id=None):
     name = (game.get("name") or game.get("title") or game.get("room_name") or "Новая комната").strip() or "Новая комната"
     title = (game.get("title") or game.get("name") or game.get("room_name") or name).strip() or name
@@ -655,6 +726,9 @@ def game_record_row(game, user_id=None):
         "title": title,
         "room_name": room_name,
         "catalog_game_slug": game.get("catalog_game_slug", ""),
+        "game_mode": game.get("game_mode", "gm") or "gm",
+        "scenario_id": game.get("scenario_id", "ashfall") or "ashfall",
+        "story_state": game.get("story_state") or {},
         "description": game.get("description", ""),
         "access": normalize_game_access(game.get("access", "public")),
         "join_code": game.get("join_code", "") or "",
@@ -1259,6 +1333,8 @@ class BiblioHandler(BaseHTTPRequestHandler):
         query = query or {}
         if path.startswith("/api/bunker/"):
             return dispatch_bunker_api(self, db, method, path, APIError, bool(MONGODB_URI))
+        if re.fullmatch(r"/api/games/\d+/story", path):
+            return dispatch_dnd_solo_story(self, db, method, path, APIError, True)
         if method == "GET" and path == "/api/me":
             user = self.current_user_mongo(db)
             return {"user": public_user(user) if user else None}, HTTPStatus.OK, []
@@ -1908,6 +1984,9 @@ class BiblioHandler(BaseHTTPRequestHandler):
                     "title": game.get("title") or game.get("name") or game.get("room_name") or "Новая комната",
                     "room_name": game.get("room_name") or game.get("name") or game.get("title") or "Новая комната",
                     "catalog_game_slug": game.get("catalog_game_slug", ""),
+                    "game_mode": game.get("game_mode", "gm"),
+                    "scenario_id": game.get("scenario_id", "ashfall"),
+                    "story_state": game.get("story_state") or {},
                     "description": game.get("description", ""),
                     "access": game.get("access", "public"),
                     "join_code": game.get("join_code", ""),
@@ -1969,6 +2048,9 @@ class BiblioHandler(BaseHTTPRequestHandler):
                     "title": game.get("title") or game.get("name") or game.get("room_name") or "Новая комната",
                     "room_name": game.get("room_name") or game.get("name") or game.get("title") or "Новая комната",
                     "catalog_game_slug": game.get("catalog_game_slug", ""),
+                    "game_mode": game.get("game_mode", "gm"),
+                    "scenario_id": game.get("scenario_id", "ashfall"),
+                    "story_state": game.get("story_state") or {},
                     "description": game.get("description", ""),
                     "access": game.get("access", "public"),
                     "join_code": game.get("join_code", ""),
@@ -1989,6 +2071,9 @@ class BiblioHandler(BaseHTTPRequestHandler):
             access = normalize_game_access(data.get("access", "public"))
             join_code = str(data.get("join_code") or "").strip().upper()
             catalog_game_slug = data.get("catalog_game_slug")
+            game_mode, scenario_id, story_state = normalize_dnd_game_setup(data, catalog_game_slug)
+            if game_mode == "solo":
+                access = "private"
             if catalog_game_slug is not None:
                 if not isinstance(catalog_game_slug, str) or db.game_catalog.find_one(
                     {"slug": catalog_game_slug}, {"slug": 1}
@@ -2007,6 +2092,9 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 "access": access,
                 "join_code": join_code,
                 "catalog_game_slug": catalog_game_slug,
+                "game_mode": game_mode,
+                "scenario_id": scenario_id,
+                "story_state": story_state,
                 "created_at": utc_timestamp(),
                 "updated_at": utc_timestamp(),
             }
@@ -2166,8 +2254,8 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 db.game_participants.delete_one({"game_id": game_id, "user_id": user["id"]})
                 return {"ok": True}, HTTPStatus.OK, []
             if game_action_match.group(2) in {"characters", "heroes"}:
-                if game["owner_id"] == user["id"]:
-                    raise APIError(HTTPStatus.FORBIDDEN, "Ведущий не создаёт персонажа в своей комнате.")
+                if game["owner_id"] == user["id"] and game.get("game_mode", "gm") != "solo":
+                    raise APIError(HTTPStatus.FORBIDDEN, "Ведущий не создаёт персонажа в комнате с ведущим.")
                 payload = self.read_json()
                 name = self.valid_text(payload.get("name") or payload.get("hero_name"), "Имя героя", 1, 80)
                 race = validate_dnd_race(payload.get("race"))
@@ -2255,6 +2343,9 @@ class BiblioHandler(BaseHTTPRequestHandler):
 
     def dispatch_api(self, db, method, path, query=None):
         query = query or {}
+        if re.fullmatch(r"/api/games/\d+/story", path):
+            return dispatch_dnd_solo_story(self, db, method, path, APIError, False)
+
         if method == "GET" and path == "/api/me":
             user = self.current_user(db)
             return {"user": public_user(user) if user else None}, HTTPStatus.OK, []
@@ -2923,6 +3014,9 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 "title": game["title"] or game["name"],
                 "room_name": game["room_name"] or game["name"],
                 "catalog_game_slug": game["catalog_game_slug"],
+                "game_mode": game["game_mode"],
+                "scenario_id": game["scenario_id"],
+                "story_state": json.loads(game["story_state"] or "{}"),
                 "description": game["description"],
                 "access": game["access"],
                 "join_code": game["join_code"],
@@ -2986,6 +3080,9 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 "title": game["title"] or game["name"],
                 "room_name": game["room_name"] or game["name"],
                 "catalog_game_slug": game["catalog_game_slug"],
+                "game_mode": game["game_mode"],
+                "scenario_id": game["scenario_id"],
+                "story_state": json.loads(game["story_state"] or "{}"),
                 "description": game["description"],
                 "access": game["access"],
                 "join_code": game["join_code"],
@@ -3005,6 +3102,9 @@ class BiblioHandler(BaseHTTPRequestHandler):
             access = normalize_game_access(data.get("access", "public"))
             join_code = str(data.get("join_code") or "").strip().upper()
             catalog_game_slug = data.get("catalog_game_slug")
+            game_mode, scenario_id, story_state = normalize_dnd_game_setup(data, catalog_game_slug)
+            if game_mode == "solo":
+                access = "private"
             if catalog_game_slug is not None:
                 if not isinstance(catalog_game_slug, str) or db.execute(
                     "SELECT 1 FROM game_catalog WHERE slug = ?", (catalog_game_slug,)
@@ -3013,8 +3113,8 @@ class BiblioHandler(BaseHTTPRequestHandler):
             if access in {"private", "invite_only"} and not join_code:
                 join_code = secrets.token_hex(4).upper()
             cursor = db.execute(
-                "INSERT INTO games (owner_id, name, title, room_name, description, access, join_code, catalog_game_slug) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (user["id"], name, name, name, description, access, join_code, catalog_game_slug),
+                "INSERT INTO games (owner_id, name, title, room_name, description, access, join_code, catalog_game_slug, game_mode, scenario_id, story_state) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (user["id"], name, name, name, description, access, join_code, catalog_game_slug, game_mode, scenario_id, json.dumps(story_state, ensure_ascii=False)),
             )
             game_id = cursor.lastrowid
             db.execute(
@@ -3029,6 +3129,9 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 "title": game["title"] or game["name"],
                 "room_name": game["room_name"] or game["name"],
                 "catalog_game_slug": game["catalog_game_slug"],
+                "game_mode": game["game_mode"],
+                "scenario_id": game["scenario_id"],
+                "story_state": json.loads(game["story_state"] or "{}"),
                 "description": game["description"],
                 "access": game["access"],
                 "join_code": game["join_code"],
@@ -3186,8 +3289,8 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 db.execute("DELETE FROM game_characters WHERE game_id = ? AND user_id = ?", (game_id, user["id"]))
                 return {"ok": True}, HTTPStatus.OK, []
             if action in {"characters", "heroes"}:
-                if game["owner_id"] == user["id"]:
-                    raise APIError(HTTPStatus.FORBIDDEN, "Ведущий не создаёт персонажа в своей комнате.")
+                if game["owner_id"] == user["id"] and game["game_mode"] != "solo":
+                    raise APIError(HTTPStatus.FORBIDDEN, "Ведущий не создаёт персонажа в комнате с ведущим.")
                 payload = self.read_json()
                 name = self.valid_text(payload.get("name") or payload.get("hero_name"), "Имя героя", 1, 80)
                 race = validate_dnd_race(payload.get("race"))

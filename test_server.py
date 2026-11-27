@@ -856,6 +856,64 @@ class BiblioServerTests(unittest.TestCase):
         self.assertEqual(result["game"]["heroes"][0]["xp"], 120)
         self.assertEqual(result["game"]["heroes"][0]["level"], 2)
 
+    def test_dnd_solo_mode_creates_owner_hero_and_advances_scenario(self):
+        owner = self.register("solo-dnd@example.com")
+        status, created = self.request("POST", "/api/games", {
+            "name": "Одинокий путь",
+            "description": "Приключение без ведущего.",
+            "access": "public",
+            "catalog_game_slug": "dnd",
+            "game_mode": "solo",
+            "scenario_id": "ashfall",
+        })
+        self.assertEqual(status, 201)
+        game_id = created["game"]["id"]
+        self.assertEqual(created["game"]["game_mode"], "solo")
+        self.assertEqual(created["game"]["access"], "private")
+        self.assertEqual(created["game"]["story_state"]["scene_index"], 0)
+
+        status, hero = self.request("POST", f"/api/games/{game_id}/characters", {
+            "name": "Элиан",
+            "race": "Эльф",
+        })
+        self.assertEqual(status, 201)
+        self.assertEqual(hero["character"]["name"], "Элиан")
+
+        status, advanced = self.request("POST", f"/api/games/{game_id}/story", {
+            "choice_id": "inspect",
+        })
+        self.assertEqual(status, 200)
+        self.assertEqual(advanced["story_state"]["scene_index"], 1)
+        self.assertEqual(len(advanced["story_state"]["history"]), 1)
+        self.assertEqual(advanced["story_state"]["current_scene"]["title"], "Под часовней")
+
+        status, refreshed = self.request("GET", f"/api/games/{game_id}")
+        self.assertEqual(status, 200)
+        self.assertEqual(refreshed["game"]["story_state"]["scene_index"], 1)
+
+    def test_dnd_solo_mode_rejects_invalid_scenario_and_other_players(self):
+        owner = self.register("solo-owner@example.com")
+        status, _ = self.request("POST", "/api/games", {
+            "name": "Неверный сценарий",
+            "catalog_game_slug": "dnd",
+            "game_mode": "solo",
+            "scenario_id": "missing-scenario",
+        })
+        self.assertEqual(status, 400)
+
+        status, created = self.request("POST", "/api/games", {
+            "name": "Закрытое приключение",
+            "catalog_game_slug": "dnd",
+            "game_mode": "solo",
+            "scenario_id": "wild-road",
+        })
+        self.assertEqual(status, 201)
+        game_id = created["game"]["id"]
+        self.request("POST", "/api/logout", {})
+        guest = self.register("solo-guest@example.com")
+        status, _ = self.request("POST", f"/api/games/{game_id}/join", {})
+        self.assertIn(status, (403, 404))
+
     def test_game_catalog_ratings_and_live_viewer_presence(self):
         status, result = self.request("GET", "/api/catalog/games")
         self.assertEqual(status, 200)

@@ -913,3 +913,55 @@ body[data-game-site="true"] :is(
     .game-hero-card, .game-combat, .game-spellbook
   ) { border-radius: 12px; }
 }
+
+
+/* Solo D&D: automated narrator and branching scene presentation. */
+.dnd-solo-story {
+  display: grid;
+  gap: 18px;
+  padding: clamp(20px, 3vw, 30px);
+  border: 1px solid rgba(177, 143, 91, .28);
+  border-radius: 22px;
+  background: linear-gradient(145deg, rgba(39, 48, 42, .97), rgba(25, 32, 29, .98));
+  color: #f4efe4;
+  box-shadow: 0 18px 48px rgba(20, 25, 21, .16);
+}
+.dnd-solo-story__heading .eyebrow { color: #d6b77d; }
+.dnd-solo-story__heading h4 { margin: 7px 0; color: #fff8e9; font-size: clamp(22px, 3vw, 30px); }
+.dnd-solo-story__heading p,
+.dnd-solo-story__scene p,
+.dnd-solo-story__outcome p,
+.dnd-solo-story__history p { color: rgba(244, 239, 228, .78); line-height: 1.7; }
+.dnd-solo-story__scene {
+  padding: 20px;
+  border: 1px solid rgba(214, 183, 125, .24);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .045);
+}
+.dnd-solo-story__scene > span { color: #d6b77d; font-size: 11px; letter-spacing: .14em; }
+.dnd-solo-story__scene h5 { margin: 8px 0; color: #fff8e9; font-size: 20px; }
+.dnd-solo-story__choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.dnd-solo-story__choices .button { min-height: 58px; white-space: normal; color: #f7edda; border-color: rgba(214, 183, 125, .34); }
+.dnd-solo-story__choices .button:hover { background: rgba(214, 183, 125, .14); }
+.dnd-solo-story__notice,
+.dnd-solo-story__ending,
+.dnd-solo-story__outcome {
+  padding: 16px;
+  border-radius: 14px;
+  background: rgba(214, 183, 125, .10);
+  border: 1px solid rgba(214, 183, 125, .2);
+}
+.dnd-solo-story__outcome { display: grid; gap: 6px; }
+.dnd-solo-story__outcome strong { color: #e8c98e; }
+.dnd-solo-story__outcome span { color: #f7edda; font-variant-numeric: tabular-nums; }
+.dnd-solo-story__history summary { cursor: pointer; color: #e8c98e; }
+.dnd-solo-story__history ol { display: grid; gap: 12px; padding-left: 22px; }
+.dnd-solo-story__history li { padding-left: 4px; }
+.dnd-solo-story__history li strong,
+.dnd-solo-story__history li span { display: block; }
+.dnd-solo-story__history li span { margin-top: 4px; color: #e8c98e; font-size: 13px; }
+@media (max-width: 700px) {
+  .dnd-solo-story { padding: 18px; border-radius: 17px; }
+  .dnd-solo-story__choices { grid-template-columns: 1fr; }
+  .dnd-solo-story__choices .button { min-height: 48px; }
+}
