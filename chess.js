@@ -12,6 +12,7 @@
   var refreshQueued = false;
   var watchGeneration = 0;
   var lastRoomUpdatedAt = "";
+  var pendingPremove = "";
   var roomRequestVersion = 0;
   var movePending = false;
   var currentLegalMoves = [];
@@ -22,10 +23,15 @@
   function escapeHtml(value) {
     return String(value == null ? "" : value).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;");
   }
+  function playerAvatarMarkup(user, name, role) {
+    var src = user && typeof user.avatar_url === "string" ? user.avatar_url : "";
+    var initial = String(name || "И").trim().slice(0, 1).toUpperCase() || "И";
+    return '<div class="chess-avatar chess-avatar--' + role + (src ? " has-avatar" : "") + '">' + (src ? '<img class="chess-avatar__image" src="' + escapeHtml(src) + '" alt="" loading="lazy">' : "") + '<span>' + escapeHtml(initial) + '</span></div>';
+  }
   function prefersReducedMotion() {
     return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   }
-  function stop() { watchGeneration += 1; if (timer) window.clearInterval(timer); if (clockTimer) window.clearInterval(clockTimer); timer = 0; clockTimer = 0; clockState = null; }
+  function stop() { watchGeneration += 1; pendingPremove = ""; selected = ""; if (timer) window.clearInterval(timer); if (clockTimer) window.clearInterval(clockTimer); timer = 0; clockTimer = 0; clockState = null; }
   function handleVisibilityChange() {
     if (!location.pathname.startsWith("/games/chess/play")) return;
     if (document.hidden) {
@@ -434,11 +440,23 @@
     var opponentName = opponent && opponent.name || "Ожидаем соперника";
     var finished = room.status === "finished";
     var legal = room.legal_moves || [];
-    currentLegalMoves = legal;
-    var targets = selected ? legal.filter(function (move) { return move.slice(0, 2) === selected; }).map(function (move) { return move.slice(2, 4); }) : [];
+    var selectableMoves = room.is_my_turn ? legal : (room.status === "active" ? (room.premove_moves || []) : []);
+    currentLegalMoves = selectableMoves;
+    if (pendingPremove && room.status === "active" && room.is_my_turn) {
+      var queuedMove = pendingPremove;
+      pendingPremove = "";
+      if (legal.indexOf(queuedMove) >= 0) {
+        window.setTimeout(function () { if (currentCode === room.code) submitMove(queuedMove); }, 0);
+      } else {
+        toast("Предварительный ход отменён: после хода соперника он стал невозможен.");
+      }
+    } else if (room.status !== "active") {
+      pendingPremove = "";
+    }
+    var targets = selected ? selectableMoves.filter(function (move) { return move.slice(0, 2) === selected; }).map(function (move) { return move.slice(2, 4); }) : [];
     var lastMove = room.last_move && room.last_move.uci ? room.last_move.uci : "";
     var lastSquares = lastMove ? [lastMove.slice(0, 2), lastMove.slice(2, 4)] : [];
-    var statusText = finished ? room.result : room.status === "waiting" ? "Ожидаем второго игрока" : room.is_my_turn ? "Ваш ход" : "Ход соперника";
+    var statusText = finished ? room.result : pendingPremove && !room.is_my_turn ? "Предварительный ход сохранён" : room.status === "waiting" ? "Ожидаем второго игрока" : room.is_my_turn ? "Ваш ход" : "Ход соперника · можно подготовить ход";
     var clock = room.clock || null;
     clockState = clock ? { clock: clock, turn: room.turn, myColor: myColor, running: room.status === "active", updatedAtMs: Date.parse(clock.updated_at || "") } : null;
     var reviewing = selectedPly !== null && selectedPly < (room.moves || []).length;
@@ -458,17 +476,18 @@
         '<header class="chess-arena__topbar"><div class="chess-arena__brand"><span class="chess-arena__mark">♞</span><div><strong>Шахматы</strong><small>BIBLIO · ОНЛАЙН-ПАРТИЯ</small></div></div><div class="chess-arena__meta"><span class="chess-room-pill">Комната <b>' + escapeHtml(room.code) + '</b></span><span class="chess-live-indicator"><i></i>' + (room.status === "waiting" ? "Ожидание игрока" : finished ? "Партия завершена" : "На связи") + '</span></div><a class="chess-arena__back" href="/games/chess">Все партии</a></header>' +
         (room.status === "waiting" ? '<div class="chess-invite"><div><strong>Пригласите соперника в партию</strong><p>Отправьте ему ссылку или шестизначный код комнаты.</p></div><code>' + escapeHtml(room.code) + '</code><button class="chess-control chess-control--accent" id="chess-copy-code" type="button">Копировать код</button></div>' : "") +
         '<div class="chess-arena__layout"><main class="chess-play-area">' +
-          '<div class="chess-playerbar chess-playerbar--opponent' + (room.status === "active" && room.turn === opponentColor ? " is-active-turn" : "") + '"><div class="chess-avatar chess-avatar--opponent">' + escapeHtml((opponentName || "С").slice(0,1).toUpperCase()) + '</div><div class="chess-playerbar__identity"><strong>' + escapeHtml(opponentName) + '</strong><small>' + (room.status === "waiting" ? "Соперник ещё не подключился" : "Соперник · " + (opponentColor === "white" ? "белые" : "чёрные")) + '</small><small class="chess-captured">Взято: ' + capturedPieces(room.moves || [], opponentColor) + '</small></div><span class="chess-clock" id="chess-clock-opponent" aria-label="Время соперника" title="Оставшееся время соперника">—:—</span><span class="chess-playerbar__turn">' + (room.status === "active" && room.turn === opponentColor ? "ХОД СОПЕРНИКА" : "") + '</span></div>' +
+          '<div class="chess-playerbar chess-playerbar--opponent' + (room.status === "active" && room.turn === opponentColor ? " is-active-turn" : "") + '">' + playerAvatarMarkup(opponent, opponentName, "opponent") + '<div class="chess-playerbar__identity"><strong>' + escapeHtml(opponentName) + '</strong><small>' + (room.status === "waiting" ? "Соперник ещё не подключился" : "Соперник · " + (opponentColor === "white" ? "белые" : "чёрные")) + '</small><small class="chess-captured">Взято: ' + capturedPieces(room.moves || [], opponentColor) + '</small></div><span class="chess-clock" id="chess-clock-opponent" aria-label="Время соперника" title="Оставшееся время соперника">—:—</span><span class="chess-playerbar__turn">' + (room.status === "active" && room.turn === opponentColor ? "ХОД СОПЕРНИКА" : "") + '</span></div>' +
           '<div class="chess-board-frame"><div class="chess-board' + (enterBoard ? " is-entering" : "") + '" role="grid" aria-label="Шахматная доска">' + board.map(function (cell, index) {
             var row = Math.floor(index / 8), file = index % 8, light = (row + file) % 2 === 0;
             var pieceClass = cell.piece ? (cell.piece === cell.piece.toUpperCase() ? "is-white" : "is-black") : "";
             var isLast = lastSquares.indexOf(cell.square) >= 0;
             var isCheck = room.check && cell.piece === (room.turn === "white" ? "K" : "k");
             var targetClass = targets.indexOf(cell.square) >= 0;
-            return '<button class="chess-square ' + (light ? "is-light" : "is-dark") + (selected === cell.square ? " is-selected" : "") + (targetClass ? " is-target" : "") + (isLast ? " is-last-move" : "") + (isCheck ? " is-check" : "") + '" type="button" role="gridcell" data-chess-square="' + cell.square + '" aria-label="' + cell.square + (cell.piece ? " фигура" : " пусто") + '"' + (!room.is_my_turn || finished || reviewing ? " disabled" : "") + '><span class="chess-square__piece ' + pieceClass + '">' + (PIECES[cell.piece] || "") + '</span>' + (file === 0 ? '<small class="chess-coordinate chess-coordinate--rank">' + cell.square[1] + '</small>' : "") + (row === 7 ? '<small class="chess-coordinate chess-coordinate--file">' + cell.square[0] + '</small>' : "") + '</button>';
+            var premoveSquare = pendingPremove && (cell.square === pendingPremove.slice(0, 2) || cell.square === pendingPremove.slice(2, 4));
+            return '<button class="chess-square ' + (light ? "is-light" : "is-dark") + (selected === cell.square ? " is-selected" : "") + (targetClass ? " is-target" : "") + (premoveSquare ? " is-premove" : "") + (isLast ? " is-last-move" : "") + (isCheck ? " is-check" : "") + '" type="button" role="gridcell" data-chess-square="' + cell.square + '" aria-label="' + cell.square + (cell.piece ? " фигура" : " пусто") + '"' + (room.status !== "active" || finished || reviewing ? " disabled" : "") + '><span class="chess-square__piece ' + pieceClass + '">' + (PIECES[cell.piece] || "") + '</span>' + (file === 0 ? '<small class="chess-coordinate chess-coordinate--rank">' + cell.square[1] + '</small>' : "") + (row === 7 ? '<small class="chess-coordinate chess-coordinate--file">' + cell.square[0] + '</small>' : "") + '</button>';
           }).join("") + '</div></div>' +
-          '<div class="chess-playerbar chess-playerbar--self' + (room.status === "active" && room.turn === myColor ? " is-active-turn" : "") + '"><div class="chess-avatar chess-avatar--self">' + escapeHtml((myName || "В").slice(0,1).toUpperCase()) + '</div><div class="chess-playerbar__identity"><strong>' + escapeHtml(myName) + ' <span class="chess-you-tag">ВЫ</span></strong><small>' + (myColor === "white" ? "Белые фигуры" : "Чёрные фигуры") + '</small><small class="chess-captured">Взято: ' + capturedPieces(room.moves || [], myColor) + '</small></div><span class="chess-clock" id="chess-clock-self" aria-label="Ваше время" title="Оставшееся время">—:—</span><span class="chess-playerbar__turn">' + (room.status === "active" && room.turn === myColor ? "ВАШ ХОД" : "") + '</span></div>' +
-          '<div class="chess-board-tools"><span class="chess-turn-status ' + (room.is_my_turn && !finished ? "is-active" : "") + '">' + escapeHtml(statusText) + '</span><div class="chess-board-tool-actions"><button class="chess-tool-button" id="chess-live-position" type="button" '+(reviewing ? '' : 'hidden')+'>К текущей позиции</button><button class="chess-tool-button" id="chess-flip-board" type="button" aria-label="Перевернуть доску">↻ Перевернуть доску</button></div></div>' +
+          '<div class="chess-playerbar chess-playerbar--self' + (room.status === "active" && room.turn === myColor ? " is-active-turn" : "") + '">' + playerAvatarMarkup(me, myName, "self") + '<div class="chess-playerbar__identity"><strong>' + escapeHtml(myName) + ' <span class="chess-you-tag">ВЫ</span></strong><small>' + (myColor === "white" ? "Белые фигуры" : "Чёрные фигуры") + '</small><small class="chess-captured">Взято: ' + capturedPieces(room.moves || [], myColor) + '</small></div><span class="chess-clock" id="chess-clock-self" aria-label="Ваше время" title="Оставшееся время">—:—</span><span class="chess-playerbar__turn">' + (room.status === "active" && room.turn === myColor ? "ВАШ ХОД" : "") + '</span></div>' +
+          '<div class="chess-board-tools"><span class="chess-turn-status ' + (room.is_my_turn && !finished ? "is-active" : "") + '">' + escapeHtml(statusText) + '</span><div class="chess-board-tool-actions"><button class="chess-tool-button" id="chess-live-position" type="button" '+(reviewing ? '' : 'hidden')+'>К текущей позиции</button><button class="chess-tool-button" id="chess-flip-board" type="button" aria-label="Перевернуть доску">↻ Перевернуть доску</button>' + (pendingPremove ? '<button class="chess-tool-button chess-tool-button--cancel" id="chess-cancel-premove" type="button">Отменить ход</button>' : '') + '</div></div>' +
           (room.draw_offer_by && room.draw_offer_by !== (me && me.id) && room.status === "active" ? '<div class="chess-draw-response"><span>Соперник предлагает ничью</span><button class="chess-control chess-control--accent" type="button" id="chess-draw-accept">Принять</button><button class="chess-control" type="button" id="chess-draw-decline">Отклонить</button></div>' : "") +
         '</main><aside class="chess-arena__sidebar">' +
           '<section class="chess-side-card"><div class="chess-side-tabs"><span class="is-active">ПАРТИЯ И НОТАЦИЯ</span><span class="chess-time-control">' + escapeHtml(room.time_control || "10+0") + '</span></div><div class="chess-side-card__heading"><div><small>ТЕКУЩАЯ ПАРТИЯ</small><h2>' + (finished ? "Результат" : room.status === "waiting" ? "Ожидание игрока" : "Ход " + (room.turn === "white" ? "белых" : "чёрных")) + '</h2></div><span class="chess-state-dot ' + (finished ? "is-done" : "is-live") + '"></span></div>' +
@@ -485,6 +504,18 @@
       else toast("Код комнаты: " + room.code);
     });
     $("#chess-live-position") && $("#chess-live-position").addEventListener("click", function () { selectedPly = null; renderRoom(room); });
+    $("#chess-cancel-premove") && $("#chess-cancel-premove").addEventListener("click", function () {
+      pendingPremove = "";
+      selected = "";
+      renderRoom(room);
+    });
+    target.querySelectorAll(".chess-avatar__image").forEach(function (img) {
+      img.addEventListener("error", function () {
+        var avatar = img.closest(".chess-avatar");
+        if (avatar) avatar.classList.remove("has-avatar");
+        img.remove();
+      }, { once: true });
+    });
     $("#chess-flip-board") && $("#chess-flip-board").addEventListener("click", function () {
       boardFlipped = !boardFlipped;
       renderRoom(room);
@@ -496,7 +527,8 @@
       button.addEventListener("click", function () {
         var square = button.dataset.chessSquare;
         if (!selected) {
-          if (legal.some(function (move) { return move.slice(0, 2) === square; })) {
+          if (selectableMoves.some(function (move) { return move.slice(0, 2) === square; })) {
+            pendingPremove = "";
             selected = square;
             updateBoardSelection();
           }
@@ -507,17 +539,27 @@
           updateBoardSelection();
           return;
         }
-        var candidates = legal.filter(function (move) { return move.slice(0, 2) === selected && move.slice(2, 4) === square; });
+        var candidates = selectableMoves.filter(function (move) { return move.slice(0, 2) === selected && move.slice(2, 4) === square; });
         if (candidates.length) {
-          if (candidates.length > 1) {
-            choosePromotion(candidates).then(function (move) { if (move) submitMove(move); });
+          if (room.is_my_turn) {
+            if (candidates.length > 1) choosePromotion(candidates).then(function (move) { if (move) submitMove(move); });
+            else submitMove(candidates[0]);
           } else {
-            submitMove(candidates[0]);
+            var queue = function (move) {
+              if (!move) return;
+              pendingPremove = move;
+              selected = "";
+              renderRoom(room);
+            };
+            if (candidates.length > 1) choosePromotion(candidates).then(queue);
+            else queue(candidates[0]);
           }
           return;
         }
-        if (legal.some(function (move) { return move.slice(0, 2) === square; })) selected = square;
-        else selected = "";
+        if (selectableMoves.some(function (move) { return move.slice(0, 2) === square; })) {
+          pendingPremove = "";
+          selected = square;
+        } else selected = "";
         updateBoardSelection();
       });
     });
