@@ -1,6 +1,7 @@
 import http.cookiejar
 import json
 import tempfile
+from datetime import datetime
 import threading
 import unittest
 from pathlib import Path
@@ -182,8 +183,10 @@ class ChessTwoPlayerIntegrationTests(unittest.TestCase):
         self.assertEqual(status, 200, moved)
         clock = moved["room"]["clock"]
         self.assertEqual(clock["increment_ms"], 2000)
-        self.assertGreater(clock["white_ms"], 180000)
-        self.assertLessEqual(clock["white_ms"], 182000)
+        started = datetime.fromisoformat(initial_clock["updated_at"].replace("Z", "+00:00"))
+        stopped = datetime.fromisoformat(clock["updated_at"].replace("Z", "+00:00"))
+        expected_after_increment = 182000 - int((stopped - started).total_seconds() * 1000)
+        self.assertLessEqual(abs(clock["white_ms"] - expected_after_increment), 50)
         self.assertEqual(clock["black_ms"], 180000)
         self.assertRegex(clock["updated_at"], r"\.\d{3}Z$")
 
