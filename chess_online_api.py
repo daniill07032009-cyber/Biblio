@@ -119,6 +119,7 @@ def _public_room(room, user_id):
         "last_move": moves[-1] if moves else None,
         "result": room.get("result") or "",
         "draw_offer_by": room.get("draw_offer_by"),
+        "time_control": room.get("time_control") or "10+0",
         "clock": clock,
         "created_at": room.get("created_at"),
         "updated_at": room.get("updated_at"),
@@ -258,7 +259,7 @@ def dispatch_chess_api(handler, db, method, path, api_error, mongodb_enabled):
             room["clock"] = clock
         room.setdefault("moves", []).append({
             "uci": uci, "san": san, "by": user["id"],
-            "color": "white" if is_white else "black", "created_at": _now(), "fen_after": board.fen(),
+            "color": "white" if is_white else "black", "created_at": _now(), "fen_after": board.fen(), "fen_after": board.fen(),
         })
         room["result"] = _game_result(board)
         if room["result"]:
