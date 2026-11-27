@@ -11,6 +11,7 @@
   var roomRequestPending = false;
   var movePending = false;
   var currentLegalMoves = [];
+  var boardHasEntered = false;
   var PIECES = { K:"♔",Q:"♕",R:"♖",B:"♗",N:"♘",P:"♙",k:"♚",q:"♛",r:"♜",b:"♝",n:"♞",p:"♟" };
   var $ = function (selector) { return document.querySelector(selector); };
   function escapeHtml(value) {
@@ -196,28 +197,54 @@
     });
     return snapshot;
   }
-  function animateBoardChanges(previous) {
+  function animateBoardChanges(previous, moveUci) {
     if (!previous || !Object.keys(previous).length || !document.body.animate) return;
-    var current = {}, used = {};
+    var current = {}, usedFrom = {}, usedTo = {};
     document.querySelectorAll(".chess-square[data-chess-square]").forEach(function (square) {
       var piece = square.querySelector(".chess-square__piece");
       if (!piece || !piece.textContent.trim()) return;
-      current[square.dataset.chessSquare] = { glyph:piece.textContent.trim(), rect:piece.getBoundingClientRect() };
+      current[square.dataset.chessSquare] = { glyph:piece.textContent.trim(), rect:piece.getBoundingClientRect(), node:piece, className:piece.className };
     });
+    function animatePiece(from, to) {
+      var oldPiece = previous[from], newPiece = current[to];
+      if (!oldPiece || !newPiece || usedFrom[from] || usedTo[to]) return false;
+      var a = oldPiece.rect, b = newPiece.rect;
+      if (!a.width || !a.height || !b.width || !b.height) return false;
+      var ghost = document.createElement("span");
+      ghost.className = oldPiece.className + " chess-piece-flight";
+      ghost.textContent = oldPiece.glyph;
+      Object.assign(ghost.style, {
+        position:"fixed", zIndex:"10000", pointerEvents:"none", margin:"0",
+        left:a.left+"px", top:a.top+"px", width:a.width+"px", height:a.height+"px",
+        display:"grid", placeItems:"center", fontSize:getComputedStyle(newPiece.node).fontSize,
+        lineHeight:"1", willChange:"transform,filter", transform:"translate3d(0,0,0)"
+      });
+      document.body.appendChild(ghost);
+      newPiece.node.style.visibility = "hidden";
+      usedFrom[from] = true;
+      usedTo[to] = true;
+      function finish() { ghost.remove(); newPiece.node.style.visibility = ""; }
+      var dx = b.left - a.left, dy = b.top - a.top;
+      var flight = ghost.animate([
+        { transform:"translate3d(0,0,0) scale(.96)", filter:"drop-shadow(0 3px 3px rgba(0,0,0,.25))", offset:0 },
+        { transform:"translate3d("+(dx*.52)+"px,"+(dy*.52-Math.min(18,Math.abs(dy)*.035))+"px,0) scale(1.12)", filter:"drop-shadow(0 12px 9px rgba(0,0,0,.28))", offset:.52 },
+        { transform:"translate3d("+dx+"px,"+dy+"px,0) scale(1)", filter:"drop-shadow(0 2px 2px rgba(0,0,0,.18))", offset:1 }
+      ], { duration:260, easing:"cubic-bezier(.18,.78,.25,1)", fill:"forwards" });
+      flight.onfinish = finish;
+      flight.oncancel = finish;
+      return true;
+    }
+    var explicitMove = String(moveUci || "");
+    if (explicitMove.length >= 4) animatePiece(explicitMove.slice(0,2), explicitMove.slice(2,4));
     Object.keys(previous).forEach(function (from) {
+      if (usedFrom[from]) return;
       var oldPiece = previous[from];
       if (current[from] && current[from].glyph === oldPiece.glyph) return;
       var to = Object.keys(current).find(function (square) {
-        return square !== from && !used[square] && current[square].glyph === oldPiece.glyph && (!previous[square] || previous[square].glyph !== oldPiece.glyph);
+        return square !== from && !usedTo[square] && current[square].glyph === oldPiece.glyph &&
+          (!previous[square] || previous[square].glyph !== oldPiece.glyph);
       });
-      if (!to) return;
-      used[to] = true;
-      var destination = current[to].rect, ghost = document.createElement("span");
-      ghost.className = oldPiece.className;
-      ghost.textContent = oldPiece.glyph;
-      Object.assign(ghost.style,{position:"fixed",zIndex:"9999",pointerEvents:"none",margin:"0",left:oldPiece.rect.left+"px",top:oldPiece.rect.top+"px",width:oldPiece.rect.width+"px",height:oldPiece.rect.height+"px",display:"grid",placeItems:"center",fontSize:"clamp(24px,5vw,48px)"});
-      document.body.appendChild(ghost);
-      ghost.animate([{transform:"translate(0,0)"},{transform:"translate("+(destination.left-oldPiece.rect.left)+"px,"+(destination.top-oldPiece.rect.top)+"px)"}],{duration:230,easing:"cubic-bezier(.2,.75,.25,1)"}).onfinish=function(){ghost.remove();};
+      if (to) animatePiece(from, to);
     });
   }
   function animateMoveImmediately(from,to) {
@@ -331,6 +358,8 @@
     var reviewing = selectedPly !== null && selectedPly < (room.moves || []).length;
     var shownFen = !reviewing ? room.fen : ((room.moves || [])[selectedPly] || {}).fen_after || room.fen;
     var board = boardCells(shownFen);
+    var enterBoard = !boardHasEntered;
+    boardHasEntered = true;
     if ((myColor === "black") !== boardFlipped) board.reverse();
     var moveRows = [];
     (room.moves || []).forEach(function (move, index, all) {
@@ -362,7 +391,9 @@
             '<div class="chess-side-actions">' + (room.status === "active" ? '<button class="chess-control" type="button" id="chess-draw-offer">' + (room.draw_offer_by && room.draw_offer_by !== (me && me.id) ? "Предложение ничьей" : "♧ Предложить ничью") + '</button><button class="chess-control chess-control--danger" type="button" id="chess-resign">⚑ Сдаться</button>' : '') + '<button class="chess-control chess-control--subtle" type="button" id="chess-leave">Выйти из партии</button></div>' +
           '</section><div class="chess-sidebar-note"><span>♟</span><p>Играйте честно и уважайте соперника. Каждый ход сохраняется автоматически.</p></div></aside></div></section>';
     updateClocks();
-    animateBoardChanges(previousBoard);
+    var enteringNode = target.querySelector(".chess-board.is-entering");
+    if (enteringNode) window.setTimeout(function () { enteringNode.classList.remove("is-entering"); }, 900);
+    animateBoardChanges(previousBoard, reviewing ? "" : lastMove);
     $("#chess-copy-code") && $("#chess-copy-code").addEventListener("click", function () {
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(room.code).then(function () { toast("Код скопирован"); }).catch(function () { toast("Код комнаты: " + room.code); });
       else toast("Код комнаты: " + room.code);
