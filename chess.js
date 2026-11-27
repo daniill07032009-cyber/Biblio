@@ -390,7 +390,7 @@
     var lastSquares = lastMove ? [lastMove.slice(0, 2), lastMove.slice(2, 4)] : [];
     var statusText = finished ? room.result : room.status === "waiting" ? "Ожидаем второго игрока" : room.is_my_turn ? "Ваш ход" : "Ход соперника";
     var clock = room.clock || null;
-    clockState = clock ? { clock: clock, turn: room.turn, myColor: myColor, running: room.status === "active" } : null;
+    clockState = clock ? { clock: clock, turn: room.turn, myColor: myColor, running: room.status === "active", updatedAtMs: Date.parse(clock.updated_at || "") } : null;
     var reviewing = selectedPly !== null && selectedPly < (room.moves || []).length;
     var shownFen = !reviewing ? room.fen : ((room.moves || [])[selectedPly] || {}).fen_after || room.fen;
     var board = boardCells(shownFen);
@@ -518,22 +518,23 @@
   function updateClocks() {
     if (!clockState) return;
     var c = clockState.clock;
-    var stamp = Date.parse(c.updated_at || "");
+    var stamp = Number.isFinite(clockState.updatedAtMs) ? clockState.updatedAtMs : Date.parse(c.updated_at || "");
     var elapsed = clockState.running && Number.isFinite(stamp) ? Math.max(0, Date.now() - stamp) : 0;
     var white = Math.max(0, Number(c.white_ms || 0) - (clockState.turn === "white" ? elapsed : 0));
     var black = Math.max(0, Number(c.black_ms || 0) - (clockState.turn === "black" ? elapsed : 0));
     var opponent = document.getElementById("chess-clock-opponent"), self = document.getElementById("chess-clock-self");
     var selfTime = clockState.myColor === "white" ? white : black;
     var opponentTime = clockState.myColor === "white" ? black : white;
-    if (opponent) opponent.textContent = formatClock(opponentTime);
-    if (self) self.textContent = formatClock(selfTime);
     [[self, selfTime, clockState.running && clockState.turn === clockState.myColor], [opponent, opponentTime, clockState.running && clockState.turn !== clockState.myColor]].forEach(function (entry) {
       var node = entry[0], remaining = entry[1], running = entry[2];
       if (!node) return;
-      node.classList.toggle("is-running", running);
-      node.classList.toggle("is-low-time", remaining <= 60000);
-      node.classList.toggle("is-critical", remaining <= 10000);
-      node.setAttribute("aria-label", (node === self ? "Ваше время: " : "Время соперника: ") + formatClock(remaining));
+      var display = formatClock(remaining);
+      if (node.textContent !== display) node.textContent = display;
+      var label = (node === self ? "Ваше время: " : "Время соперника: ") + display;
+      if (node.getAttribute("aria-label") !== label) node.setAttribute("aria-label", label);
+      [["is-running", running], ["is-low-time", remaining <= 60000], ["is-critical", remaining <= 10000]].forEach(function (state) {
+        if (node.classList.contains(state[0]) !== state[1]) node.classList.toggle(state[0], state[1]);
+      });
     });
   }
   async function submitMove(move) {
