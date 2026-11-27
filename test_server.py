@@ -920,7 +920,7 @@ class BiblioServerTests(unittest.TestCase):
         self.assertEqual(status, 201)
         code = created["room"]["code"]
         self.assertEqual(created["room"]["status"], "waiting")
-        self.assertIn("e2e4", created["room"]["legal_moves"])
+        self.assertEqual(created["room"]["legal_moves"], [])
 
         status, rooms = self.request("GET", "/api/chess/rooms")
         self.assertEqual(status, 200)
@@ -936,6 +936,9 @@ class BiblioServerTests(unittest.TestCase):
 
         self.request("POST", "/api/logout", {})
         self.request("POST", "/api/login", {"email": white["email"], "password": "secure-pass-123"})
+        status, white_room = self.request("GET", f"/api/chess/rooms/{code}")
+        self.assertEqual(status, 200)
+        self.assertIn("e2e4", white_room["room"]["legal_moves"])
         status, moved = self.request("POST", f"/api/chess/rooms/{code}/move", {"move": "e2e4"})
         self.assertEqual(status, 200)
         self.assertEqual(moved["room"]["moves"][-1]["san"], "e4")
