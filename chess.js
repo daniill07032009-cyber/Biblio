@@ -306,11 +306,20 @@
     });
     document.body.appendChild(ghost);
     var oldVisibility=source.style.visibility;
-    source.style.visibility="hidden";
-    var destinationSquare=destination.closest(".chess-square");
+    var oldDestinationVisibility=destination.style.visibility;
     var captured=!!destination.textContent.trim();
+    source.style.visibility="hidden";
+    // Remove the captured piece from view at the exact moment the capture
+    // starts. Otherwise it remains under the moving ghost until the server
+    // responds, creating the appearance of two pieces stacked on one square.
+    if(captured) destination.style.visibility="hidden";
+    var destinationSquare=destination.closest(".chess-square");
     if(destinationSquare){destinationSquare.classList.add(captured?"is-capture":"is-arrival");window.setTimeout(function(){destinationSquare.classList.remove("is-capture","is-arrival");},430);}
-    animation.cleanup=function(){ghost.remove();source.style.visibility=oldVisibility;};
+    animation.cleanup=function(){
+      ghost.remove();
+      source.style.visibility=oldVisibility;
+      destination.style.visibility=oldDestinationVisibility;
+    };
     var dx=b.left-a.left, dy=b.top-a.top;
     if(typeof ghost.animate==="function") {
       // Start the visual response synchronously in the same click event.
