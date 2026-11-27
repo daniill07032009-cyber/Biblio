@@ -141,27 +141,44 @@ def _freeze_clock(room):
         return
 
 
-def _public_room(room, user_id):
+def _user_avatar(db, user_id, mongodb_enabled):
+    if user_id is None:
+        return ""
+    user = db.users.find_one({"id": user_id}, {"avatar_url": 1}) if mongodb_enabled else db.execute(
+        "SELECT avatar_url FROM users WHERE id = ?", (user_id,)
+    ).fetchone()
+    if not user:
+        return ""
+    return (user.get("avatar_url") if mongodb_enabled else user["avatar_url"]) or ""
+
+
+def _public_room(room, user_id, db, mongodb_enabled):
     board = chess.Board(room["fen"])
     is_white = int(room["white_id"]) == int(user_id)
     is_black = room.get("black_id") is not None and int(room["black_id"]) == int(user_id)
     is_my_turn = room["status"] == "active" and ((board.turn == chess.WHITE and is_white) or (board.turn == chess.BLACK and is_black))
     moves = room.get("moves") or []
     clock = dict(room.get("clock") or {})
+    premove_moves = []
+    if room["status"] == "active" and not is_my_turn:
+        premove_board = board.copy(stack=False)
+        premove_board.turn = chess.WHITE if is_white else chess.BLACK
+        premove_moves = [move.uci() for move in premove_board.legal_moves]
     return {
         "code": room["code"],
         "name": room["name"],
         "status": room["status"],
         "fen": room["fen"],
         "moves": moves,
-        "white": {"id": room["white_id"], "name": room["white_name"]},
-        "black": {"id": room.get("black_id"), "name": room.get("black_name") or ""},
+        "white": {"id": room["white_id"], "name": room["white_name"], "avatar_url": _user_avatar(db, room["white_id"], mongodb_enabled)},
+        "black": {"id": room.get("black_id"), "name": room.get("black_name") or "", "avatar_url": _user_avatar(db, room.get("black_id"), mongodb_enabled)},
         "turn": "white" if board.turn == chess.WHITE else "black",
         "is_white": is_white,
         "is_black": is_black,
         "is_my_turn": is_my_turn,
         "check": board.is_check(),
         "legal_moves": [move.uci() for move in board.legal_moves] if is_my_turn else [],
+        "premove_moves": premove_moves,
         "last_move": moves[-1] if moves else None,
         "result": room.get("result") or "",
         "draw_offer_by": room.get("draw_offer_by"),
@@ -216,7 +233,7 @@ def dispatch_chess_api(handler, db, method, path, api_error, mongodb_enabled):
                 (code,name,room["white_id"],room["white_name"],None,"","waiting",START_FEN,"[]","",None,time_control,"{}",now,now),
             )
         _notify_room_changed(code, now)
-        return {"room": _public_room(room, user["id"])}, HTTPStatus.CREATED, []
+        return {"room": _public_room(room, user["id"], db, mongodb_enabled)}, HTTPStatus.CREATED, []
 
     match = re.fullmatch(r"/api/chess/rooms/([A-Z0-9]{6})(?:/(join|move|resign|draw|leave|updates))?", path)
     if not match:
@@ -257,7 +274,7 @@ def dispatch_chess_api(handler, db, method, path, api_error, mongodb_enabled):
         room = _get_room(db, code, mongodb_enabled)
         room = _room_dict(room, mongodb_enabled)
         _notify_room_changed(code, room.get("updated_at") or _now())
-        return {"room": _public_room(room, user["id"])}, HTTPStatus.OK, []
+        return {"room": _public_room(room, user["id"], db, mongodb_enabled)}, HTTPStatus.OK, []
 
     if not (is_white or is_black):
         _error(api_error, HTTPStatus.FORBIDDEN, "Эта партия доступна только её двум участникам.")
@@ -271,7 +288,7 @@ def dispatch_chess_api(handler, db, method, path, api_error, mongodb_enabled):
             if room_raw is None:
                 _error(api_error, HTTPStatus.NOT_FOUND, "Комната больше не существует.")
             room = _room_dict(room_raw, mongodb_enabled)
-        return {"room": _public_room(room, user["id"])}, HTTPStatus.OK, []
+        return {"room": _public_room(room, user["id"], db, mongodb_enabled)}, HTTPStatus.OK, []
 
     if method == "GET" and action is None:
         clock = room.get("clock") or {}
@@ -291,7 +308,7 @@ def dispatch_chess_api(handler, db, method, path, api_error, mongodb_enabled):
                     room = _room_dict(_get_room(db, code, mongodb_enabled), mongodb_enabled)
             except (TypeError, ValueError):
                 pass
-        return {"room": _public_room(room, user["id"])}, HTTPStatus.OK, []
+        return {"room": _public_room(room, user["id"], db, mongodb_enabled)}, HTTPStatus.OK, []
 
     if method == "POST" and action == "move":
         if room["status"] != "active":
@@ -344,7 +361,7 @@ def dispatch_chess_api(handler, db, method, path, api_error, mongodb_enabled):
             _error(api_error, HTTPStatus.CONFLICT, "Позиция уже обновилась. Доска будет синхронизирована.")
         # The compare-and-swap write succeeded, so the in-memory room is
         # already the authoritative committed snapshot. Avoid a second DB read.
-        return {"room": _public_room(room, user["id"])}, HTTPStatus.OK, []
+        return {"room": _public_room(room, user["id"], db, mongodb_enabled)}, HTTPStatus.OK, []
 
     if method == "POST" and action == "resign":
         if room["status"] != "active":
@@ -356,7 +373,7 @@ def dispatch_chess_api(handler, db, method, path, api_error, mongodb_enabled):
             room["result"] = f"Сдача. Победили {winner}."
         room["draw_offer_by"] = None
         _save_room(db, room, mongodb_enabled)
-        return {"room": _public_room(_room_dict(_get_room(db, code, mongodb_enabled), mongodb_enabled), user["id"])}, HTTPStatus.OK, []
+        return {"room": _public_room(_room_dict(_get_room(db, code, mongodb_enabled), mongodb_enabled), user["id"], db, mongodb_enabled)}, HTTPStatus.OK, []
 
     if method == "POST" and action == "draw":
         if room["status"] != "active":
@@ -390,7 +407,7 @@ def dispatch_chess_api(handler, db, method, path, api_error, mongodb_enabled):
         else:
             _error(api_error, HTTPStatus.BAD_REQUEST, "Неизвестное действие с ничьей.")
         _save_room(db, room, mongodb_enabled)
-        return {"room": _public_room(_room_dict(_get_room(db, code, mongodb_enabled), mongodb_enabled), user["id"])}, HTTPStatus.OK, []
+        return {"room": _public_room(_room_dict(_get_room(db, code, mongodb_enabled), mongodb_enabled), user["id"], db, mongodb_enabled)}, HTTPStatus.OK, []
 
     if method in {"POST", "DELETE"} and action == "leave":
         if room["status"] == "waiting" and is_white:
