@@ -62,18 +62,18 @@ def _save_room(db, room, mongodb_enabled, expected_fen=None):
         room["name"], room["white_id"], room["white_name"], room.get("black_id"),
         room.get("black_name") or "", room["status"], room["fen"],
         json.dumps(room.get("moves") or [], ensure_ascii=False), room.get("result") or "",
-        room.get("draw_offer_by"), json.dumps(room.get("clock") or {}, ensure_ascii=False), now, room["code"],
+        room.get("draw_offer_by"), room.get("time_control") or "10+0", json.dumps(room.get("clock") or {}, ensure_ascii=False), now, room["code"],
     )
     if expected_fen is None:
         db.execute(
             """UPDATE chess_rooms SET name=?, white_id=?, white_name=?, black_id=?,
-               black_name=?, status=?, fen=?, moves_json=?, result=?, draw_offer_by=?,
+               black_name=?, status=?, fen=?, moves_json=?, result=?, draw_offer_by=?, time_control=?, clock_json=?,
                updated_at=? WHERE code=?""", fields,
         )
         return True
     cursor = db.execute(
         """UPDATE chess_rooms SET name=?, white_id=?, white_name=?, black_id=?,
-           black_name=?, status=?, fen=?, moves_json=?, result=?, draw_offer_by=?, clock_json=?,
+           black_name=?, status=?, fen=?, moves_json=?, result=?, draw_offer_by=?, time_control=?, clock_json=?,
            updated_at=? WHERE code=? AND fen=? AND status='active'""",
         fields[:-1] + (room["code"], expected_fen),
     )
@@ -172,9 +172,9 @@ def dispatch_chess_api(handler, db, method, path, api_error, mongodb_enabled):
         else:
             db.execute(
                 """INSERT INTO chess_rooms
-                (code,name,white_id,white_name,black_id,black_name,status,fen,moves_json,result,draw_offer_by,clock_json,created_at,updated_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (code,name,room["white_id"],room["white_name"],None,"","waiting",START_FEN,"[]","",None,"{}",now,now),
+                (code,name,white_id,white_name,black_id,black_name,status,fen,moves_json,result,draw_offer_by,time_control,clock_json,created_at,updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (code,name,room["white_id"],room["white_name"],None,"","waiting",START_FEN,"[]","",None,time_control,"{}",now,now),
             )
         return {"room": _public_room(room, user["id"])}, HTTPStatus.CREATED, []
 
@@ -203,14 +203,14 @@ def dispatch_chess_api(handler, db, method, path, api_error, mongodb_enabled):
         if mongodb_enabled:
             result = db.chess_rooms.update_one(
                 {"code": code, "status": "waiting", "black_id": None},
-                {"$set": {"black_id": user["id"], "black_name": room["black_name"], "status": "active", "updated_at": _now()}},
+                {"$set": {"black_id": user["id"], "black_name": room["black_name"], "status": "active", "clock": room["clock"], "updated_at": _now()}},
             )
             if result.modified_count != 1:
                 _error(api_error, HTTPStatus.CONFLICT, "Комнату уже занял другой игрок. Обнови список.")
         else:
             cursor = db.execute(
-                "UPDATE chess_rooms SET black_id=?, black_name=?, status='active', updated_at=? WHERE code=? AND status='waiting' AND black_id IS NULL",
-                (user["id"], room["black_name"], _now(), code),
+                "UPDATE chess_rooms SET black_id=?, black_name=?, status='active', clock_json=?, updated_at=? WHERE code=? AND status='waiting' AND black_id IS NULL",
+                (user["id"], room["black_name"], __import__("json").dumps(room["clock"]), _now(), code),
             )
             if cursor.rowcount != 1:
                 _error(api_error, HTTPStatus.CONFLICT, "Комнату уже занял другой игрок. Обнови список.")
