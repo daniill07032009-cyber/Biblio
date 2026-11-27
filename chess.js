@@ -10,7 +10,6 @@
   }
   function stop() { if (timer) window.clearInterval(timer); timer = 0; }
   function panel(title) {
-    stop();
     var layout = $("#game-catalog-layout"), detail = $("#game-detail-panel"), target = $("#game-catalog-detail-panel");
     if (layout) layout.hidden = true;
     if (detail) detail.hidden = true;
@@ -42,6 +41,7 @@
     window.location.assign("/games/chess/play?room=" + encodeURIComponent(code));
   }
   async function init() {
+    stop();
     if (!location.pathname.startsWith("/games/chess")) return;
     var code = new URLSearchParams(location.search).get("room");
     if (/\/play\/?$/.test(location.pathname) && code) {
