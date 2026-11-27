@@ -223,9 +223,17 @@ def dispatch_bunker_api(handler, db, method, path, api_error, mongodb_enabled):
                 if str(target_id) != str(user_id)
             ]
             # If a tie-break loses one of its candidates, restart a normal vote.
-            if len(current_tied_targets) >= 2 and len(remaining_tied_targets) < 2:
+            reset_tie_break = len(current_tied_targets) >= 2 and len(remaining_tied_targets) < 2
+            if reset_tie_break:
                 remaining_tied_targets = []
                 remaining_votes = {}
+            room_updates = {
+                "updated_at": now,
+                "voting.votes": remaining_votes,
+                "voting.tied_targets": remaining_tied_targets,
+            }
+            if reset_tie_break:
+                room_updates["result"] = None
             db.bunker_rooms.update_one({"code": code}, {
                 "$pull": {
                     "members": {"user_id": user_id},
@@ -234,11 +242,7 @@ def dispatch_bunker_api(handler, db, method, path, api_error, mongodb_enabled):
                     "survivors": {"user_id": user_id},
                 },
                 "$unset": {f"private_cards.{user_id}": ""},
-                "$set": {
-                    "updated_at": now,
-                    "voting.votes": remaining_votes,
-                    "voting.tied_targets": remaining_tied_targets,
-                },
+                "$set": room_updates,
             })
         return {"left": True}, HTTPStatus.OK, []
     if not member:

@@ -209,6 +209,7 @@ class BunkerOnlineAPITests(unittest.TestCase):
             "revealed_cards": [], "survivors": [],
             "private_cards": {"101": [], "202": [], "303": []},
             "voting": {"open": True, "votes": {}, "tied_targets": [202, 303]},
+            "result": "Ничья! Старое сообщение.",
         })
 
         result, status, _ = self.call_api(
@@ -220,6 +221,7 @@ class BunkerOnlineAPITests(unittest.TestCase):
         self.assertTrue(persisted["voting"]["open"])
         self.assertEqual([], persisted["voting"]["tied_targets"])
         self.assertEqual({}, persisted["voting"]["votes"])
+        self.assertIsNone(persisted["result"])
 
         voted, status, _ = self.call_api(
             self.host, "POST", f"/api/bunker/rooms/{code}/action",
