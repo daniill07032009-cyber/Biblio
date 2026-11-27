@@ -26,6 +26,7 @@ from pymongo.errors import DuplicateKeyError
 
 from bunker_cards import BUNKER_CARD_POOLS, BUNKER_CARD_COUNTS, EXPECTED_CARD_COUNTS, bunker_random_age
 from dnd_solo import DND_SOLO_SCENARIOS, dnd_solo_initial_state, dnd_solo_transition
+from chess_online_api import dispatch_chess_api
 from bunker_online_api import (
     BUNKER_DIFFICULTIES, BUNKER_EVENTS, BUNKER_PRESENCE_WRITE_INTERVAL_SECONDS,
     BUNKER_SCENARIOS, bunker_make_cards, bunker_presence_refresh_due,
@@ -76,6 +77,18 @@ GAME_CATALOG_SEED = (
         ),
         "cover_symbol": "☢",
         "cover_theme": "bunker",
+    },
+    {
+        "slug": "chess",
+        "title": "Шахматы",
+        "description": (
+            "Классические шахматы для двух игроков Biblio. Создавай комнату, приглашай "
+            "соперника по коду и играй с полной проверкой правил: рокировка, взятие на "
+            "проходе, превращение пешки, шах, мат, пат и ничья. Ходы синхронизируются "
+            "между участниками, а партия сохраняется при переподключении."
+        ),
+        "cover_symbol": "♟",
+        "cover_theme": "chess",
     },
 )
 GAME_CATALOG_PRESENCE_SECONDS = 45
@@ -144,6 +157,8 @@ def initialize_db():
         db.games.create_index([("id", ASCENDING)], unique=True)
         db.games.create_index([("access", ASCENDING), ("updated_at", DESCENDING), ("id", DESCENDING)])
         db.games.create_index([("owner_id", ASCENDING), ("updated_at", DESCENDING), ("id", DESCENDING)])
+        db.chess_rooms.create_index([("code", ASCENDING)], unique=True)
+        db.chess_rooms.create_index([("status", ASCENDING), ("updated_at", DESCENDING)])
         db.game_participants.create_index([("game_id", ASCENDING), ("user_id", ASCENDING)], unique=True)
         db.book_ratings.create_index(
             [("book_id", ASCENDING), ("user_id", ASCENDING)], unique=True
@@ -267,6 +282,22 @@ def initialize_db():
                 created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
                 updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
             );
+            CREATE TABLE IF NOT EXISTS chess_rooms (
+                code TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                white_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                white_name TEXT NOT NULL,
+                black_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                black_name TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL CHECK (status IN ('waiting', 'active', 'finished')),
+                fen TEXT NOT NULL,
+                moves_json TEXT NOT NULL DEFAULT '[]',
+                result TEXT NOT NULL DEFAULT '',
+                draw_offer_by INTEGER,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS chess_rooms_status_updated_idx ON chess_rooms(status, updated_at DESC);
             CREATE TABLE IF NOT EXISTS game_participants (
                 id INTEGER PRIMARY KEY,
                 game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
@@ -1333,6 +1364,8 @@ class BiblioHandler(BaseHTTPRequestHandler):
         query = query or {}
         if path.startswith("/api/bunker/"):
             return dispatch_bunker_api(self, db, method, path, APIError, bool(MONGODB_URI))
+        if path.startswith("/api/chess/"):
+            return dispatch_chess_api(self, db, method, path, APIError, True)
         if re.fullmatch(r"/api/games/\d+/story", path):
             return dispatch_dnd_solo_story(self, db, method, path, APIError, True)
         if method == "GET" and path == "/api/me":
@@ -2345,6 +2378,8 @@ class BiblioHandler(BaseHTTPRequestHandler):
         query = query or {}
         if re.fullmatch(r"/api/games/\d+/story", path):
             return dispatch_dnd_solo_story(self, db, method, path, APIError, False)
+        if path.startswith("/api/chess/"):
+            return dispatch_chess_api(self, db, method, path, APIError, False)
 
         if method == "GET" and path == "/api/me":
             user = self.current_user(db)
