@@ -47,6 +47,7 @@
   async function init() {
     stop();
     if (!location.pathname.startsWith("/games/chess")) return;
+    document.body.classList.add("chess-home-mode");
     var code = new URLSearchParams(location.search).get("room");
     if (/\/play\/?$/.test(location.pathname) && code) {
       currentCode = code.toUpperCase();
@@ -62,30 +63,48 @@
     }
   }
   function renderLobby() {
-    var target = panel("Игровые комнаты");
+    var target = panel("Главная");
     target.innerHTML =
-      '<section class="chess-hub">' +
-        '<header class="chess-hub__header"><div><span class="eyebrow">BIBLIO · ДВА ИГРОКА</span><h1>Шахматы</h1><p>Создай комнату и пригласи соперника. Никаких ботов — только реальные игроки Biblio.</p></div><a class="button button--secondary" href="/games">← Все игры</a></header>' +
-        '<div class="chess-hub__columns">' +
-          '<form class="chess-panel" id="chess-create-form"><span class="chess-panel__eyebrow">НОВАЯ ПАРТИЯ</span><h2>Создать комнату</h2><label>Название партии<input name="name" maxlength="80" value="Дружеская партия" required></label><label>Контроль времени<select name="time_control"><option value="3+2">Блиц · 3 + 2</option><option value="5+0">Блиц · 5 минут</option><option value="10+0" selected>Рапид · 10 минут</option><option value="15+10">Рапид · 15 + 10</option></select></label><button class="button button--primary" type="submit">♟ Создать и получить код</button></form>' +
-          '<form class="chess-panel" id="chess-join-form"><span class="chess-panel__eyebrow">ЕСТЬ ПРИГЛАШЕНИЕ?</span><h2>Войти по коду</h2><label>Код комнаты<input name="code" maxlength="6" minlength="6" pattern="[A-Za-z0-9]{6}" placeholder="Например, A1B2C3" required autocomplete="off"></label><button class="button button--secondary" type="submit">Присоединиться</button></form>' +
+      '<div class="chess-home">' +
+        '<aside class="chess-home__sidebar">' +
+          '<a class="chess-home__brand" href="/games/chess"><span class="chess-home__brand-mark">♞</span><span>BIBLIO<span>CHESS</span></span></a>' +
+          '<a class="chess-home__new-game" href="#chess-create-form">＋ Новая партия</a>' +
+          '<nav class="chess-home__nav" aria-label="Навигация шахмат">' +
+            '<a class="is-active" href="/games/chess"><span>⌂</span> Главная</a>' +
+            '<a href="#chess-create-form"><span>♟</span> Играть</a>' +
+            '<a href="#chess-room-section"><span>◎</span> Соперники</a>' +
+          '</nav>' +
+          '<div class="chess-home__sidebar-caption">BIBLIO</div>' +
+          '<a class="chess-home__nav-link" href="/games"><span>←</span> Все игры</a>' +
+          '<div class="chess-home__sidebar-bottom"><span class="chess-home__online-dot"></span> Только реальные игроки</div>' +
+        '</aside>' +
+        '<div class="chess-home__workspace">' +
+          '<header class="chess-home__topbar"><div><span class="chess-home__crumb">ИГРОВАЯ ЗОНА <b>/</b> ШАХМАТЫ</span><h1>Главная</h1></div><div class="chess-home__user" id="chess-profile"><span class="chess-home__avatar">♙</span><span><b>Игрок Biblio</b><small>Ваш профиль</small></span></div></header>' +
+          '<div class="chess-home__content">' +
+            '<section class="chess-home__welcome"><div class="chess-home__welcome-copy"><span class="chess-home__eyebrow">ТВОЯ СЛЕДУЮЩАЯ ПАРТИЯ НАЧИНАЕТСЯ ЗДЕСЬ</span><h2>Каждый ход<br><em>имеет значение.</em></h2><p>Играй в классические шахматы с участниками Biblio. Создай комнату или присоединись к открытому матчу.</p><a class="chess-home__primary-link" href="#chess-create-form">Начать играть <span>→</span></a></div><div class="chess-home__hero-art" aria-hidden="true"><div class="chess-home__hero-board"><span>♜</span><span>♞</span><span>♝</span><span>♛</span><span>♚</span><span>♝</span><span>♞</span><span>♜</span><span>♟</span><span>♟</span><span>♟</span><span>♟</span><span>♟</span><span>♟</span><span>♟</span><span>♟</span></div><div class="chess-home__hero-piece">♘</div></div></section>' +
+            '<div class="chess-home__section-heading"><div><span class="chess-home__eyebrow">ВЫБЕРИ ФОРМАТ</span><h2>Играть в шахматы</h2></div><span class="chess-home__live-label"><i></i> Онлайн-комнаты</span></div>' +
+            '<div class="chess-home__play-grid">' +
+              '<form class="chess-home__card chess-home__create" id="chess-create-form"><div class="chess-home__card-icon">♟</div><span class="chess-home__eyebrow">СОЗДАТЬ МАТЧ</span><h3>Новая партия</h3><p>Создай комнату и пригласи друга по коду или дождись соперника.</p><label class="chess-home__field-label">Название партии<input name="name" maxlength="80" value="Дружеская партия" required></label><label class="chess-home__field-label">Контроль времени<select name="time_control"><option value="3+2">Блиц · 3 + 2</option><option value="5+0">Блиц · 5 минут</option><option value="10+0" selected>Рапид · 10 минут</option><option value="15+10">Рапид · 15 + 10</option></select></label><div class="chess-home__time-presets"><button type="button" data-time-control="3+2">3+2</button><button type="button" data-time-control="5+0">5+0</button><button type="button" class="is-selected" data-time-control="10+0">10+0</button><button type="button" data-time-control="15+10">15+10</button></div><button class="chess-home__action" type="submit">Создать комнату <span>→</span></button></form>' +
+              '<form class="chess-home__card chess-home__join" id="chess-join-form"><div class="chess-home__card-icon chess-home__card-icon--light">⌁</div><span class="chess-home__eyebrow">ЕСТЬ КОД ПРИГЛАШЕНИЯ?</span><h3>Присоединиться</h3><p>Введи шестизначный код комнаты, чтобы начать партию с другим участником.</p><label class="chess-home__field-label">Код комнаты<input name="code" maxlength="6" minlength="6" pattern="[A-Za-z0-9]{6}" placeholder="Например, A1B2C3" required autocomplete="off"></label><div class="chess-home__join-note"><span>♙</span> Игра только между двумя аккаунтами Biblio</div><button class="chess-home__action chess-home__action--outline" type="submit">Войти в комнату <span>→</span></button></form>' +
+            '</div>' +
+            '<section class="chess-home__rooms" id="chess-room-section"><div class="chess-home__section-heading"><div><span class="chess-home__eyebrow">ИГРОВОЕ СООБЩЕСТВО</span><h2>Открытые комнаты</h2></div><span class="chess-home__room-count" id="chess-room-count">Загрузка…</span></div><div id="chess-room-list" class="chess-home__room-list"><p class="chess-home__empty">Загружаем доступные комнаты…</p></div></section>' +
+            '<footer class="chess-home__footer"><span>♞ Biblio Chess</span><span>Классические шахматы · Без ботов · Реальные соперники</span></footer>' +
+          '</div>' +
         '</div>' +
-        '<section class="chess-panel chess-hub__rooms"><div class="chess-panel__heading"><div><span class="chess-panel__eyebrow">ОТКРЫТЫЕ КОМНАТЫ</span><h2>Найти соперника</h2></div><span class="chess-live"><i></i> Обновляется автоматически</span></div><div id="chess-room-list"><p class="empty-state">Загружаем комнаты…</p></div></section>' +
-      '</section>';
+      '</div>';
     $("#chess-create-form").addEventListener("submit", async function (event) {
       event.preventDefault();
-      var form = event.currentTarget, button = form.querySelector("button");
+      var form = event.currentTarget, button = form.querySelector('button[type="submit"]');
       button.disabled = true;
       try {
         var formData = new FormData(form);
-        var name = formData.get("name");
-        var result = await request("/api/chess/rooms", { method: "POST", body: JSON.stringify({ name: name, time_control: formData.get("time_control") }) });
+        var result = await request("/api/chess/rooms", { method: "POST", body: JSON.stringify({ name: formData.get("name"), time_control: formData.get("time_control") }) });
         navigate(result.room.code);
       } catch (error) { toast(error.message); button.disabled = false; }
     });
     $("#chess-join-form").addEventListener("submit", async function (event) {
       event.preventDefault();
-      var form = event.currentTarget, button = form.querySelector("button");
+      var form = event.currentTarget, button = form.querySelector('button[type="submit"]');
       button.disabled = true;
       var codeValue = String(new FormData(form).get("code") || "").trim().toUpperCase();
       try {
@@ -93,22 +112,44 @@
         navigate(codeValue);
       } catch (error) { toast(error.message); button.disabled = false; }
     });
+    document.querySelectorAll("[data-time-control]").forEach(function (button) {
+      button.addEventListener("click", function () {
+        var select = $('#chess-create-form select[name="time_control"]');
+        if (select) select.value = button.dataset.timeControl;
+        document.querySelectorAll("[data-time-control]").forEach(function (item) { item.classList.toggle("is-selected", item === button); });
+      });
+    });
+    loadChessProfile();
+  }
+  async function loadChessProfile() {
+    var target = $("#chess-profile");
+    if (!target) return;
+    try {
+      var result = await request("/api/me");
+      var user = result.user;
+      if (!user) return;
+      var name = user.display_name || user.username || user.name || "Игрок Biblio";
+      var avatar = user.avatar_url ? '<img src="' + escapeHtml(user.avatar_url) + '" alt="">' : '<span class="chess-home__avatar">♙</span>';
+      target.innerHTML = avatar + '<span><b>' + escapeHtml(name) + '</b><small>Аккаунт Biblio</small></span>';
+    } catch (error) { /* Keep the safe guest label if profile data is unavailable. */ }
   }
   async function refreshLobby() {
-    var list = $("#chess-room-list");
+    var list = $("#chess-room-list"), count = $("#chess-room-count");
     if (!list || !location.pathname.startsWith("/games/chess")) return;
     try {
       var result = await request("/api/chess/rooms");
+      if (count) count.textContent = result.rooms.length + " свободно";
       if (!result.rooms.length) {
-        list.innerHTML = '<p class="empty-state">Сейчас нет свободных комнат. Создай первую партию и пригласи друга.</p>';
+        list.innerHTML = '<div class="chess-home__empty-state"><span>♟</span><b>Пока нет открытых партий</b><p>Создай комнату — другой участник сможет присоединиться к тебе.</p><a href="#chess-create-form">Создать первую партию →</a></div>';
         return;
       }
       list.innerHTML = result.rooms.map(function (room) {
-        return '<article class="chess-room-row"><div><strong>' + escapeHtml(room.name) + '</strong><span>Белые: ' + escapeHtml(room.white_name) + ' · Код: <code>' + escapeHtml(room.code) + '</code></span></div><button class="button ' + (room.is_owner ? "button--secondary" : "button--primary") + '" type="button" data-chess-room="' + escapeHtml(room.code) + '">' + (room.is_owner ? "Открыть свою комнату" : "Играть за чёрных") + '</button></article>';
+        return '<article class="chess-home__room"><div class="chess-home__room-avatar">♙</div><div class="chess-home__room-info"><strong>' + escapeHtml(room.name) + '</strong><span>Создатель: ' + escapeHtml(room.white_name) + '</span></div><div class="chess-home__room-code"><small>КОД КОМНАТЫ</small><b>' + escapeHtml(room.code) + '</b></div><button class="chess-home__room-button" type="button" data-chess-room="' + escapeHtml(room.code) + '">' + (room.is_owner ? "Открыть" : "Присоединиться") + ' <span>→</span></button></article>';
       }).join("");
       list.querySelectorAll("[data-chess-room]").forEach(function (button) {
         button.addEventListener("click", async function () {
           var code = button.dataset.chessRoom;
+          button.disabled = true;
           try {
             var room = result.rooms.find(function (item) { return item.code === code; });
             if (!room || !room.is_owner) await request("/api/chess/rooms/" + code + "/join", { method: "POST", body: "{}" });
@@ -116,7 +157,10 @@
           } catch (error) { toast(error.message); refreshLobby(); }
         });
       });
-    } catch (error) { list.innerHTML = '<p class="empty-state">' + escapeHtml(error.message) + '</p>'; }
+    } catch (error) {
+      if (count) count.textContent = "Недоступно";
+      list.innerHTML = '<p class="chess-home__empty">' + escapeHtml(error.message) + '</p>';
+    }
   }
   async function refreshRoom(code, initial) {
     var target = $("#game-catalog-detail-panel");
