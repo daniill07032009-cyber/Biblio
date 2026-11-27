@@ -7,6 +7,9 @@
   var clockTimer = 0;
   var clockState = null;
   var selectedPly = null;
+  var lastRoomSignature = "";
+  var roomRequestPending = false;
+  var movePending = false;
   var PIECES = { K:"♔",Q:"♕",R:"♖",B:"♗",N:"♘",P:"♙",k:"♚",q:"♛",r:"♜",b:"♝",n:"♞",p:"♟" };
   var $ = function (selector) { return document.querySelector(selector); };
   function escapeHtml(value) {
@@ -52,7 +55,7 @@
     if (/\/play\/?$/.test(location.pathname) && code) {
       currentCode = code.toUpperCase();
       await refreshRoom(currentCode, true);
-      timer = window.setInterval(function () { refreshRoom(currentCode, false); }, 1800);
+      timer = window.setInterval(function () { refreshRoom(currentCode, false); }, 1100);
       clockTimer = window.setInterval(updateClocks, 250);
     } else {
       currentCode = "";
@@ -165,16 +168,66 @@
   async function refreshRoom(code, initial) {
     var target = $("#game-catalog-detail-panel");
     if (!target || !location.pathname.startsWith("/games/chess")) return;
+    if (roomRequestPending || movePending) return;
+    roomRequestPending = true;
     try {
       var result = await request("/api/chess/rooms/" + encodeURIComponent(code));
-      renderRoom(result.room);
+      var signature = JSON.stringify(result.room);
+      if (signature !== lastRoomSignature) {
+        lastRoomSignature = signature;
+        renderRoom(result.room);
+      }
     } catch (error) {
       if (initial) {
         var failed = panel("Партия недоступна");
         failed.innerHTML = '<section class="chess-panel"><h2>Не удалось открыть партию</h2><p>' + escapeHtml(error.message) + '</p><a class="button button--primary" href="/games/chess">К комнатам</a></section>';
         stop();
       }
-    }
+    } finally { roomRequestPending = false; }
+  }
+  function captureBoardPieces() {
+    var snapshot = {};
+    document.querySelectorAll(".chess-square[data-chess-square]").forEach(function (square) {
+      var piece = square.querySelector(".chess-square__piece");
+      if (!piece || !piece.textContent.trim()) return;
+      var rect = piece.getBoundingClientRect();
+      snapshot[square.dataset.chessSquare] = { glyph:piece.textContent.trim(), className:piece.className, rect:{left:rect.left,top:rect.top,width:rect.width,height:rect.height} };
+    });
+    return snapshot;
+  }
+  function animateBoardChanges(previous) {
+    if (!previous || !Object.keys(previous).length || !document.body.animate) return;
+    var current = {}, used = {};
+    document.querySelectorAll(".chess-square[data-chess-square]").forEach(function (square) {
+      var piece = square.querySelector(".chess-square__piece");
+      if (!piece || !piece.textContent.trim()) return;
+      current[square.dataset.chessSquare] = { glyph:piece.textContent.trim(), rect:piece.getBoundingClientRect() };
+    });
+    Object.keys(previous).forEach(function (from) {
+      var oldPiece = previous[from];
+      if (current[from] && current[from].glyph === oldPiece.glyph) return;
+      var to = Object.keys(current).find(function (square) {
+        return square !== from && !used[square] && current[square].glyph === oldPiece.glyph && (!previous[square] || previous[square].glyph !== oldPiece.glyph);
+      });
+      if (!to) return;
+      used[to] = true;
+      var destination = current[to].rect, ghost = document.createElement("span");
+      ghost.className = oldPiece.className;
+      ghost.textContent = oldPiece.glyph;
+      Object.assign(ghost.style,{position:"fixed",zIndex:"9999",pointerEvents:"none",margin:"0",left:oldPiece.rect.left+"px",top:oldPiece.rect.top+"px",width:oldPiece.rect.width+"px",height:oldPiece.rect.height+"px",display:"grid",placeItems:"center",fontSize:"clamp(24px,5vw,48px)"});
+      document.body.appendChild(ghost);
+      ghost.animate([{transform:"translate(0,0)"},{transform:"translate("+(destination.left-oldPiece.rect.left)+"px,"+(destination.top-oldPiece.rect.top)+"px)"}],{duration:230,easing:"cubic-bezier(.2,.75,.25,1)"}).onfinish=function(){ghost.remove();};
+    });
+  }
+  function animateMoveImmediately(from,to) {
+    var source=document.querySelector('[data-chess-square="'+from+'"] .chess-square__piece');
+    var destination=document.querySelector('[data-chess-square="'+to+'"] .chess-square__piece');
+    if(!source || !source.textContent.trim() || !destination || !source.animate) return Promise.resolve();
+    var a=source.getBoundingClientRect(), b=destination.getBoundingClientRect(), ghost=source.cloneNode(true);
+    Object.assign(ghost.style,{position:"fixed",zIndex:"10000",pointerEvents:"none",left:a.left+"px",top:a.top+"px",width:a.width+"px",height:a.height+"px",margin:"0"});
+    document.body.appendChild(ghost);
+    source.style.visibility="hidden";
+    return ghost.animate([{transform:"translate(0,0)"},{transform:"translate("+(b.left-a.left)+"px,"+(b.top-a.top)+"px)"}],{duration:220,easing:"cubic-bezier(.2,.75,.25,1)"}).finished.catch(function(){}).then(function(){ghost.remove();source.style.visibility="";});
   }
   function boardCells(fen) {
     var rows = String(fen || "").split(" ")[0].split("/"), cells = [];
@@ -190,6 +243,7 @@
     return cells;
   }
   function renderRoom(room) {
+    var previousBoard = captureBoardPieces();
     var target = panel(room.name || "Шахматная партия");
     currentCode = room.code;
     var myColor = room.is_white ? "white" : "black";
@@ -240,6 +294,7 @@
             (finished ? '<div class="chess-result-banner"><small>ПАРТИЯ ЗАВЕРШЕНА</small><strong>' + escapeHtml(room.result) + '</strong></div>' : '<div class="chess-side-status">' + (room.check ? "♔ Королю объявлен шах" : room.status === "waiting" ? "Поделитесь кодом, чтобы начать" : room.is_my_turn ? "Сейчас ваш ход — выберите фигуру" : "Ожидаем ход соперника") + '</div>') +
             '<div class="chess-side-actions">' + (room.status === "active" ? '<button class="chess-control" type="button" id="chess-draw-offer">' + (room.draw_offer_by && room.draw_offer_by !== (me && me.id) ? "Предложение ничьей" : "♧ Предложить ничью") + '</button><button class="chess-control chess-control--danger" type="button" id="chess-resign">⚑ Сдаться</button>' : '') + '<button class="chess-control chess-control--subtle" type="button" id="chess-leave">Выйти из партии</button></div>' +
           '</section><div class="chess-sidebar-note"><span>♟</span><p>Играйте честно и уважайте соперника. Каждый ход сохраняется автоматически.</p></div></aside></div></section>';
+    animateBoardChanges(previousBoard);
     $("#chess-copy-code") && $("#chess-copy-code").addEventListener("click", function () {
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(room.code).then(function () { toast("Код скопирован"); }).catch(function () { toast("Код комнаты: " + room.code); });
       else toast("Код комнаты: " + room.code);
@@ -332,11 +387,17 @@
     if (opponent) opponent.classList.toggle("is-running", clockState.turn !== clockState.myColor);
   }
   async function submitMove(move) {
+    if (movePending) return;
     selectedPly = null;
-    var code = currentCode;
+    var code = currentCode, from = move.slice(0,2), to = move.slice(2,4);
     selected = "";
-    try { await request("/api/chess/rooms/" + code + "/move", { method: "POST", body: JSON.stringify({ move: move }) }); await refreshRoom(code, false); }
-    catch (error) { toast(error.message); await refreshRoom(code, false); }
+    movePending = true;
+    try {
+      await animateMoveImmediately(from,to);
+      await request("/api/chess/rooms/" + encodeURIComponent(code) + "/move", { method: "POST", body: JSON.stringify({ move: move }) });
+    } catch (error) { toast(error.message); }
+    finally { movePending = false; lastRoomSignature = ""; }
+    await refreshRoom(code, false);
   }
   window.BiblioChess = { init: init, refresh: init, destroy: stop };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
