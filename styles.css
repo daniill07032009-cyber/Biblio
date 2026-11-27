@@ -3984,3 +3984,29 @@ body.chess-home-mode { background:#f1f2f3; color:#262522; }
   .chess-board.is-entering .chess-square__piece { animation:none!important; }
   .chess-playerbar,.chess-tool-button,.chess-control { transition:none!important; }
 }
+
+
+/* Move arrival feedback: a restrained pulse, never a layout animation. */
+.chess-arena .chess-square.is-arrival:before,
+.chess-arena .chess-square.is-capture:before {
+  position:absolute;
+  z-index:1;
+  inset:8%;
+  border:2px solid rgba(255,255,255,.65);
+  border-radius:50%;
+  content:"";
+  pointer-events:none;
+  animation:chess-square-arrival .38s cubic-bezier(.18,.78,.25,1) both;
+}
+.chess-arena .chess-square.is-capture:before {
+  border-color:rgba(155,54,43,.8);
+  background:rgba(190,78,58,.14);
+}
+@keyframes chess-square-arrival {
+  from { opacity:.9; transform:scale(.58); }
+  to { opacity:0; transform:scale(1.24); }
+}
+@media(prefers-reduced-motion:reduce) {
+  .chess-arena .chess-square.is-arrival:before,
+  .chess-arena .chess-square.is-capture:before { animation:none!important; }
+}
