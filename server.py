@@ -691,6 +691,8 @@ def dispatch_dnd_solo_story(handler, db, method, path, api_error, mongodb_enable
     ).fetchone()
     if hero is None:
         raise api_error(HTTPStatus.CONFLICT, "Сначала создай персонажа.")
+    if not mongodb_enabled:
+        hero = dict(hero)
     payload = handler.read_json()
     choice_id = str(payload.get("choice_id") or "").strip()
     if not choice_id:
