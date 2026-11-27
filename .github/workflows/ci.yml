@@ -33,7 +33,7 @@ jobs:
 
       - name: Compile Python server
         run: |
-          python -m py_compile server.py
+          python -m py_compile server.py chess_online_api.py dnd_solo.py
           python -c "import server; assert callable(server.main)"
 
       - name: Run Python tests
@@ -42,6 +42,7 @@ jobs:
       - name: Check JavaScript syntax
         run: |
           node --check script.js
+          node --check chess.js
           node --check games/bunker-online.js
           node test_client.js
 

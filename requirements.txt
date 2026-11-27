@@ -1,2 +1,3 @@
 pymongo>=4.8,<5
 dnspython>=2.7,<3
+python-chess>=1.999,<2

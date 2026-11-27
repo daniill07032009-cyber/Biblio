@@ -15,7 +15,7 @@ RUN useradd --system --uid 10001 --create-home app \
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY --chown=app:app server.py bunker_cards.py bunker_online_api.py bunker_online_rules.py index.html script.js styles.css favicon.svg ./
+COPY --chown=app:app server.py bunker_cards.py bunker_online_api.py bunker_online_rules.py dnd_solo.py chess_online_api.py index.html script.js chess.js styles.css dnd-theme.css favicon.svg ./
 COPY --chown=app:app games/ ./games/
 
 USER app

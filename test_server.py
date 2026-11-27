@@ -914,6 +914,74 @@ class BiblioServerTests(unittest.TestCase):
         status, _ = self.request("POST", f"/api/games/{game_id}/join", {})
         self.assertIn(status, (403, 404))
 
+    def test_chess_room_requires_two_real_players_and_enforces_legal_turns(self):
+        white = self.register("chess-white@example.com")
+        status, created = self.request("POST", "/api/chess/rooms", {"name": "Вечерняя партия"})
+        self.assertEqual(status, 201)
+        code = created["room"]["code"]
+        self.assertEqual(created["room"]["status"], "waiting")
+        self.assertEqual(created["room"]["legal_moves"], [])
+
+        status, rooms = self.request("GET", "/api/chess/rooms")
+        self.assertEqual(status, 200)
+        self.assertIn(code, [room["code"] for room in rooms["rooms"]])
+
+        self.request("POST", "/api/logout", {})
+        black = self.register("chess-black@example.com")
+        status, joined = self.request("POST", f"/api/chess/rooms/{code}/join", {})
+        self.assertEqual(status, 200)
+        self.assertEqual(joined["room"]["status"], "active")
+        self.assertEqual(joined["room"]["black"]["id"], black["id"])
+        self.assertEqual(joined["room"]["legal_moves"], [])
+
+        self.request("POST", "/api/logout", {})
+        self.request("POST", "/api/login", {"email": white["email"], "password": "secure-pass-123"})
+        status, white_room = self.request("GET", f"/api/chess/rooms/{code}")
+        self.assertEqual(status, 200)
+        self.assertIn("e2e4", white_room["room"]["legal_moves"])
+        status, moved = self.request("POST", f"/api/chess/rooms/{code}/move", {"move": "e2e4"})
+        self.assertEqual(status, 200)
+        self.assertEqual(moved["room"]["moves"][-1]["san"], "e4")
+        self.assertEqual(moved["room"]["turn"], "black")
+
+        status, _ = self.request("POST", f"/api/chess/rooms/{code}/move", {"move": "e2e5"})
+        self.assertEqual(status, 409)
+        self.request("POST", "/api/logout", {})
+        self.request("POST", "/api/login", {"email": black["email"], "password": "secure-pass-123"})
+        status, moved = self.request("POST", f"/api/chess/rooms/{code}/move", {"move": "e7e5"})
+        self.assertEqual(status, 200)
+        self.assertEqual([move["san"] for move in moved["room"]["moves"]], ["e4", "e5"])
+
+    def test_chess_draw_agreement_and_resignation_finish_games(self):
+        white = self.register("chess-draw-white@example.com")
+        status, created = self.request("POST", "/api/chess/rooms", {"name": "Ничья"})
+        self.assertEqual(status, 201)
+        code = created["room"]["code"]
+        self.request("POST", "/api/logout", {})
+        black = self.register("chess-draw-black@example.com")
+        status, _ = self.request("POST", f"/api/chess/rooms/{code}/join", {})
+        self.assertEqual(status, 200)
+
+        status, _ = self.request("POST", f"/api/chess/rooms/{code}/draw", {"action": "offer"})
+        self.assertEqual(status, 200)
+        self.request("POST", "/api/logout", {})
+        self.request("POST", "/api/login", {"email": white["email"], "password": "secure-pass-123"})
+        status, accepted = self.request("POST", f"/api/chess/rooms/{code}/draw", {"action": "accept"})
+        self.assertEqual(status, 200)
+        self.assertEqual(accepted["room"]["status"], "finished")
+        self.assertIn("Ничья", accepted["room"]["result"])
+
+        status, new_room = self.request("POST", "/api/chess/rooms", {"name": "Сдача"})
+        self.assertEqual(status, 201)
+        new_code = new_room["room"]["code"]
+        self.request("POST", "/api/logout", {})
+        self.request("POST", "/api/login", {"email": black["email"], "password": "secure-pass-123"})
+        self.request("POST", f"/api/chess/rooms/{new_code}/join", {})
+        status, _ = self.request("POST", f"/api/chess/rooms/{new_code}/resign", {})
+        self.assertEqual(status, 200)
+        self.assertEqual(_["room"]["status"], "finished")
+        self.assertIn("Сдача", _["room"]["result"])
+
     def test_game_catalog_ratings_and_live_viewer_presence(self):
         status, result = self.request("GET", "/api/catalog/games")
         self.assertEqual(status, 200)
