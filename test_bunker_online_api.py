@@ -192,6 +192,42 @@ class BunkerOnlineAPITests(unittest.TestCase):
         self.assertEqual({}, persisted["voting"]["votes"])
         self.assertEqual([], persisted["voting"]["tied_targets"])
 
+    def test_leaving_tie_candidate_restarts_regular_voting(self):
+        code = "TIEEXIT1"
+        self.db.bunker_rooms.insert_one({
+            "code": code, "host_id": 101, "status": "started", "capacity": 1,
+            "members": [
+                {"user_id": 101, "name": "Ведущий", "role": "host", "ready": True},
+                {"user_id": 202, "name": "Игрок", "role": "player", "ready": True},
+                {"user_id": 303, "name": "Игрок 2", "role": "player", "ready": True},
+            ],
+            "players": [
+                {"user_id": 101, "name": "Ведущий", "alive": True},
+                {"user_id": 202, "name": "Игрок", "alive": True},
+                {"user_id": 303, "name": "Игрок 2", "alive": True},
+            ],
+            "revealed_cards": [], "survivors": [],
+            "private_cards": {"101": [], "202": [], "303": []},
+            "voting": {"open": True, "votes": {}, "tied_targets": [202, 303]},
+        })
+
+        result, status, _ = self.call_api(
+            self.player, "POST", f"/api/bunker/rooms/{code}/leave", {}
+        )
+
+        self.assertEqual(HTTPStatus.OK, status)
+        persisted = self.db.bunker_rooms.find_one({"code": code})
+        self.assertTrue(persisted["voting"]["open"])
+        self.assertEqual([], persisted["voting"]["tied_targets"])
+        self.assertEqual({}, persisted["voting"]["votes"])
+
+        voted, status, _ = self.call_api(
+            self.host, "POST", f"/api/bunker/rooms/{code}/action",
+            {"type": "vote", "target_user_id": 303},
+        )
+        self.assertEqual(HTTPStatus.OK, status)
+        self.assertEqual(303, self.db.bunker_rooms.find_one({"code": code})["voting"]["votes"]["101"])
+
     def test_join_succeeds_after_legacy_bot_is_purged_from_full_lobby(self):
         code = "BOTFULL"
         self.db.bunker_rooms.insert_one({
