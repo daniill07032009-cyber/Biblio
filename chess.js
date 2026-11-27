@@ -3,6 +3,7 @@
   var timer = 0;
   var selected = "";
   var currentCode = "";
+  var boardFlipped = false;
   var PIECES = { K:"♔",Q:"♕",R:"♖",B:"♗",N:"♘",P:"♙",k:"♚",q:"♛",r:"♜",b:"♝",n:"♞",p:"♟" };
   var $ = function (selector) { return document.querySelector(selector); };
   function escapeHtml(value) {
@@ -142,38 +143,57 @@
   function renderRoom(room) {
     var target = panel(room.name || "Шахматная партия");
     currentCode = room.code;
+    var myColor = room.is_white ? "white" : "black";
+    var opponentColor = room.is_white ? "black" : "white";
+    var me = room.is_white ? room.white : room.black;
+    var opponent = room.is_white ? room.black : room.white;
     var whiteName = room.white && room.white.name || "Белые";
     var blackName = room.black && room.black.name || (room.status === "waiting" ? "Ожидаем соперника" : "Чёрные");
+    var myName = me && me.name || "Вы";
+    var opponentName = opponent && opponent.name || "Ожидаем соперника";
     var finished = room.status === "finished";
     var legal = room.legal_moves || [];
     var targets = selected ? legal.filter(function (move) { return move.slice(0, 2) === selected; }).map(function (move) { return move.slice(2, 4); }) : [];
-    var statusText = finished ? room.result : room.status === "waiting" ? "Комната создана — пригласи второго игрока" : (room.is_my_turn ? "Твой ход" : "Ход соперника") + (room.check ? " · Шах" : "");
-    var turnColor = room.turn === "white" ? "Белые" : "Чёрные";
+    var lastMove = room.last_move && room.last_move.uci ? room.last_move.uci : "";
+    var lastSquares = lastMove ? [lastMove.slice(0, 2), lastMove.slice(2, 4)] : [];
+    var statusText = finished ? room.result : room.status === "waiting" ? "Ожидаем второго игрока" : room.is_my_turn ? "Ваш ход" : "Ход соперника";
     var board = boardCells(room.fen);
+    if ((myColor === "black") !== boardFlipped) board.reverse();
+    var moveRows = [];
+    (room.moves || []).forEach(function (move, index, all) {
+      if (index % 2 === 0) {
+        moveRows.push('<li><span>' + (Math.floor(index / 2) + 1) + '</span><strong>' + escapeHtml(move.san) + '</strong><em>' + escapeHtml(all[index + 1] ? all[index + 1].san : "…") + '</em></li>');
+      }
+    });
     target.innerHTML =
-      '<section class="chess-game">' +
-        '<header class="chess-game__header"><div><span class="eyebrow">BIBLIO · ШАХМАТНАЯ ПАРТИЯ</span><h1>' + escapeHtml(room.name) + '</h1><p>Комната <code>' + escapeHtml(room.code) + '</code> · ' + (room.status === "waiting" ? "Ожидание игрока" : room.status === "active" ? "Партия идёт" : "Партия завершена") + '</p></div><a class="button button--secondary" href="/games/chess">← К комнатам</a></header>' +
-        (room.status === "waiting" ? '<div class="chess-invite"><div><strong>Пригласи соперника</strong><p>Отправь ему этот шестизначный код. Он войдёт за чёрных.</p></div><code>' + escapeHtml(room.code) + '</code><button class="button button--primary" id="chess-copy-code" type="button">Скопировать код</button></div>' : "") +
-        '<div class="chess-game__layout"><section class="chess-board-panel">' +
-          '<div class="chess-player chess-player--top"><span class="chess-player__piece">♚</span><div><strong>' + escapeHtml(blackName) + '</strong><small>Чёрные</small></div><span class="chess-player__turn">' + (room.turn === "black" && room.status === "active" ? "ХОД" : "") + '</span></div>' +
-          '<div class="chess-board" role="grid" aria-label="Шахматная доска">' + board.map(function (cell, index) {
+      '<section class="chess-arena">' +
+        '<header class="chess-arena__topbar"><div class="chess-arena__brand"><span class="chess-arena__mark">♞</span><div><strong>Шахматы</strong><small>BIBLIO · ОНЛАЙН-ПАРТИЯ</small></div></div><div class="chess-arena__meta"><span class="chess-room-pill">Комната <b>' + escapeHtml(room.code) + '</b></span><span class="chess-live-indicator"><i></i>' + (room.status === "waiting" ? "Ожидание игрока" : finished ? "Партия завершена" : "На связи") + '</span></div><a class="chess-arena__back" href="/games/chess">Все партии</a></header>' +
+        (room.status === "waiting" ? '<div class="chess-invite"><div><strong>Пригласите соперника в партию</strong><p>Отправьте ему ссылку или шестизначный код комнаты.</p></div><code>' + escapeHtml(room.code) + '</code><button class="chess-control chess-control--accent" id="chess-copy-code" type="button">Копировать код</button></div>' : "") +
+        '<div class="chess-arena__layout"><main class="chess-play-area">' +
+          '<div class="chess-playerbar chess-playerbar--opponent"><div class="chess-avatar chess-avatar--opponent">' + escapeHtml((opponentName || "С").slice(0,1).toUpperCase()) + '</div><div class="chess-playerbar__identity"><strong>' + escapeHtml(opponentName) + '</strong><small>' + (room.status === "waiting" ? "Соперник ещё не подключился" : "Соперник · " + (opponentColor === "white" ? "белые" : "чёрные")) + '</small></div><span class="chess-playerbar__turn">' + (room.status === "active" && room.turn === opponentColor ? "ХОД СОПЕРНИКА" : "") + '</span></div>' +
+          '<div class="chess-board-frame"><div class="chess-board" role="grid" aria-label="Шахматная доска">' + board.map(function (cell, index) {
             var row = Math.floor(index / 8), file = index % 8, light = (row + file) % 2 === 0;
             var pieceClass = cell.piece ? (cell.piece === cell.piece.toUpperCase() ? "is-white" : "is-black") : "";
-            return '<button class="chess-square ' + (light ? "is-light" : "is-dark") + (selected === cell.square ? " is-selected" : "") + (targets.indexOf(cell.square) >= 0 ? " is-target" : "") + '" type="button" role="gridcell" data-chess-square="' + cell.square + '" aria-label="' + cell.square + (cell.piece ? " фигура" : " пусто") + '"' + (!room.is_my_turn || finished ? " disabled" : "") + '><span class="chess-square__piece ' + pieceClass + '">' + (PIECES[cell.piece] || "") + '</span>' + (file === 0 ? '<small class="chess-coordinate chess-coordinate--rank">' + (8 - row) + '</small>' : "") + (row === 7 ? '<small class="chess-coordinate chess-coordinate--file">' + "abcdefgh"[file] + '</small>' : "") + '</button>';
-          }).join("") + '</div>' +
-          '<div class="chess-player chess-player--bottom"><span class="chess-player__piece">♔</span><div><strong>' + escapeHtml(whiteName) + '</strong><small>Белые</small></div><span class="chess-player__turn">' + (room.turn === "white" && room.status === "active" ? "ХОД" : "") + '</span></div>' +
-          '<div class="chess-status' + (finished ? " is-finished" : room.is_my_turn ? " is-your-turn" : "") + '" role="status">' + escapeHtml(statusText) + '</div>' +
-          (room.status === "active" ? '<div class="chess-actions"><button class="button button--secondary" type="button" id="chess-draw-offer">' + (room.draw_offer_by && room.draw_offer_by !== (room.is_white ? room.white.id : room.black.id) ? "Ответить на ничью" : "Предложить ничью") + '</button><button class="button button--danger" type="button" id="chess-resign">Сдаться</button></div>' : "") +
-          (room.draw_offer_by && room.draw_offer_by !== (room.is_white ? room.white.id : room.black.id) && room.status === "active" ? '<div class="chess-draw-response"><span>Соперник предлагает ничью</span><button class="button button--primary" type="button" id="chess-draw-accept">Принять</button><button class="button button--secondary" type="button" id="chess-draw-decline">Отклонить</button></div>' : "") +
-        '</section><aside class="chess-side"><section class="chess-panel"><span class="chess-panel__eyebrow">СОСТОЯНИЕ</span><h2>' + (finished ? "Итог партии" : room.status === "waiting" ? "Ждём игрока" : "Ход: " + turnColor) + '</h2><p>' + escapeHtml(statusText) + '</p>' + (finished ? '<strong class="chess-result">' + escapeHtml(room.result) + '</strong>' : "") + '</section>' +
-        '<section class="chess-panel"><span class="chess-panel__eyebrow">ЗАПИСЬ ПАРТИИ</span><h2>Ходы</h2><ol class="chess-move-list">' + (room.moves || []).map(function (move, index) {
-          if (index % 2 !== 0) return "";
-          return '<li><span>' + (Math.floor(index / 2) + 1) + '.</span><strong>' + escapeHtml(move.san) + '</strong><em>' + escapeHtml(room.moves[index + 1] ? room.moves[index + 1].san : "…") + '</em></li>';
-        }).join("") + ((room.moves || []).length ? "" : "<li class='chess-move-empty'>Партия ещё не началась</li>") + '</ol></section>' +
-        '<button class="button button--secondary chess-back-link" type="button" id="chess-leave">Выйти из комнаты</button></aside></div></section>';
+            var isLast = lastSquares.indexOf(cell.square) >= 0;
+            var targetClass = targets.indexOf(cell.square) >= 0;
+            return '<button class="chess-square ' + (light ? "is-light" : "is-dark") + (selected === cell.square ? " is-selected" : "") + (targetClass ? " is-target" : "") + (isLast ? " is-last-move" : "") + '" type="button" role="gridcell" data-chess-square="' + cell.square + '" aria-label="' + cell.square + (cell.piece ? " фигура" : " пусто") + '"' + (!room.is_my_turn || finished ? " disabled" : "") + '><span class="chess-square__piece ' + pieceClass + '">' + (PIECES[cell.piece] || "") + '</span>' + (file === 0 ? '<small class="chess-coordinate chess-coordinate--rank">' + cell.square[1] + '</small>' : "") + (row === 7 ? '<small class="chess-coordinate chess-coordinate--file">' + cell.square[0] + '</small>' : "") + '</button>';
+          }).join("") + '</div></div>' +
+          '<div class="chess-playerbar chess-playerbar--self"><div class="chess-avatar chess-avatar--self">' + escapeHtml((myName || "В").slice(0,1).toUpperCase()) + '</div><div class="chess-playerbar__identity"><strong>' + escapeHtml(myName) + ' <span class="chess-you-tag">ВЫ</span></strong><small>' + (myColor === "white" ? "Белые фигуры" : "Чёрные фигуры") + '</small></div><span class="chess-playerbar__turn">' + (room.status === "active" && room.turn === myColor ? "ВАШ ХОД" : "") + '</span></div>' +
+          '<div class="chess-board-tools"><span class="chess-turn-status ' + (room.is_my_turn && !finished ? "is-active" : "") + '">' + escapeHtml(statusText) + '</span><button class="chess-tool-button" id="chess-flip-board" type="button" aria-label="Перевернуть доску">↻ Перевернуть доску</button></div>' +
+          (room.draw_offer_by && room.draw_offer_by !== (me && me.id) && room.status === "active" ? '<div class="chess-draw-response"><span>Соперник предлагает ничью</span><button class="chess-control chess-control--accent" type="button" id="chess-draw-accept">Принять</button><button class="chess-control" type="button" id="chess-draw-decline">Отклонить</button></div>' : "") +
+        '</main><aside class="chess-arena__sidebar">' +
+          '<section class="chess-side-card"><div class="chess-side-tabs"><span class="is-active">ПАРТИЯ И НОТАЦИЯ</span></div><div class="chess-side-card__heading"><div><small>ТЕКУЩАЯ ПАРТИЯ</small><h2>' + (finished ? "Результат" : room.status === "waiting" ? "Ожидание игрока" : "Ход " + (room.turn === "white" ? "белых" : "чёрных")) + '</h2></div><span class="chess-state-dot ' + (finished ? "is-done" : "is-live") + '"></span></div>' +
+            '<div class="chess-moves-heading"><span>№</span><span>БЕЛЫЕ</span><span>ЧЁРНЫЕ</span></div><ol class="chess-move-list">' + (moveRows.join("") || '<li class="chess-move-empty">Сделайте первый ход, чтобы начать запись партии</li>') + '</ol>' +
+            (finished ? '<div class="chess-result-banner"><small>ПАРТИЯ ЗАВЕРШЕНА</small><strong>' + escapeHtml(room.result) + '</strong></div>' : '<div class="chess-side-status">' + (room.check ? "♔ Королю объявлен шах" : room.status === "waiting" ? "Поделитесь кодом, чтобы начать" : room.is_my_turn ? "Сейчас ваш ход — выберите фигуру" : "Ожидаем ход соперника") + '</div>') +
+            '<div class="chess-side-actions">' + (room.status === "active" ? '<button class="chess-control" type="button" id="chess-draw-offer">' + (room.draw_offer_by && room.draw_offer_by !== (me && me.id) ? "Предложение ничьей" : "♧ Предложить ничью") + '</button><button class="chess-control chess-control--danger" type="button" id="chess-resign">⚑ Сдаться</button>' : '') + '<button class="chess-control chess-control--subtle" type="button" id="chess-leave">Выйти из партии</button></div>' +
+          '</section><div class="chess-sidebar-note"><span>♟</span><p>Играйте честно и уважайте соперника. Каждый ход сохраняется автоматически.</p></div></aside></div></section>';
     $("#chess-copy-code") && $("#chess-copy-code").addEventListener("click", function () {
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(room.code).then(function () { toast("Код скопирован"); }).catch(function () { toast("Код комнаты: " + room.code); });
       else toast("Код комнаты: " + room.code);
+    });
+    $("#chess-flip-board") && $("#chess-flip-board").addEventListener("click", function () {
+      boardFlipped = !boardFlipped;
+      renderRoom(room);
     });
     target.querySelectorAll("[data-chess-square]").forEach(function (button) {
       button.addEventListener("click", function () {
@@ -199,7 +219,7 @@
       });
     });
     $("#chess-draw-offer") && $("#chess-draw-offer").addEventListener("click", async function () {
-      var currentId = room.is_white ? room.white.id : room.black.id;
+      var currentId = me && me.id;
       var action = room.draw_offer_by && room.draw_offer_by !== currentId ? "accept" : "offer";
       try { await request("/api/chess/rooms/" + room.code + "/draw", { method: "POST", body: JSON.stringify({ action: action }) }); await refreshRoom(room.code, false); }
       catch (error) { toast(error.message); }
