@@ -238,20 +238,19 @@
     animation.cleanup=function(){ghost.remove();source.style.visibility=oldVisibility;};
     var dx=b.left-a.left, dy=b.top-a.top;
     if(typeof ghost.animate==="function") {
+      // Start the visual response synchronously in the same click event.
       animation.finished=ghost.animate(
         [{transform:"translate3d(0,0,0)"},{transform:"translate3d("+dx+"px,"+dy+"px,0)"}],
-        {duration:260,easing:"cubic-bezier(.2,.75,.25,1)",fill:"forwards"}
+        {duration:190,easing:"cubic-bezier(.2,.75,.25,1)",fill:"forwards"}
       ).finished.catch(function(){});
     } else {
-      ghost.style.transition="transform 260ms cubic-bezier(.2,.75,.25,1)";
-      animation.finished=new Promise(function(resolve){
-        window.requestAnimationFrame(function(){
-          window.requestAnimationFrame(function(){
-            ghost.style.transform="translate3d("+dx+"px,"+dy+"px,0)";
-            window.setTimeout(resolve,280);
-          });
-        });
-      });
+      // CSS fallback: one frame to commit the initial position, never two-frame waiting.
+      ghost.style.transition="none";
+      ghost.style.transform="translate3d(0,0,0)";
+      void ghost.offsetWidth;
+      ghost.style.transition="transform 190ms cubic-bezier(.2,.75,.25,1)";
+      ghost.style.transform="translate3d("+dx+"px,"+dy+"px,0)";
+      animation.finished=new Promise(function(resolve){window.setTimeout(resolve,210);});
     }
     return animation;
   }
