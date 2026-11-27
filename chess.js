@@ -12,6 +12,7 @@
   var movePending = false;
   var currentLegalMoves = [];
   var boardHasEntered = false;
+  var skipNextBoardAnimation = false;
   var PIECES = { K:"♔",Q:"♕",R:"♖",B:"♗",N:"♘",P:"♙",k:"♚",q:"♛",r:"♜",b:"♝",n:"♞",p:"♟" };
   var $ = function (selector) { return document.querySelector(selector); };
   function escapeHtml(value) {
@@ -198,6 +199,7 @@
     return snapshot;
   }
   function animateBoardChanges(previous, moveUci) {
+    if (skipNextBoardAnimation) { skipNextBoardAnimation = false; return; }
     if (!previous || !Object.keys(previous).length || !document.body.animate) return;
     var current = {}, usedFrom = {}, usedTo = {};
     document.querySelectorAll(".chess-square[data-chess-square]").forEach(function (square) {
@@ -221,9 +223,17 @@
       });
       document.body.appendChild(ghost);
       newPiece.node.style.visibility = "hidden";
+      var destinationSquare = newPiece.node.closest(".chess-square");
+      var wasCapture = !!previous[to];
+      if (destinationSquare) {
+        destinationSquare.classList.add(wasCapture ? "is-capture" : "is-arrival");
+        window.setTimeout(function () { destinationSquare.classList.remove("is-capture","is-arrival"); }, 430);
+      }
       usedFrom[from] = true;
       usedTo[to] = true;
-      function finish() { ghost.remove(); newPiece.node.style.visibility = ""; }
+      var finished = false;
+      function finish() { if (finished) return; finished = true; ghost.remove(); newPiece.node.style.visibility = ""; }
+      window.setTimeout(finish, 520);
       var dx = b.left - a.left, dy = b.top - a.top;
       var flight = ghost.animate([
         { transform:"translate3d(0,0,0) scale(.96)", filter:"drop-shadow(0 3px 3px rgba(0,0,0,.25))", offset:0 },
@@ -263,13 +273,20 @@
     document.body.appendChild(ghost);
     var oldVisibility=source.style.visibility;
     source.style.visibility="hidden";
+    var destinationSquare=destination.closest(".chess-square");
+    var captured=!!destination.textContent.trim();
+    if(destinationSquare){destinationSquare.classList.add(captured?"is-capture":"is-arrival");window.setTimeout(function(){destinationSquare.classList.remove("is-capture","is-arrival");},430);}
     animation.cleanup=function(){ghost.remove();source.style.visibility=oldVisibility;};
     var dx=b.left-a.left, dy=b.top-a.top;
     if(typeof ghost.animate==="function") {
       // Start the visual response synchronously in the same click event.
       animation.finished=ghost.animate(
-        [{transform:"translate3d(0,0,0)"},{transform:"translate3d("+dx+"px,"+dy+"px,0)"}],
-        {duration:190,easing:"cubic-bezier(.2,.75,.25,1)",fill:"forwards"}
+        [
+          {transform:"translate3d(0,0,0) scale(.96)",filter:"drop-shadow(0 3px 3px rgba(0,0,0,.22))",offset:0},
+          {transform:"translate3d("+(dx*.52)+"px,"+(dy*.52-Math.min(16,Math.abs(dy)*.03))+"px,0) scale(1.12)",filter:"drop-shadow(0 12px 9px rgba(0,0,0,.3))",offset:.52},
+          {transform:"translate3d("+dx+"px,"+dy+"px,0) scale(1)",filter:"drop-shadow(0 2px 2px rgba(0,0,0,.18))",offset:1}
+        ],
+        {duration:220,easing:"cubic-bezier(.18,.78,.25,1)",fill:"forwards"}
       ).finished.catch(function(){});
     } else {
       // CSS fallback: one frame to commit the initial position, never two-frame waiting.
@@ -511,8 +528,10 @@
     var moveRequest = request("/api/chess/rooms/" + encodeURIComponent(code) + "/move", {
       method:"POST", body:JSON.stringify({move:move})
     });
+    var moveAccepted = false;
     try {
       await Promise.all([animation.finished,moveRequest]);
+      moveAccepted = true;
     } catch (error) {
       toast(error.message);
     } finally {
@@ -520,6 +539,7 @@
       movePending = false;
       lastRoomSignature = "";
     }
+    skipNextBoardAnimation = moveAccepted;
     await refreshRoom(code,false);
   }
   window.BiblioChess = { init: init, refresh: init, destroy: stop };
