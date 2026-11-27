@@ -36,7 +36,7 @@ def _wait_for_room_change(code, since, timeout=20):
 
 
 def _now():
-    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    return datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 def _user_name(db, user_id, mongodb_enabled):
