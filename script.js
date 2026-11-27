@@ -1906,6 +1906,23 @@ function createGameRoomForm() {
   );
 
   const details = createElement("div", "game-room-create__details");
+  if (activeCatalogGameSlug === "dnd") {
+    const modeLabel = createElement("label", "game-room-create__field", "Формат приключения");
+    const modeSelect = createElement("select");
+    modeSelect.name = "game_mode";
+    [["gm", "С ведущим — игроки и живой ведущий"], ["solo", "Без ведущего — сценарий ведёт система"]].forEach(([value, label]) => {
+      const option = createElement("option", "", label); option.value = value; modeSelect.append(option);
+    });
+    modeLabel.append(modeSelect);
+    const scenarioLabel = createElement("label", "game-room-create__field", "Сценарий");
+    const scenarioSelect = createElement("select");
+    scenarioSelect.name = "scenario_id";
+    [["ashfall", "Пепел над Вальдхеймом"], ["sunken-crypt", "Крипта забытого короля"], ["wild-road", "Последний караван"]].forEach(([value, label]) => {
+      const option = createElement("option", "", label); option.value = value; scenarioSelect.append(option);
+    });
+    scenarioLabel.append(scenarioSelect);
+    details.append(modeLabel, scenarioLabel);
+  }
   const nameLabel = createElement("label", "game-room-create__field", "Название комнаты");
   const nameInput = createElement("input");
   nameInput.name = "name";
@@ -2190,7 +2207,8 @@ function renderGameDetail(game) {
   const members = Array.isArray(game.participants) ? game.participants : [];
   const heroes = Array.isArray(game.heroes) ? game.heroes : [];
   const sessions = Array.isArray(game.sessions) ? game.sessions : [];
-  const isGameMaster = !!currentUser && Number(game.owner_id) === Number(currentUser.id);
+  const isSoloAdventure = game.game_mode === "solo";
+  const isGameMaster = !!currentUser && Number(game.owner_id) === Number(currentUser.id) && !isSoloAdventure;
   const currentHero = currentUser && Array.isArray(heroes)
     ? heroes.find((hero) => Number(hero.user_id) === Number(currentUser.id)) || null
     : null;
@@ -2290,9 +2308,23 @@ function renderGameDetail(game) {
     </section>
   ` : "";
   
+  const soloScenarioTitles = { "ashfall": "Пепел над Вальдхеймом", "sunken-crypt": "Крипта забытого короля", "wild-road": "Последний караван" };
+  const soloStoryState = game.story_state || {};
+  const soloScene = soloStoryState.current_scene || null;
+  const soloStoryMarkup = isSoloAdventure ? `
+    <section class="game-detail__section dnd-solo-story" aria-label="Приключение без ведущего">
+      <div class="dnd-solo-story__heading"><span class="eyebrow">АВТОМАТИЧЕСКИЙ ВЕДУЩИЙ</span><h4>${escapeHtml(soloScenarioTitles[game.scenario_id] || "Сценарное приключение")}</h4><p>Система описывает сцены, проводит проверки d20 и сохраняет последствия твоих решений.</p></div>
+      ${!currentHero ? "<p class='dnd-solo-story__notice'>Сначала создай персонажа в разделе «Мой герой», чтобы начать приключение.</p>" : soloStoryState.completed ? "<div class='dnd-solo-story__ending'><strong>Приключение завершено</strong><p>Все главы пройдены. История и результаты проверок сохранены.</p></div>" : soloScene ? `
+        <article class="dnd-solo-story__scene"><span>ГЛАВА ${Number(soloStoryState.scene_index || 0) + 1} / 3</span><h5>${escapeHtml(soloScene.title)}</h5><p>${escapeHtml(soloScene.text)}</p></article>
+        <div class="dnd-solo-story__choices">${(soloScene.choices || []).map((choice) => `<button class="button button--secondary" type="button" data-solo-choice="${escapeHtml(choice.id)}">${escapeHtml(choice.label)}</button>`).join("")}</div>
+      ` : "<p>Сценарий готов. Создай героя, чтобы начать.</p>"}
+      ${soloStoryState.last_outcome ? `<div class="dnd-solo-story__outcome"><strong>${soloStoryState.last_outcome.success ? "Проверка пройдена" : "Проверка не пройдена"}</strong><span>d20: ${Number(soloStoryState.last_outcome.roll)} ${Number(soloStoryState.last_outcome.modifier) >= 0 ? "+" : ""}${Number(soloStoryState.last_outcome.modifier)} = ${Number(soloStoryState.last_outcome.total)} · СЛ ${Number(soloStoryState.last_outcome.dc)}</span><p>${escapeHtml(soloStoryState.last_outcome.narration)}</p></div>` : ""}
+      ${(soloStoryState.history || []).length ? `<details class="dnd-solo-story__history"><summary>Журнал приключения · ${soloStoryState.history.length} решений</summary><ol>${soloStoryState.history.map((entry) => `<li><strong>${escapeHtml(entry.scene)}</strong><span>${escapeHtml(entry.choice)} · ${Number(entry.total)}/${Number(entry.dc)}</span><p>${escapeHtml(entry.narration)}</p></li>`).join("")}</ol></details>` : ""}
+    </section>` : "";
+
   panel.innerHTML = `
     <div class="game-detail__header">
-      <div><span class="eyebrow">${isGameMaster ? "Ведущий" : "Игрок"} · Игровая комната</span><h3>${escapeHtml(title)}</h3></div>
+      <div><span class="eyebrow">${isSoloAdventure ? "Сценарий без ведущего" : isGameMaster ? "Ведущий" : "Игрок"} · Игровая комната</span><h3>${escapeHtml(title)}</h3></div>
       <div class="game-detail__header-actions">
         ${canJoin && !currentHero ? `<button class="button button--primary" type="button" data-game-action="create-hero">✦ Создать персонажа</button>` : ""}
         ${canJoin && game.access === "public" ? `<button class="button button--primary" type="button" data-game-action="join" ${currentHero ? "" : "disabled title=\"Сначала создай героя\""}>${currentHero ? "Вступить" : "Сначала создай героя"}</button>` : ""}
@@ -2301,6 +2333,7 @@ function renderGameDetail(game) {
       </div>
     </div>
     ${gmDashboardMarkup}
+    ${soloStoryMarkup}
     <p>${escapeHtml(game.description || "Без описания.")}</p>
     <ul class="game-detail-list">
       <li>Доступ: ${game.access === "public" ? "Публичная" : game.access === "private" ? "По коду" : "По приглашениям"}</li>
@@ -2472,7 +2505,7 @@ function renderGameDetail(game) {
         </form>
       </div>
     ` : ""}
-    ${currentUser && Number(game.owner_id) === Number(currentUser.id) ? `
+    ${!isSoloAdventure && currentUser && Number(game.owner_id) === Number(currentUser.id) ? `
       <div class="game-detail__section">
         <strong>Провести сессию</strong>
         <form id="game-session-form" class="games-form">
@@ -2488,6 +2521,23 @@ function renderGameDetail(game) {
     ` : ""}
 
   `;
+  if (isSoloAdventure) {
+    panel.querySelector(".game-combat")?.remove();
+    panel.querySelector("#game-session-form")?.closest(".game-detail__section")?.remove();
+    const sessionsHeading = [...panel.querySelectorAll(".game-detail__section > strong")].find((node) => node.textContent.trim() === "Недавние сессии");
+    sessionsHeading?.closest(".game-detail__section")?.remove();
+    panel.querySelectorAll("[data-solo-choice]").forEach((button) => button.addEventListener("click", async () => {
+      panel.querySelectorAll("[data-solo-choice]").forEach((item) => { item.disabled = true; });
+      try {
+        await api("/api/games/" + game.id + "/story", { method: "POST", body: JSON.stringify({ choice_id: button.dataset.soloChoice }) });
+        const refreshed = await api("/api/games/" + game.id);
+        renderGameDetail(refreshed.game);
+      } catch (error) {
+        showToast(error.message);
+        panel.querySelectorAll("[data-solo-choice]").forEach((item) => { item.disabled = false; });
+      }
+    }));
+  }
   const introText = panel.querySelector(":scope > p");
   const detailList = panel.querySelector(":scope > .game-detail-list");
   if (introText || detailList) {
@@ -3026,6 +3076,8 @@ async function createGameRoom(event) {
     access: formData.get("access") || "public",
     join_code: formData.get("join_code") || "",
     catalog_game_slug: activeCatalogGameSlug,
+    game_mode: formData.get("game_mode") || "gm",
+    scenario_id: formData.get("scenario_id") || "ashfall",
   };
   const submit = form.querySelector('button[type="submit"]');
   submit.disabled = true;
