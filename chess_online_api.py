@@ -136,7 +136,7 @@ def dispatch_chess_api(handler, db, method, path, api_error, mongodb_enabled):
             ).fetchall()]
         return {"rooms": [{
             "code": room["code"], "name": room["name"],
-            "white_name": room["white_name"], "created_at": room["created_at"],
+            "white_name": room["white_name"], "white_id": room["white_id"], "is_owner": int(room["white_id"]) == int(user["id"]), "created_at": room["created_at"],
         } for room in rooms]}, HTTPStatus.OK, []
 
     if method == "POST" and path == "/api/chess/rooms":
@@ -266,6 +266,9 @@ def dispatch_chess_api(handler, db, method, path, api_error, mongodb_enabled):
             room["draw_offer_by"] = None
         elif draw_action == "claim":
             board = chess.Board(room["fen"])
+            expected_color = chess.WHITE if is_white else chess.BLACK
+            if board.turn != expected_color:
+                _error(api_error, HTTPStatus.CONFLICT, "Заявить ничью можно только в свой ход.")
             if not (board.can_claim_fifty_moves() or board.can_claim_threefold_repetition()):
                 _error(api_error, HTTPStatus.BAD_REQUEST, "Сейчас правила не позволяют заявить ничью.")
             room["status"] = "finished"
