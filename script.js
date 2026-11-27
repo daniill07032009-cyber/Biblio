@@ -1549,6 +1549,11 @@ async function refreshGameCatalog() {
 }
 
 async function openCatalogGame(slug) {
+  if (slug === "chess") {
+    window.BiblioChess?.init();
+    return;
+  }
+  window.BiblioChess?.destroy();
   try {
     const result = await api(`/api/catalog/games/${encodeURIComponent(slug)}`);
     const game = {
