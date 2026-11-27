@@ -8,6 +8,7 @@ import re
 from datetime import datetime, timezone
 from http import HTTPStatus
 from threading import Condition
+import time
 from urllib.parse import parse_qs, urlsplit
 
 import chess
@@ -36,7 +37,7 @@ def _wait_for_room_change(code, since, timeout=20):
 
 
 def _now():
-    return datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 def _user_name(db, user_id, mongodb_enabled):
@@ -284,10 +285,18 @@ def dispatch_chess_api(handler, db, method, path, api_error, mongodb_enabled):
         since = str((query.get("since") or [""])[0])
         if since and room.get("updated_at") == since:
             _wait_for_room_change(code, since, timeout=20)
-            room_raw = _get_room(db, code, mongodb_enabled)
-            if room_raw is None:
-                _error(api_error, HTTPStatus.NOT_FOUND, "Комната больше не существует.")
-            room = _room_dict(room_raw, mongodb_enabled)
+            # SQLite commits the request transaction after dispatch returns.
+            # A notification can therefore wake this waiter a few milliseconds
+            # before the writer's commit becomes visible on this connection.
+            deadline = time.monotonic() + 1.0
+            while True:
+                room_raw = _get_room(db, code, mongodb_enabled)
+                if room_raw is None:
+                    _error(api_error, HTTPStatus.NOT_FOUND, "Комната больше не существует.")
+                room = _room_dict(room_raw, mongodb_enabled)
+                if room.get("updated_at") != since or time.monotonic() >= deadline:
+                    break
+                time.sleep(0.01)
         return {"room": _public_room(room, user["id"], db, mongodb_enabled)}, HTTPStatus.OK, []
 
     if method == "GET" and action is None:
