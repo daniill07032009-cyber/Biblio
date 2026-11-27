@@ -22,6 +22,22 @@
     return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   }
   function stop() { if (timer) window.clearInterval(timer); if (clockTimer) window.clearInterval(clockTimer); timer = 0; clockTimer = 0; clockState = null; }
+  function handleVisibilityChange() {
+    if (!location.pathname.startsWith("/games/chess/play")) return;
+    if (document.hidden) {
+      if (timer) window.clearInterval(timer);
+      if (clockTimer) window.clearInterval(clockTimer);
+      timer = 0;
+      clockTimer = 0;
+      return;
+    }
+    if (!currentCode) return;
+    if (!timer) timer = window.setInterval(function () { refreshRoom(currentCode, false); }, 1100);
+    if (!clockTimer) clockTimer = window.setInterval(updateClocks, 250);
+    refreshRoom(currentCode, false);
+    updateClocks();
+  }
+  document.addEventListener("visibilitychange", handleVisibilityChange);
   function panel(title) {
     var layout = $("#game-catalog-layout"), detail = $("#game-detail-panel"), target = $("#game-catalog-detail-panel");
     if (layout) layout.hidden = true;
