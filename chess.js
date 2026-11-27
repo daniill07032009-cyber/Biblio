@@ -268,6 +268,35 @@
     });
     return cells;
   }
+  function choosePromotion(candidates) {
+    return new Promise(function (resolve) {
+      var source = document.querySelector('[data-chess-square="' + candidates[0].slice(0, 2) + '"] .chess-square__piece');
+      var white = !!(source && source.classList.contains("is-white"));
+      var choices = candidates.map(function (move) {
+        var code = move.slice(-1), piece = white ? code.toUpperCase() : code;
+        var names = { q: "Ферзь", r: "Ладья", b: "Слон", n: "Конь" };
+        return '<button type="button" class="chess-promotion-choice" data-promotion="' + code + '" aria-label="' + names[code] + '"><span class="' + (white ? "is-white" : "is-black") + '">' + (PIECES[piece] || "") + '</span><small>' + names[code] + '</small></button>';
+      }).join("");
+      var overlay = document.createElement("div");
+      overlay.className = "chess-promotion-overlay";
+      overlay.innerHTML = '<section class="chess-promotion-dialog" role="dialog" aria-modal="true" aria-label="Выбор превращения пешки"><strong>Во что превратить пешку?</strong><p>Выбери фигуру для завершения хода.</p><div class="chess-promotion-options">' + choices + '</div><button type="button" class="chess-promotion-cancel">Отмена</button></section>';
+      document.body.appendChild(overlay);
+      function finish(move) {
+        document.removeEventListener("keydown", onKey);
+        overlay.remove();
+        resolve(move);
+      }
+      function onKey(event) { if (event.key === "Escape") finish(null); }
+      document.addEventListener("keydown", onKey);
+      overlay.addEventListener("click", function (event) {
+        if (event.target === overlay || event.target.closest(".chess-promotion-cancel")) finish(null);
+        var button = event.target.closest("[data-promotion]");
+        if (button) finish(candidates.find(function (move) { return move.endsWith(button.dataset.promotion); }) || null);
+      });
+      var first = overlay.querySelector("[data-promotion]");
+      if (first) first.focus();
+    });
+  }
   function updateBoardSelection() {
     document.querySelectorAll(".chess-square[data-chess-square]").forEach(function (square) {
       var name = square.dataset.chessSquare;
@@ -298,7 +327,7 @@
     var lastSquares = lastMove ? [lastMove.slice(0, 2), lastMove.slice(2, 4)] : [];
     var statusText = finished ? room.result : room.status === "waiting" ? "Ожидаем второго игрока" : room.is_my_turn ? "Ваш ход" : "Ход соперника";
     var clock = room.clock || null;
-    clockState = clock && room.status === "active" ? { clock: clock, turn: room.turn, myColor: myColor } : null;
+    clockState = clock ? { clock: clock, turn: room.turn, myColor: myColor, running: room.status === "active" } : null;
     var reviewing = selectedPly !== null && selectedPly < (room.moves || []).length;
     var shownFen = !reviewing ? room.fen : ((room.moves || [])[selectedPly] || {}).fen_after || room.fen;
     var board = boardCells(shownFen);
@@ -319,8 +348,9 @@
             var row = Math.floor(index / 8), file = index % 8, light = (row + file) % 2 === 0;
             var pieceClass = cell.piece ? (cell.piece === cell.piece.toUpperCase() ? "is-white" : "is-black") : "";
             var isLast = lastSquares.indexOf(cell.square) >= 0;
+            var isCheck = room.check && cell.piece === (room.turn === "white" ? "K" : "k");
             var targetClass = targets.indexOf(cell.square) >= 0;
-            return '<button class="chess-square ' + (light ? "is-light" : "is-dark") + (selected === cell.square ? " is-selected" : "") + (targetClass ? " is-target" : "") + (isLast ? " is-last-move" : "") + '" type="button" role="gridcell" data-chess-square="' + cell.square + '" aria-label="' + cell.square + (cell.piece ? " фигура" : " пусто") + '"' + (!room.is_my_turn || finished || reviewing ? " disabled" : "") + '><span class="chess-square__piece ' + pieceClass + '">' + (PIECES[cell.piece] || "") + '</span>' + (file === 0 ? '<small class="chess-coordinate chess-coordinate--rank">' + cell.square[1] + '</small>' : "") + (row === 7 ? '<small class="chess-coordinate chess-coordinate--file">' + cell.square[0] + '</small>' : "") + '</button>';
+            return '<button class="chess-square ' + (light ? "is-light" : "is-dark") + (selected === cell.square ? " is-selected" : "") + (targetClass ? " is-target" : "") + (isLast ? " is-last-move" : "") + (isCheck ? " is-check" : "") + '" type="button" role="gridcell" data-chess-square="' + cell.square + '" aria-label="' + cell.square + (cell.piece ? " фигура" : " пусто") + '"' + (!room.is_my_turn || finished || reviewing ? " disabled" : "") + '><span class="chess-square__piece ' + pieceClass + '">' + (PIECES[cell.piece] || "") + '</span>' + (file === 0 ? '<small class="chess-coordinate chess-coordinate--rank">' + cell.square[1] + '</small>' : "") + (row === 7 ? '<small class="chess-coordinate chess-coordinate--file">' + cell.square[0] + '</small>' : "") + '</button>';
           }).join("") + '</div></div>' +
           '<div class="chess-playerbar chess-playerbar--self"><div class="chess-avatar chess-avatar--self">' + escapeHtml((myName || "В").slice(0,1).toUpperCase()) + '</div><div class="chess-playerbar__identity"><strong>' + escapeHtml(myName) + ' <span class="chess-you-tag">ВЫ</span></strong><small>' + (myColor === "white" ? "Белые фигуры" : "Чёрные фигуры") + '</small><small class="chess-captured">Взято: ' + capturedPieces(room.moves || [], myColor) + '</small></div><span class="chess-clock" id="chess-clock-self" aria-label="Ваше время" title="Оставшееся время">—:—</span><span class="chess-playerbar__turn">' + (room.status === "active" && room.turn === myColor ? "ВАШ ХОД" : "") + '</span></div>' +
           '<div class="chess-board-tools"><span class="chess-turn-status ' + (room.is_my_turn && !finished ? "is-active" : "") + '">' + escapeHtml(statusText) + '</span><div class="chess-board-tool-actions"><button class="chess-tool-button" id="chess-live-position" type="button" '+(reviewing ? '' : 'hidden')+'>К текущей позиции</button><button class="chess-tool-button" id="chess-flip-board" type="button" aria-label="Перевернуть доску">↻ Перевернуть доску</button></div></div>' +
@@ -362,12 +392,11 @@
         }
         var candidates = legal.filter(function (move) { return move.slice(0, 2) === selected && move.slice(2, 4) === square; });
         if (candidates.length) {
-          var move = candidates[0];
           if (candidates.length > 1) {
-            var promotion = String(window.prompt("Превращение пешки: Q — ферзь, R — ладья, B — слон, N — конь", "q") || "q").toLowerCase();
-            move = candidates.find(function (candidate) { return candidate.endsWith(promotion); }) || candidates.find(function (candidate) { return candidate.endsWith("q"); }) || candidates[0];
+            choosePromotion(candidates).then(function (move) { if (move) submitMove(move); });
+          } else {
+            submitMove(candidates[0]);
           }
-          submitMove(move);
           return;
         }
         if (legal.some(function (move) { return move.slice(0, 2) === square; })) selected = square;
@@ -423,7 +452,7 @@
     if (!clockState) return;
     var c = clockState.clock;
     var stamp = Date.parse(c.updated_at || "");
-    var elapsed = Number.isFinite(stamp) ? Math.max(0, Date.now() - stamp) : 0;
+    var elapsed = clockState.running && Number.isFinite(stamp) ? Math.max(0, Date.now() - stamp) : 0;
     var white = Math.max(0, Number(c.white_ms || 0) - (clockState.turn === "white" ? elapsed : 0));
     var black = Math.max(0, Number(c.black_ms || 0) - (clockState.turn === "black" ? elapsed : 0));
     var opponent = document.getElementById("chess-clock-opponent"), self = document.getElementById("chess-clock-self");
@@ -431,7 +460,7 @@
     var opponentTime = clockState.myColor === "white" ? black : white;
     if (opponent) opponent.textContent = formatClock(opponentTime);
     if (self) self.textContent = formatClock(selfTime);
-    [[self, selfTime, clockState.turn === clockState.myColor], [opponent, opponentTime, clockState.turn !== clockState.myColor]].forEach(function (entry) {
+    [[self, selfTime, clockState.running && clockState.turn === clockState.myColor], [opponent, opponentTime, clockState.running && clockState.turn !== clockState.myColor]].forEach(function (entry) {
       var node = entry[0], remaining = entry[1], running = entry[2];
       if (!node) return;
       node.classList.toggle("is-running", running);
