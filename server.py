@@ -670,7 +670,7 @@ def normalize_dnd_game_setup(data, catalog_game_slug):
 
 
 def dispatch_dnd_solo_story(handler, db, method, path, api_error, mongodb_enabled):
-    match = re.fullmatch(r"/api/games/(\\d+)/story", path)
+    match = re.fullmatch(r"/api/games/(\d+)/story", path)
     if not match:
         raise api_error(HTTPStatus.NOT_FOUND, "Приключение не найдено.")
     if method != "POST":
@@ -1331,7 +1331,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
         query = query or {}
         if path.startswith("/api/bunker/"):
             return dispatch_bunker_api(self, db, method, path, APIError, bool(MONGODB_URI))
-        if re.fullmatch(r"/api/games/\\d+/story", path):
+        if re.fullmatch(r"/api/games/\d+/story", path):
             return dispatch_dnd_solo_story(self, db, method, path, APIError, True)
         if method == "GET" and path == "/api/me":
             user = self.current_user_mongo(db)
@@ -2070,6 +2070,8 @@ class BiblioHandler(BaseHTTPRequestHandler):
             join_code = str(data.get("join_code") or "").strip().upper()
             catalog_game_slug = data.get("catalog_game_slug")
             game_mode, scenario_id, story_state = normalize_dnd_game_setup(data, catalog_game_slug)
+            if game_mode == "solo":
+                access = "private"
             if catalog_game_slug is not None:
                 if not isinstance(catalog_game_slug, str) or db.game_catalog.find_one(
                     {"slug": catalog_game_slug}, {"slug": 1}
@@ -2339,7 +2341,7 @@ class BiblioHandler(BaseHTTPRequestHandler):
 
     def dispatch_api(self, db, method, path, query=None):
         query = query or {}
-        if re.fullmatch(r"/api/games/\\d+/story", path):
+        if re.fullmatch(r"/api/games/\d+/story", path):
             return dispatch_dnd_solo_story(self, db, method, path, APIError, False)
 
         if method == "GET" and path == "/api/me":
@@ -3099,6 +3101,8 @@ class BiblioHandler(BaseHTTPRequestHandler):
             join_code = str(data.get("join_code") or "").strip().upper()
             catalog_game_slug = data.get("catalog_game_slug")
             game_mode, scenario_id, story_state = normalize_dnd_game_setup(data, catalog_game_slug)
+            if game_mode == "solo":
+                access = "private"
             if catalog_game_slug is not None:
                 if not isinstance(catalog_game_slug, str) or db.execute(
                     "SELECT 1 FROM game_catalog WHERE slug = ?", (catalog_game_slug,)
