@@ -1049,7 +1049,8 @@ class BiblioHandler(BaseHTTPRequestHandler):
             for name, value in extra_headers:
                 self.send_header(name, value)
         self.end_headers()
-        self.wfile.write(body)
+        if not getattr(self, "_head_request", False):
+            self.wfile.write(body)
 
     def read_json(self):
         try:
@@ -1138,6 +1139,13 @@ class BiblioHandler(BaseHTTPRequestHandler):
                 raise APIError(HTTPStatus.UNAUTHORIZED, "Сессия истекла. Войди снова.")
             return None
         return user
+
+    def do_HEAD(self):
+        self._head_request = True
+        try:
+            self.do_GET()
+        finally:
+            del self._head_request
 
     def do_GET(self):
         path = urlsplit(self.path).path
@@ -3459,7 +3467,8 @@ class BiblioHandler(BaseHTTPRequestHandler):
             "public, max-age=31536000, immutable" if is_versioned_asset else "no-cache",
         )
         self.end_headers()
-        self.wfile.write(body)
+        if not getattr(self, "_head_request", False):
+            self.wfile.write(body)
 
 
 
