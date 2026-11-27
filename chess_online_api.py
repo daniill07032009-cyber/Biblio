@@ -102,14 +102,6 @@ def _public_room(room, user_id):
     is_my_turn = room["status"] == "active" and ((board.turn == chess.WHITE and is_white) or (board.turn == chess.BLACK and is_black))
     moves = room.get("moves") or []
     clock = dict(room.get("clock") or {})
-    if clock and room["status"] == "active" and clock.get("updated_at"):
-        try:
-            updated = datetime.fromisoformat(clock["updated_at"].replace("Z", "+00:00"))
-            elapsed = max(0, int((datetime.now(timezone.utc) - updated).total_seconds() * 1000))
-            active_key = "white_ms" if board.turn == chess.WHITE else "black_ms"
-            clock[active_key] = max(0, int(clock.get(active_key, 0)) - elapsed)
-        except (TypeError, ValueError):
-            pass
     return {
         "code": room["code"],
         "name": room["name"],
