@@ -215,6 +215,23 @@ def dispatch_chess_api(handler, db, method, path, api_error, mongodb_enabled):
         _error(api_error, HTTPStatus.FORBIDDEN, "Эта партия доступна только её двум участникам.")
 
     if method == "GET" and action is None:
+        clock = room.get("clock") or {}
+        if room["status"] == "active" and clock.get("updated_at"):
+            try:
+                updated = datetime.fromisoformat(clock["updated_at"].replace("Z", "+00:00"))
+                elapsed = max(0, int((datetime.now(timezone.utc) - updated).total_seconds() * 1000))
+                board = chess.Board(room["fen"])
+                active_key = "white_ms" if board.turn == chess.WHITE else "black_ms"
+                if max(0, int(clock.get(active_key, 0)) - elapsed) <= 0:
+                    winner = "чёрные" if board.turn == chess.WHITE else "белые"
+                    clock[active_key] = 0
+                    room["clock"] = clock
+                    room["status"] = "finished"
+                    room["result"] = f"Время вышло. Победили {winner}."
+                    _save_room(db, room, mongodb_enabled)
+                    room = _room_dict(_get_room(db, code, mongodb_enabled), mongodb_enabled)
+            except (TypeError, ValueError):
+                pass
         return {"room": _public_room(room, user["id"])}, HTTPStatus.OK, []
 
     if method == "POST" and action == "move":
