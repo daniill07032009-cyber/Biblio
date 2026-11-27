@@ -222,6 +222,10 @@ def dispatch_bunker_api(handler, db, method, path, api_error, mongodb_enabled):
                 target_id for target_id in current_tied_targets
                 if str(target_id) != str(user_id)
             ]
+            # If a tie-break loses one of its candidates, restart a normal vote.
+            if len(current_tied_targets) >= 2 and len(remaining_tied_targets) < 2:
+                remaining_tied_targets = []
+                remaining_votes = {}
             db.bunker_rooms.update_one({"code": code}, {
                 "$pull": {
                     "members": {"user_id": user_id},
