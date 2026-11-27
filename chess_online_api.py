@@ -7,6 +7,8 @@ import secrets
 import re
 from datetime import datetime, timezone
 from http import HTTPStatus
+from threading import Condition
+from urllib.parse import parse_qs, urlsplit
 
 import chess
 
@@ -14,6 +16,23 @@ import chess
 START_FEN = chess.STARTING_FEN
 ROOM_CODE_RE = re.compile(r"^[A-Z0-9]{6}$")
 TIME_CONTROLS = {"3+2": (180000, 2000), "5+0": (300000, 0), "10+0": (600000, 0), "15+10": (900000, 10000)}
+
+_ROOM_CONDITION = Condition()
+_ROOM_VERSIONS = {}
+
+def _notify_room_changed(code, version):
+    with _ROOM_CONDITION:
+        _ROOM_VERSIONS[code] = version
+        _ROOM_CONDITION.notify_all()
+
+def _wait_for_room_change(code, since, timeout=20):
+    with _ROOM_CONDITION:
+        known = _ROOM_VERSIONS.get(code)
+        if known is None:
+            _ROOM_VERSIONS[code] = since
+            known = since
+        if known == since:
+            _ROOM_CONDITION.wait_for(lambda: _ROOM_VERSIONS.get(code) != since, timeout=timeout)
 
 
 def _now():
@@ -57,6 +76,7 @@ def _save_room(db, room, mongodb_enabled, expected_fen=None):
         result = db.chess_rooms.update_one(query, {"$set": values})
         if expected_fen is not None and result.modified_count != 1:
             return False
+        _notify_room_changed(room["code"], now)
         return True
     import json
     fields = (
@@ -71,6 +91,7 @@ def _save_room(db, room, mongodb_enabled, expected_fen=None):
                black_name=?, status=?, fen=?, moves_json=?, result=?, draw_offer_by=?, time_control=?, clock_json=?,
                updated_at=? WHERE code=?""", fields,
         )
+        _notify_room_changed(room["code"], now)
         return True
     cursor = db.execute(
         """UPDATE chess_rooms SET name=?, white_id=?, white_name=?, black_id=?,
@@ -78,7 +99,10 @@ def _save_room(db, room, mongodb_enabled, expected_fen=None):
            updated_at=? WHERE code=? AND fen=? AND status='active'""",
         fields[:-1] + (room["code"], expected_fen),
     )
-    return cursor.rowcount == 1
+    if cursor.rowcount == 1:
+        _notify_room_changed(room["code"], now)
+        return True
+    return False
 
 
 def _game_result(board):
@@ -191,9 +215,10 @@ def dispatch_chess_api(handler, db, method, path, api_error, mongodb_enabled):
                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (code,name,room["white_id"],room["white_name"],None,"","waiting",START_FEN,"[]","",None,time_control,"{}",now,now),
             )
+        _notify_room_changed(code, now)
         return {"room": _public_room(room, user["id"])}, HTTPStatus.CREATED, []
 
-    match = re.fullmatch(r"/api/chess/rooms/([A-Z0-9]{6})(?:/(join|move|resign|draw|leave))?", path)
+    match = re.fullmatch(r"/api/chess/rooms/([A-Z0-9]{6})(?:/(join|move|resign|draw|leave|updates))?", path)
     if not match:
         _error(api_error, HTTPStatus.NOT_FOUND, "Шахматная комната не найдена.")
     code, action = match.groups()
@@ -231,10 +256,22 @@ def dispatch_chess_api(handler, db, method, path, api_error, mongodb_enabled):
                 _error(api_error, HTTPStatus.CONFLICT, "Комнату уже занял другой игрок. Обнови список.")
         room = _get_room(db, code, mongodb_enabled)
         room = _room_dict(room, mongodb_enabled)
+        _notify_room_changed(code, room.get("updated_at") or _now())
         return {"room": _public_room(room, user["id"])}, HTTPStatus.OK, []
 
     if not (is_white or is_black):
         _error(api_error, HTTPStatus.FORBIDDEN, "Эта партия доступна только её двум участникам.")
+
+    if method == "GET" and action == "updates":
+        query = parse_qs(urlsplit(getattr(handler, "path", "")).query)
+        since = str((query.get("since") or [""])[0])
+        if since and room.get("updated_at") == since:
+            _wait_for_room_change(code, since, timeout=20)
+            room_raw = _get_room(db, code, mongodb_enabled)
+            if room_raw is None:
+                _error(api_error, HTTPStatus.NOT_FOUND, "Комната больше не существует.")
+            room = _room_dict(room_raw, mongodb_enabled)
+        return {"room": _public_room(room, user["id"])}, HTTPStatus.OK, []
 
     if method == "GET" and action is None:
         clock = room.get("clock") or {}
