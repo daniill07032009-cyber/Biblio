@@ -566,7 +566,14 @@
     });
     var moveAccepted = false;
     try {
-      await Promise.all([animation.finished,moveRequest]);
+      var outcomes = await Promise.all([
+        animation.finished.catch(function () { return null; }),
+        moveRequest.then(
+          function (result) { return { ok: true, result: result }; },
+          function (error) { return { ok: false, error: error }; }
+        )
+      ]);
+      if (!outcomes[1].ok) throw outcomes[1].error;
       moveAccepted = true;
     } catch (error) {
       toast(error.message);
