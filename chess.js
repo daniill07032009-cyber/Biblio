@@ -10,6 +10,7 @@
   var lastRoomSignature = "";
   var roomRequestPending = false;
   var movePending = false;
+  var currentLegalMoves = [];
   var PIECES = { K:"♔",Q:"♕",R:"♖",B:"♗",N:"♘",P:"♙",k:"♚",q:"♛",r:"♜",b:"♝",n:"♞",p:"♟" };
   var $ = function (selector) { return document.querySelector(selector); };
   function escapeHtml(value) {
@@ -267,6 +268,16 @@
     });
     return cells;
   }
+  function updateBoardSelection() {
+    document.querySelectorAll(".chess-square[data-chess-square]").forEach(function (square) {
+      var name = square.dataset.chessSquare;
+      square.classList.toggle("is-selected", name === selected);
+      var target = !!selected && currentLegalMoves.some(function (move) {
+        return move.slice(0, 2) === selected && move.slice(2, 4) === name;
+      });
+      square.classList.toggle("is-target", target);
+    });
+  }
   function renderRoom(room) {
     var previousBoard = captureBoardPieces();
     var target = panel(room.name || "Шахматная партия");
@@ -281,6 +292,7 @@
     var opponentName = opponent && opponent.name || "Ожидаем соперника";
     var finished = room.status === "finished";
     var legal = room.legal_moves || [];
+    currentLegalMoves = legal;
     var targets = selected ? legal.filter(function (move) { return move.slice(0, 2) === selected; }).map(function (move) { return move.slice(2, 4); }) : [];
     var lastMove = room.last_move && room.last_move.uci ? room.last_move.uci : "";
     var lastSquares = lastMove ? [lastMove.slice(0, 2), lastMove.slice(2, 4)] : [];
@@ -302,7 +314,7 @@
         '<header class="chess-arena__topbar"><div class="chess-arena__brand"><span class="chess-arena__mark">♞</span><div><strong>Шахматы</strong><small>BIBLIO · ОНЛАЙН-ПАРТИЯ</small></div></div><div class="chess-arena__meta"><span class="chess-room-pill">Комната <b>' + escapeHtml(room.code) + '</b></span><span class="chess-live-indicator"><i></i>' + (room.status === "waiting" ? "Ожидание игрока" : finished ? "Партия завершена" : "На связи") + '</span></div><a class="chess-arena__back" href="/games/chess">Все партии</a></header>' +
         (room.status === "waiting" ? '<div class="chess-invite"><div><strong>Пригласите соперника в партию</strong><p>Отправьте ему ссылку или шестизначный код комнаты.</p></div><code>' + escapeHtml(room.code) + '</code><button class="chess-control chess-control--accent" id="chess-copy-code" type="button">Копировать код</button></div>' : "") +
         '<div class="chess-arena__layout"><main class="chess-play-area">' +
-          '<div class="chess-playerbar chess-playerbar--opponent"><div class="chess-avatar chess-avatar--opponent">' + escapeHtml((opponentName || "С").slice(0,1).toUpperCase()) + '</div><div class="chess-playerbar__identity"><strong>' + escapeHtml(opponentName) + '</strong><small>' + (room.status === "waiting" ? "Соперник ещё не подключился" : "Соперник · " + (opponentColor === "white" ? "белые" : "чёрные")) + '</small><small class="chess-captured">Взято: ' + capturedPieces(room.moves || [], opponentColor) + '</small></div><span class="chess-clock" id="chess-clock-opponent">—:—</span><span class="chess-playerbar__turn">' + (room.status === "active" && room.turn === opponentColor ? "ХОД СОПЕРНИКА" : "") + '</span></div>' +
+          '<div class="chess-playerbar chess-playerbar--opponent"><div class="chess-avatar chess-avatar--opponent">' + escapeHtml((opponentName || "С").slice(0,1).toUpperCase()) + '</div><div class="chess-playerbar__identity"><strong>' + escapeHtml(opponentName) + '</strong><small>' + (room.status === "waiting" ? "Соперник ещё не подключился" : "Соперник · " + (opponentColor === "white" ? "белые" : "чёрные")) + '</small><small class="chess-captured">Взято: ' + capturedPieces(room.moves || [], opponentColor) + '</small></div><span class="chess-clock" id="chess-clock-opponent" aria-label="Время соперника" title="Оставшееся время соперника">—:—</span><span class="chess-playerbar__turn">' + (room.status === "active" && room.turn === opponentColor ? "ХОД СОПЕРНИКА" : "") + '</span></div>' +
           '<div class="chess-board-frame"><div class="chess-board" role="grid" aria-label="Шахматная доска">' + board.map(function (cell, index) {
             var row = Math.floor(index / 8), file = index % 8, light = (row + file) % 2 === 0;
             var pieceClass = cell.piece ? (cell.piece === cell.piece.toUpperCase() ? "is-white" : "is-black") : "";
@@ -310,7 +322,7 @@
             var targetClass = targets.indexOf(cell.square) >= 0;
             return '<button class="chess-square ' + (light ? "is-light" : "is-dark") + (selected === cell.square ? " is-selected" : "") + (targetClass ? " is-target" : "") + (isLast ? " is-last-move" : "") + '" type="button" role="gridcell" data-chess-square="' + cell.square + '" aria-label="' + cell.square + (cell.piece ? " фигура" : " пусто") + '"' + (!room.is_my_turn || finished || reviewing ? " disabled" : "") + '><span class="chess-square__piece ' + pieceClass + '">' + (PIECES[cell.piece] || "") + '</span>' + (file === 0 ? '<small class="chess-coordinate chess-coordinate--rank">' + cell.square[1] + '</small>' : "") + (row === 7 ? '<small class="chess-coordinate chess-coordinate--file">' + cell.square[0] + '</small>' : "") + '</button>';
           }).join("") + '</div></div>' +
-          '<div class="chess-playerbar chess-playerbar--self"><div class="chess-avatar chess-avatar--self">' + escapeHtml((myName || "В").slice(0,1).toUpperCase()) + '</div><div class="chess-playerbar__identity"><strong>' + escapeHtml(myName) + ' <span class="chess-you-tag">ВЫ</span></strong><small>' + (myColor === "white" ? "Белые фигуры" : "Чёрные фигуры") + '</small><small class="chess-captured">Взято: ' + capturedPieces(room.moves || [], myColor) + '</small></div><span class="chess-clock" id="chess-clock-self">—:—</span><span class="chess-playerbar__turn">' + (room.status === "active" && room.turn === myColor ? "ВАШ ХОД" : "") + '</span></div>' +
+          '<div class="chess-playerbar chess-playerbar--self"><div class="chess-avatar chess-avatar--self">' + escapeHtml((myName || "В").slice(0,1).toUpperCase()) + '</div><div class="chess-playerbar__identity"><strong>' + escapeHtml(myName) + ' <span class="chess-you-tag">ВЫ</span></strong><small>' + (myColor === "white" ? "Белые фигуры" : "Чёрные фигуры") + '</small><small class="chess-captured">Взято: ' + capturedPieces(room.moves || [], myColor) + '</small></div><span class="chess-clock" id="chess-clock-self" aria-label="Ваше время" title="Оставшееся время">—:—</span><span class="chess-playerbar__turn">' + (room.status === "active" && room.turn === myColor ? "ВАШ ХОД" : "") + '</span></div>' +
           '<div class="chess-board-tools"><span class="chess-turn-status ' + (room.is_my_turn && !finished ? "is-active" : "") + '">' + escapeHtml(statusText) + '</span><div class="chess-board-tool-actions"><button class="chess-tool-button" id="chess-live-position" type="button" '+(reviewing ? '' : 'hidden')+'>К текущей позиции</button><button class="chess-tool-button" id="chess-flip-board" type="button" aria-label="Перевернуть доску">↻ Перевернуть доску</button></div></div>' +
           (room.draw_offer_by && room.draw_offer_by !== (me && me.id) && room.status === "active" ? '<div class="chess-draw-response"><span>Соперник предлагает ничью</span><button class="chess-control chess-control--accent" type="button" id="chess-draw-accept">Принять</button><button class="chess-control" type="button" id="chess-draw-decline">Отклонить</button></div>' : "") +
         '</main><aside class="chess-arena__sidebar">' +
@@ -319,6 +331,7 @@
             (finished ? '<div class="chess-result-banner"><small>ПАРТИЯ ЗАВЕРШЕНА</small><strong>' + escapeHtml(room.result) + '</strong></div>' : '<div class="chess-side-status">' + (room.check ? "♔ Королю объявлен шах" : room.status === "waiting" ? "Поделитесь кодом, чтобы начать" : room.is_my_turn ? "Сейчас ваш ход — выберите фигуру" : "Ожидаем ход соперника") + '</div>') +
             '<div class="chess-side-actions">' + (room.status === "active" ? '<button class="chess-control" type="button" id="chess-draw-offer">' + (room.draw_offer_by && room.draw_offer_by !== (me && me.id) ? "Предложение ничьей" : "♧ Предложить ничью") + '</button><button class="chess-control chess-control--danger" type="button" id="chess-resign">⚑ Сдаться</button>' : '') + '<button class="chess-control chess-control--subtle" type="button" id="chess-leave">Выйти из партии</button></div>' +
           '</section><div class="chess-sidebar-note"><span>♟</span><p>Играйте честно и уважайте соперника. Каждый ход сохраняется автоматически.</p></div></aside></div></section>';
+    updateClocks();
     animateBoardChanges(previousBoard);
     $("#chess-copy-code") && $("#chess-copy-code").addEventListener("click", function () {
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(room.code).then(function () { toast("Код скопирован"); }).catch(function () { toast("Код комнаты: " + room.code); });
@@ -336,10 +349,17 @@
       button.addEventListener("click", function () {
         var square = button.dataset.chessSquare;
         if (!selected) {
-          if (legal.some(function (move) { return move.slice(0, 2) === square; })) { selected = square; renderRoom(room); }
+          if (legal.some(function (move) { return move.slice(0, 2) === square; })) {
+            selected = square;
+            updateBoardSelection();
+          }
           return;
         }
-        if (square === selected) { selected = ""; renderRoom(room); return; }
+        if (square === selected) {
+          selected = "";
+          updateBoardSelection();
+          return;
+        }
         var candidates = legal.filter(function (move) { return move.slice(0, 2) === selected && move.slice(2, 4) === square; });
         if (candidates.length) {
           var move = candidates[0];
@@ -352,7 +372,7 @@
         }
         if (legal.some(function (move) { return move.slice(0, 2) === square; })) selected = square;
         else selected = "";
-        renderRoom(room);
+        updateBoardSelection();
       });
     });
     $("#chess-draw-offer") && $("#chess-draw-offer").addEventListener("click", async function () {
@@ -402,14 +422,23 @@
   function updateClocks() {
     if (!clockState) return;
     var c = clockState.clock;
-    var elapsed = Math.max(0, Date.now() - Date.parse(c.updated_at || new Date().toISOString()));
+    var stamp = Date.parse(c.updated_at || "");
+    var elapsed = Number.isFinite(stamp) ? Math.max(0, Date.now() - stamp) : 0;
     var white = Math.max(0, Number(c.white_ms || 0) - (clockState.turn === "white" ? elapsed : 0));
     var black = Math.max(0, Number(c.black_ms || 0) - (clockState.turn === "black" ? elapsed : 0));
     var opponent = document.getElementById("chess-clock-opponent"), self = document.getElementById("chess-clock-self");
-    if (opponent) opponent.textContent = formatClock(clockState.myColor === "white" ? black : white);
-    if (self) self.textContent = formatClock(clockState.myColor === "white" ? white : black);
-    if (self) self.classList.toggle("is-running", clockState.turn === clockState.myColor);
-    if (opponent) opponent.classList.toggle("is-running", clockState.turn !== clockState.myColor);
+    var selfTime = clockState.myColor === "white" ? white : black;
+    var opponentTime = clockState.myColor === "white" ? black : white;
+    if (opponent) opponent.textContent = formatClock(opponentTime);
+    if (self) self.textContent = formatClock(selfTime);
+    [[self, selfTime, clockState.turn === clockState.myColor], [opponent, opponentTime, clockState.turn !== clockState.myColor]].forEach(function (entry) {
+      var node = entry[0], remaining = entry[1], running = entry[2];
+      if (!node) return;
+      node.classList.toggle("is-running", running);
+      node.classList.toggle("is-low-time", remaining <= 60000);
+      node.classList.toggle("is-critical", remaining <= 10000);
+      node.setAttribute("aria-label", (node === self ? "Ваше время: " : "Время соперника: ") + formatClock(remaining));
+    });
   }
   async function submitMove(move) {
     if (movePending) return;
@@ -417,6 +446,7 @@
     var code = currentCode, from = move.slice(0,2), to = move.slice(2,4);
     selected = "";
     movePending = true;
+    updateBoardSelection();
     var animation = animateMoveImmediately(from,to);
     var moveRequest = request("/api/chess/rooms/" + encodeURIComponent(code) + "/move", {
       method:"POST", body:JSON.stringify({move:move})
