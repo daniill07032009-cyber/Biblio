@@ -294,6 +294,8 @@ def initialize_db():
                 moves_json TEXT NOT NULL DEFAULT '[]',
                 result TEXT NOT NULL DEFAULT '',
                 draw_offer_by INTEGER,
+                time_control TEXT NOT NULL DEFAULT '10+0',
+                clock_json TEXT NOT NULL DEFAULT '{}',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
@@ -405,6 +407,13 @@ def initialize_db():
             """,
             GAME_CATALOG_SEED,
         )
+        chess_columns = {row["name"] for row in db.execute("PRAGMA table_info(chess_rooms)")}
+        for name, declaration in (
+            ("time_control", "TEXT NOT NULL DEFAULT '10+0'"),
+            ("clock_json", "TEXT NOT NULL DEFAULT '{}'"),
+        ):
+            if name not in chess_columns:
+                db.execute(f"ALTER TABLE chess_rooms ADD COLUMN {name} {declaration}")
         columns = {row["name"] for row in db.execute("PRAGMA table_info(users)")}
         for name in ("bio", "avatar_url"):
             if name not in columns:
