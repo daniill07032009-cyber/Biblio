@@ -3582,3 +3582,64 @@ body.chess-home-mode { background:#f1f2f3; color:#262522; }
   .chess-arena .chess-square,
   .chess-clock { transition: none!important; }
 }
+
+
+/* Promotion picker */
+.chess-promotion-overlay {
+  position:fixed;
+  z-index:10050;
+  inset:0;
+  display:grid;
+  place-items:center;
+  padding:18px;
+  background:rgba(10,18,13,.68);
+  backdrop-filter:blur(7px);
+}
+.chess-promotion-dialog {
+  width:min(100%,390px);
+  padding:24px;
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:18px;
+  background:#f8f7f1;
+  color:#26372b;
+  box-shadow:0 24px 70px rgba(0,0,0,.35);
+  text-align:center;
+}
+.chess-promotion-dialog>strong { display:block; font-size:19px; }
+.chess-promotion-dialog>p { margin:7px 0 18px; color:#6b786d; font-size:13px; }
+.chess-promotion-options { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:9px; }
+.chess-promotion-choice {
+  display:grid;
+  justify-items:center;
+  gap:8px;
+  min-width:0;
+  padding:12px 4px;
+  border:1px solid #dce3d9;
+  border-radius:12px;
+  background:#fff;
+  color:#314337;
+  cursor:pointer;
+}
+.chess-promotion-choice:hover,.chess-promotion-choice:focus-visible {
+  border-color:#719477;
+  background:#edf4e9;
+  outline:3px solid rgba(103,146,108,.15);
+}
+.chess-promotion-choice span { font-family:"Segoe UI Symbol","DejaVu Sans",serif; font-size:42px; line-height:1; }
+.chess-promotion-choice span.is-white { color:#fff; -webkit-text-stroke:1px #28352b; text-shadow:0 1px 2px #26352a; }
+.chess-promotion-choice span.is-black { color:#202820; text-shadow:0 1px 1px rgba(0,0,0,.15); }
+.chess-promotion-choice small { font-size:11px; font-weight:750; }
+.chess-promotion-cancel {
+  margin-top:17px;
+  padding:9px 16px;
+  border:0;
+  border-radius:9px;
+  background:#e8ece5;
+  color:#445348;
+  font-weight:700;
+  cursor:pointer;
+}
+.chess-arena .chess-square.is-check {
+  background:#d96b62!important;
+  box-shadow:inset 0 0 0 3px rgba(111,22,22,.3);
+}
