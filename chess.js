@@ -10,6 +10,8 @@
   var lastRoomSignature = "";
   var roomRequestPending = false;
   var refreshQueued = false;
+  var watchGeneration = 0;
+  var lastRoomUpdatedAt = "";
   var roomRequestVersion = 0;
   var movePending = false;
   var currentLegalMoves = [];
@@ -23,18 +25,19 @@
   function prefersReducedMotion() {
     return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   }
-  function stop() { if (timer) window.clearInterval(timer); if (clockTimer) window.clearInterval(clockTimer); timer = 0; clockTimer = 0; clockState = null; }
+  function stop() { watchGeneration += 1; if (timer) window.clearInterval(timer); if (clockTimer) window.clearInterval(clockTimer); timer = 0; clockTimer = 0; clockState = null; }
   function handleVisibilityChange() {
     if (!location.pathname.startsWith("/games/chess/play")) return;
     if (document.hidden) {
-      if (timer) window.clearInterval(timer);
+      watchGeneration += 1;
       if (clockTimer) window.clearInterval(clockTimer);
       timer = 0;
       clockTimer = 0;
       return;
     }
     if (!currentCode) return;
-    if (!timer) timer = window.setInterval(function () { refreshRoom(currentCode, false); }, 700);
+    watchGeneration += 1;
+    watchRoom(currentCode, watchGeneration);
     if (!clockTimer) clockTimer = window.setInterval(updateClocks, 250);
     refreshRoom(currentCode, false);
     updateClocks();
@@ -79,7 +82,8 @@
     if (/\/play\/?$/.test(location.pathname) && code) {
       currentCode = code.toUpperCase();
       await refreshRoom(currentCode, true);
-      timer = window.setInterval(function () { refreshRoom(currentCode, false); }, 700);
+      watchGeneration += 1;
+      watchRoom(currentCode, watchGeneration);
       clockTimer = window.setInterval(updateClocks, 250);
     } else {
       currentCode = "";
@@ -206,6 +210,7 @@
       var signature = JSON.stringify(result.room);
       if (signature !== lastRoomSignature) {
         lastRoomSignature = signature;
+        lastRoomUpdatedAt = result.room.updated_at || lastRoomUpdatedAt;
         renderRoom(result.room);
       }
     } catch (error) {
@@ -219,6 +224,27 @@
       if (refreshQueued && !movePending && !document.hidden) {
         refreshQueued = false;
         refreshRoom(currentCode || code, false);
+      }
+    }
+  }
+  async function watchRoom(code, generation) {
+    while (generation === watchGeneration && !document.hidden && code === currentCode) {
+      try {
+        var url = "/api/chess/rooms/" + encodeURIComponent(code) + "/updates?since=" + encodeURIComponent(lastRoomUpdatedAt);
+        var result = await request(url);
+        if (generation !== watchGeneration || code !== currentCode) return;
+        if (result.room) {
+          var signature = JSON.stringify(result.room);
+          lastRoomUpdatedAt = result.room.updated_at || lastRoomUpdatedAt;
+          if (signature !== lastRoomSignature) {
+            lastRoomSignature = signature;
+            if (movePending) refreshQueued = true;
+            else renderRoom(result.room);
+          }
+        }
+      } catch (error) {
+        if (generation !== watchGeneration || document.hidden) return;
+        await new Promise(function (resolve) { window.setTimeout(resolve, 500); });
       }
     }
   }
@@ -582,6 +608,7 @@
       moveAccepted = true;
       skipNextBoardAnimation = true;
       lastRoomSignature = JSON.stringify(result.room);
+      lastRoomUpdatedAt = result.room.updated_at || lastRoomUpdatedAt;
       renderRoom(result.room);
     } catch (error) {
       animation.cleanup();

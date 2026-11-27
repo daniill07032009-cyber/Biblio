@@ -3,6 +3,7 @@ import json
 import tempfile
 from datetime import datetime
 import threading
+import time
 import unittest
 from pathlib import Path
 from urllib.error import HTTPError
@@ -74,6 +75,42 @@ class ChessTwoPlayerIntegrationTests(unittest.TestCase):
         status, result = self.request(client, "GET", f"/api/chess/rooms/{code}")
         self.assertEqual(status, 200, result)
         return result["room"]
+
+    def test_opponent_long_poll_wakes_immediately_after_a_move(self):
+        status, created = self.request(
+            self.white,
+            "POST",
+            "/api/chess/rooms",
+            {"name": "Instant update test", "time_control": "10+0"},
+        )
+        self.assertEqual(status, 201, created)
+        code = created["room"]["code"]
+        status, joined = self.request(
+            self.black, "POST", f"/api/chess/rooms/{code}/join", {}
+        )
+        self.assertEqual(status, 200, joined)
+        since = joined["room"]["updated_at"]
+        result_holder = {}
+
+        def wait_for_update():
+            result_holder["response"] = self.request(
+                self.black, "GET",
+                f"/api/chess/rooms/{code}/updates?since={since}",
+            )
+
+        watcher = threading.Thread(target=wait_for_update, daemon=True)
+        watcher.start()
+        time.sleep(0.05)
+        status, moved = self.request(
+            self.white, "POST", f"/api/chess/rooms/{code}/move", {"move": "e2e4"}
+        )
+        self.assertEqual(status, 200, moved)
+        watcher.join(timeout=2)
+        self.assertFalse(watcher.is_alive(), "Opponent update should not wait for the long-poll timeout")
+        update_status, update = result_holder["response"]
+        self.assertEqual(update_status, 200, update)
+        self.assertEqual(update["room"]["fen"], moved["room"]["fen"])
+        self.assertEqual(update["room"]["moves"][-1]["uci"], "e2e4")
 
     def test_two_independent_players_complete_a_synchronized_test_game(self):
         # Player one creates the room; player two joins using a separate session.
