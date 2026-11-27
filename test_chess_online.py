@@ -139,6 +139,7 @@ class ChessTwoPlayerIntegrationTests(unittest.TestCase):
             self.assertEqual(white_room["fen"], board.fen())
             self.assertEqual(black_room["fen"], board.fen())
             self.assertEqual(white_room["moves"], black_room["moves"])
+            self.assertEqual(white_room["moves"][-1]["fen_after"], board.fen())
             self.assertEqual(len(white_room["moves"]), ply + 1)
             self.assertEqual(white_room["turn"], "black" if board.turn == chess.BLACK else "white")
             self.assertEqual(white_room["status"], "active")
