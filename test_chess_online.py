@@ -8,6 +8,7 @@ from urllib.error import HTTPError
 from urllib.request import HTTPCookieProcessor, Request, build_opener
 
 import chess
+import chess_online_api
 import server
 
 
@@ -155,6 +156,39 @@ class ChessTwoPlayerIntegrationTests(unittest.TestCase):
         self.assertEqual(after["fen"], before["fen"])
         self.assertEqual(after["moves"], before["moves"])
         self.assertEqual(len(after["moves"]), 28)
+
+    def test_chess_clock_uses_millisecond_timestamps_and_increment(self):
+        status, created = self.request(
+            self.white,
+            "POST",
+            "/api/chess/rooms",
+            {"name": "Clock precision test", "time_control": "3+2"},
+        )
+        self.assertEqual(status, 201, created)
+        code = created["room"]["code"]
+
+        status, joined = self.request(
+            self.black, "POST", f"/api/chess/rooms/{code}/join", {}
+        )
+        self.assertEqual(status, 200, joined)
+        initial_clock = joined["room"]["clock"]
+        self.assertEqual(initial_clock["white_ms"], 180000)
+        self.assertEqual(initial_clock["black_ms"], 180000)
+        self.assertEqual(initial_clock["increment_ms"], 2000)
+
+        status, moved = self.request(
+            self.white, "POST", f"/api/chess/rooms/{code}/move", {"move": "e2e4"}
+        )
+        self.assertEqual(status, 200, moved)
+        clock = moved["room"]["clock"]
+        self.assertEqual(clock["increment_ms"], 2000)
+        self.assertGreater(clock["white_ms"], 180000)
+        self.assertLessEqual(clock["white_ms"], 182000)
+        self.assertEqual(clock["black_ms"], 180000)
+        self.assertRegex(clock["updated_at"], r"\.\d{3}Z$")
+
+    def test_clock_timestamp_helper_keeps_millisecond_precision(self):
+        self.assertRegex(chess_online_api._now(), r"\.\d{3}Z$")
 
 
 if __name__ == "__main__":
