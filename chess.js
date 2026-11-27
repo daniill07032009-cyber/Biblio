@@ -9,6 +9,8 @@
   var selectedPly = null;
   var lastRoomSignature = "";
   var roomRequestPending = false;
+  var refreshQueued = false;
+  var roomRequestVersion = 0;
   var movePending = false;
   var currentLegalMoves = [];
   var boardHasEntered = false;
@@ -190,22 +192,35 @@
   async function refreshRoom(code, initial) {
     var target = $("#game-catalog-detail-panel");
     if (!target || !location.pathname.startsWith("/games/chess")) return;
-    if (roomRequestPending || movePending) return;
+    if (roomRequestPending || movePending) {
+      refreshQueued = true;
+      return;
+    }
     roomRequestPending = true;
+    refreshQueued = false;
+    var requestVersion = roomRequestVersion;
     try {
       var result = await request("/api/chess/rooms/" + encodeURIComponent(code));
+      // Ignore a room snapshot that was requested before a move began.
+      if (requestVersion !== roomRequestVersion || movePending || code !== currentCode && currentCode) return;
       var signature = JSON.stringify(result.room);
       if (signature !== lastRoomSignature) {
         lastRoomSignature = signature;
         renderRoom(result.room);
       }
     } catch (error) {
-      if (initial) {
+      if (initial && requestVersion === roomRequestVersion) {
         var failed = panel("Партия недоступна");
         failed.innerHTML = '<section class="chess-panel"><h2>Не удалось открыть партию</h2><p>' + escapeHtml(error.message) + '</p><a class="button button--primary" href="/games/chess">К комнатам</a></section>';
         stop();
       }
-    } finally { roomRequestPending = false; }
+    } finally {
+      roomRequestPending = false;
+      if (refreshQueued && !movePending && !document.hidden) {
+        refreshQueued = false;
+        refreshRoom(currentCode || code, false);
+      }
+    }
   }
   function captureBoardPieces() {
     var snapshot = {};
@@ -543,6 +558,7 @@
     var code = currentCode, from = move.slice(0,2), to = move.slice(2,4);
     selected = "";
     movePending = true;
+    roomRequestVersion += 1;
     updateBoardSelection();
     var animation = animateMoveImmediately(from,to);
     var moveRequest = request("/api/chess/rooms/" + encodeURIComponent(code) + "/move", {
