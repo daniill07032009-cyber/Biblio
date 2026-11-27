@@ -3493,3 +3493,16 @@ body.chess-home-mode { background:#f1f2f3; color:#262522; }
   .chess-home__welcome h2 { font-size:30px; }
   .chess-home__welcome { min-height:230px; }
 }
+
+
+/* Chess board motion and rendering performance */
+.chess-board { contain:layout paint; }
+.chess-square { touch-action:manipulation; }
+.chess-square__piece { display:grid; place-items:center; transform:translateZ(0); backface-visibility:hidden; }
+.chess-square.is-selected .chess-square__piece { filter:drop-shadow(0 2px 2px rgba(0,0,0,.2)); }
+@media (prefers-reduced-motion:no-preference) {
+  .chess-square__piece { transition:filter 120ms ease; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .chess-square__piece { transition:none!important; }
+}
