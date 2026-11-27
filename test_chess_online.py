@@ -112,6 +112,37 @@ class ChessTwoPlayerIntegrationTests(unittest.TestCase):
         self.assertEqual(update["room"]["fen"], moved["room"]["fen"])
         self.assertEqual(update["room"]["moves"][-1]["uci"], "e2e4")
 
+    def test_room_includes_profile_avatars_and_opponent_premove_moves(self):
+        white_avatar = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j8l8AAAAASUVORK5CYII="
+        black_avatar = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j8l8AAAAASUVORK5CYII="
+        with server.connect_db() as db:
+            db.execute("UPDATE users SET avatar_url=? WHERE email=?", (white_avatar, "chess-white@example.com"))
+            db.execute("UPDATE users SET avatar_url=? WHERE email=?", (black_avatar, "chess-black@example.com"))
+
+        status, created = self.request(
+            self.white, "POST", "/api/chess/rooms",
+            {"name": "Premove and avatar test", "time_control": "10+0"},
+        )
+        self.assertEqual(status, 201, created)
+        code = created["room"]["code"]
+        status, joined = self.request(self.black, "POST", f"/api/chess/rooms/{code}/join", {})
+        self.assertEqual(status, 200, joined)
+
+        white_view = self.get_room(self.white, code)
+        black_view = self.get_room(self.black, code)
+        self.assertEqual(white_view["white"]["avatar_url"], white_avatar)
+        self.assertEqual(white_view["black"]["avatar_url"], black_avatar)
+        self.assertEqual(black_view["white"]["avatar_url"], white_avatar)
+        self.assertEqual(black_view["black"]["avatar_url"], black_avatar)
+        self.assertIn("e7e5", black_view["premove_moves"])
+        self.assertEqual(white_view["premove_moves"], [])
+
+        status, moved = self.request(self.white, "POST", f"/api/chess/rooms/{code}/move", {"move": "e2e4"})
+        self.assertEqual(status, 200, moved)
+        black_turn = self.get_room(self.black, code)
+        self.assertTrue(black_turn["is_my_turn"])
+        self.assertIn("e7e5", black_turn["legal_moves"])
+
     def test_two_independent_players_complete_a_synchronized_test_game(self):
         # Player one creates the room; player two joins using a separate session.
         status, created = self.request(

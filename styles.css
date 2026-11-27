@@ -4168,3 +4168,35 @@ body.chess-home-mode { background:#0d1511; color:#f1eee5; }
   .chess-home__welcome { border-radius:14px; }
   .chess-home__card:hover { transform:none; }
 }
+
+
+/* Chess: render real Biblio profile photos and distinguish queued premoves. */
+.chess-arena .chess-avatar {
+  position:relative;
+  overflow:hidden;
+  isolation:isolate;
+}
+.chess-arena .chess-avatar__image {
+  position:absolute;
+  inset:0;
+  z-index:1;
+  display:block;
+  width:100%;
+  height:100%;
+  border-radius:inherit;
+  object-fit:cover;
+}
+.chess-arena .chess-avatar.has-avatar > span { display:none; }
+.chess-arena .chess-avatar:not(.has-avatar) > span {
+  display:grid;
+  width:100%;
+  height:100%;
+  place-items:center;
+}
+.chess-arena .chess-square.is-premove {
+  box-shadow:inset 0 0 0 3px rgba(224,183,89,.92);
+}
+.chess-arena .chess-tool-button--cancel {
+  border-color:rgba(221,158,126,.3);
+  color:#efc2a9;
+}
