@@ -211,19 +211,30 @@ def dispatch_bunker_api(handler, db, method, path, api_error, mongodb_enabled):
         if int(room["host_id"]) == user_id:
             db.bunker_rooms.delete_one({"code": code, "host_id": user_id})
         else:
+            current_votes = (room.get("voting") or {}).get("votes") or {}
+            remaining_votes = {
+                voter_id: target_id
+                for voter_id, target_id in current_votes.items()
+                if str(voter_id) != str(user_id) and str(target_id) != str(user_id)
+            }
+            current_tied_targets = (room.get("voting") or {}).get("tied_targets") or []
+            remaining_tied_targets = [
+                target_id for target_id in current_tied_targets
+                if str(target_id) != str(user_id)
+            ]
             db.bunker_rooms.update_one({"code": code}, {
                 "$pull": {
                     "members": {"user_id": user_id},
                     "players": {"user_id": user_id},
                     "revealed_cards": {"user_id": user_id},
                     "survivors": {"user_id": user_id},
-                    "voting.tied_targets": user_id,
                 },
-                "$unset": {
-                    f"private_cards.{user_id}": "",
-                    f"voting.votes.{user_id}": "",
+                "$unset": {f"private_cards.{user_id}": ""},
+                "$set": {
+                    "updated_at": now,
+                    "voting.votes": remaining_votes,
+                    "voting.tied_targets": remaining_tied_targets,
                 },
-                "$set": {"updated_at": now},
             })
         return {"left": True}, HTTPStatus.OK, []
     if not member:
